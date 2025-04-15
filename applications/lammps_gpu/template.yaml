@@ -1,0 +1,38 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+volumes:
+  lammps-data-volume:
+    name: lammps-data-volume
+    reference: { { .Volume: "" }: "" }
+    ingress:
+      - source:
+          uri: { { .LammpsInputUrl: "" }: "" }
+        destination:
+          uri: file://{{.LammpsInputFile}}
+jobs:
+  run-lammps:
+    image:
+      uri: { { .LammpsContainerUri: "" }: "" }
+      secret: { { .DepotSecret: "" }: "" }
+    env:
+      - LAMMPS_INPUT_FILE_PATH=/data/{{.LammpsInputFile}}
+    command:
+      - /bin/sh
+      - "-c"
+      - >-
+        lmp -k on g {{.GPUs}} -sf kk -pk kokkos cuda/aware on neigh full comm device binsize 2.8 -var x 8 -var y 4 -var z 8 -in ${LAMMPS_INPUT_FILE_PATH}
+    cwd: /data
+    resource:
+      cpu:
+        cores: { { .Cores: "" }: "" }
+        affinity: NUMA
+      memory:
+        size: { { .Memory: "" }: "" }
+      devices:
+        nvidia.com/gpu: { { .GPUs: "" }: "" }
+    policy:
+      timeout:
+        execute: { { .Timeout: "" }: "" }
+    mounts:
+      lammps-data-volume:
+        location: /data

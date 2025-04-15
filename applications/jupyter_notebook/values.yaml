@@ -1,0 +1,22 @@
+values:
+  - name: "DepotSecret"
+    display_name: "An OCI authentication credential for CIQ Depot."
+    string_value: "secret://user/depot"
+  - name: "Type"
+    display_name: "Notebook type. Options: base, minimal, r, julia, scipy, tensorflow, datascience, pyspark, all-spark, pytorch (https://quay.io/organization/jupyter)"
+    string_value: "scipy"
+  - name: "Cores"
+    display_name: "How many CPU cores to allocate."
+    uint_value: 2
+  - name: "Memory"
+    display_name: "How much memory to allocate."
+    string_value: "1GiB"
+  - name: "Exclusive"
+    display_name: "Disallow other jobs from using the same node/instance."
+    bool_value: false
+  - name: "Timeout"
+    display_name: "Maximum runtime."
+    string_value: "12h"
+  - name: "Volume"
+    display_name: "Where to store notebook data."
+    string_value: "volume://user/ephemeral"
