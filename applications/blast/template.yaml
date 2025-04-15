@@ -3,11 +3,11 @@ version: v1
 volumes:
   blast-volume:
     name: blast-volume
-    reference: { { .Volume: "" }: "" }
+    reference: {{.Volume}}
 jobs:
   create-dirs:
     image:
-      uri: { { .BlastContainerURI: "" }: "" }
+      uri: {{.BlastContainerURI}}
     command: [mkdir, blastdb, queries, fasta, results, blastdb_custom]
     cwd: /data
     resource:
@@ -21,7 +21,7 @@ jobs:
         location: /data
   retrieve-query-sequence:
     image:
-      uri: { { .EdirectContainerURI: "" }: "" }
+      uri: {{.EdirectContainerURI}}
     command: ["/bin/sh", "-xc", "{{.RetrieveQuerySequenceCommand}}"]
     cwd: /data/queries
     resource:
@@ -36,7 +36,7 @@ jobs:
     requires: [create-dirs]
   retrieve-database-sequences:
     image:
-      uri: { { .EdirectContainerURI: "" }: "" }
+      uri: {{.EdirectContainerURI}}
     command: ["/bin/sh", "-xc", "{{.RetrieveDatabaseSequenceCommand}}"]
     cwd: /data/fasta
     resource:
@@ -51,7 +51,7 @@ jobs:
     requires: [create-dirs]
   make-blast-database:
     image:
-      uri: { { .BlastContainerURI: "" }: "" }
+      uri: {{.BlastContainerURI}}
     command: ["/bin/sh", "-xc", "{{.MakeBlastDatabaseCommand}}"]
     cwd: /data/fasta
     resource:
@@ -66,7 +66,7 @@ jobs:
     requires: [retrieve-query-sequence, retrieve-database-sequences]
   run-blast:
     image:
-      uri: { { .BlastContainerURI: "" }: "" }
+      uri: {{.BlastContainerURI}}
     command:
       - /bin/sh
       - "-c"
@@ -76,10 +76,10 @@ jobs:
     cwd: /data
     resource:
       cpu:
-        cores: { { .BlastCores: "" }: "" }
+        cores: {{.BlastCores}}
         affinity: NUMA
       memory:
-        size: { { .BlastMemory: "" }: "" }
+        size: {{.BlastMemory}}
     mounts:
       blast-volume:
         location: /data

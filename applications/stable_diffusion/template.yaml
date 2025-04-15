@@ -4,7 +4,7 @@ jobs:
   jupyter:
     image:
       uri: oras://depot.ciq.com/fuzzball/fuzzball-applications/jupyter-{{.NotebookType}}-notebook.sif
-      secret: { { .DepotSecret: "" }: "" }
+      secret: {{.DepotSecret}}
     mounts:
       stable-diffusion-storage:
         location: /home/jovyan
@@ -12,7 +12,7 @@ jobs:
       - HOME=/home/jovyan
     command:
       - /bin/sh
-      - "-c"
+      - '-c'
       - |
         export NB_USER=$(whoami)
         test -d $HOME || mkdir $HOME
@@ -26,13 +26,13 @@ jobs:
         /opt/conda/bin/jupyter notebook --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token="${JUPYTER_TOKEN}" --notebook-dir="${HOME}"
     resource:
       cpu:
-        cores: { { .JupyterCores: "" }: "" }
+        cores: {{.JupyterCores}}
         affinity: NUMA
       memory:
-        size: { { .JupyterMemory: "" }: "" }
+        size: {{.JupyterMemory}}
     policy:
       timeout:
-        execute: { { .JupyterTimeout: "" }: "" }
+        execute: {{.JupyterTimeout}}
     requires:
       - txt2img
   txt2img:
@@ -46,37 +46,42 @@ jobs:
     image:
       uri: >-
         {{.StableDiffusionContainerURI}}
-      secret: { { .DepotSecret: "" }: "" }
+      secret: {{.DepotSecret}}
     mounts:
       stable-diffusion-storage:
         location: /data
     command:
       - /bin/sh
-      - "-c"
+      - '-c'
       - >-
-        outdir=/data/txt2img/$(date +%Y-%m-%d-%H:%M:%S); mkdir -p "${outdir}"; echo "${TXT2IMG_PROMPT}" >"${outdir}/prompt.txt"; python3 /stable-diffusion/scripts/txt2img.py --prompt "${TXT2IMG_PROMPT}" --ckpt /data/txt2img/sd-v1-4.ckpt --outdir "${outdir}" --seed $RANDOM
+        outdir=/data/txt2img/$(date +%Y-%m-%d-%H:%M:%S); mkdir -p "${outdir}";
+        echo "${TXT2IMG_PROMPT}" >"${outdir}/prompt.txt"; python3
+        /stable-diffusion/scripts/txt2img.py --prompt "${TXT2IMG_PROMPT}" --ckpt
+        /data/txt2img/sd-v1-4.ckpt --outdir "${outdir}" --seed $RANDOM
     requires:
       - prefetch
     resource:
       cpu:
-        cores: { { .StableDiffusionCores: "" }: "" }
+        cores: {{.StableDiffusionCores}}
         affinity: NUMA
       memory:
-        size: { { .StableDiffusionMemory: "" }: "" }
+        size: {{.StableDiffusionMemory}}
       devices:
-        nvidia.com/gpu: { { .StableDiffusionGPUs: "" }: "" }
+        nvidia.com/gpu: {{.StableDiffusionGPUs}}
   prefetch:
     image:
-      uri: { { .CurlContainerURI: "" }: "" }
-      secret: { { .DepotSecret: "" }: "" }
+      uri: {{.CurlContainerURI}}
+      secret: {{.DepotSecret}}
     mounts:
       stable-diffusion-storage:
         location: /data
     command:
       - /bin/sh
-      - "-c"
+      - '-c'
       - >-
-        mkdir -p /data/txt2img; cd /data/txt2img; test -f sd-v1-4.ckpt || curl -LO https://huggingface.co/CompVis/stable-diffusion-v-1-4-original/resolve/main/sd-v1-4.ckpt?download=true
+        mkdir -p /data/txt2img; cd /data/txt2img; test -f sd-v1-4.ckpt || curl
+        -LO
+        https://huggingface.co/CompVis/stable-diffusion-v-1-4-original/resolve/main/sd-v1-4.ckpt?download=true
     resource:
       cpu:
         cores: 1
@@ -85,4 +90,4 @@ jobs:
         size: 1GiB
 volumes:
   stable-diffusion-storage:
-    reference: { { .Volume: "" }: "" }
+    reference: {{.Volume}}

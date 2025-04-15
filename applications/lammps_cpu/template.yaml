@@ -3,25 +3,25 @@ version: v1
 volumes:
   scratch-volume:
     ingress:
-      - destination:
-          uri: file://stagein.sh
-        source:
-          uri: { { .StageinScript: "" }: "" }
-      - destination:
-          uri: file://stageout.sh
-        source:
-          uri: { { .StageoutScript: "" }: "" }
+    - destination:
+        uri: file://stagein.sh
+      source:
+        uri: {{.StageinScript}}
+    - destination:
+        uri: file://stageout.sh
+      source:
+        uri: {{.StageoutScript}}
     name: scratch-volume
-    reference: { { .ScratchVolume: "" }: "" }
+    reference: {{.ScratchVolume}}
   output-volume:
     name: output-volume
-    reference: { { .OutputVolume: "" }: "" }
+    reference: {{.OutputVolume}}
 jobs:
   stagein:
     command:
       - /bin/sh
       - stagein.sh
-      - { { .RunName: "" }: "" }
+      - {{.RunName}}
     cwd: /scratch
     image:
       uri: docker://alpine:latest
@@ -41,31 +41,31 @@ jobs:
       - lmp_mpi {{.LammpsOptions}} -in {{.LammpsInputFile}}
     cwd: /scratch/{{.RunName}}
     image:
-      uri: { { .LammpsContainerUri: "" }: "" }
+      uri: {{.LammpsContainerUri}}
     mounts:
       scratch-volume:
         location: /scratch
     multinode:
-      implementation: { { .MpiFlavor: "" }: "" }
-      nodes: { { .Nodes: "" }: "" }
+      implementation: {{.MpiFlavor}}
+      nodes: {{.Nodes}}
     name: run-lammps
     policy:
       timeout:
-        execute: { { .Timeout: "" }: "" }
+        execute: {{.Timeout}}
     requires:
       - stagein
     resource:
       cpu:
         affinity: NUMA
-        cores: { { .Cores: "" }: "" }
+        cores: {{.Cores}}
       memory:
-        size: { { .Memory: "" }: "" }
+        size: {{.Memory}}
   stageout:
     command:
       - /bin/sh
       - stageout.sh
-      - { { .RunName: "" }: "" }
-      - { { .PersistResults: "" }: "" }
+      - {{.RunName}}
+      - {{.PersistResults}}
     cwd: /scratch
     image:
       uri: docker://alpine:latest
@@ -76,7 +76,7 @@ jobs:
         location: /output
     name: stageout
     requires:
-      - run-lammps
+    - run-lammps
     resource:
       cpu:
         cores: 1

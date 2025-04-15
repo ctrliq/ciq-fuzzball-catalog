@@ -3,7 +3,7 @@ version: v1
 volumes:
   data:
     name: data
-    reference: { { .Volume: "" }: "" }
+    reference: {{.Volume}}
 jobs:
   xfce4:
     mounts:
@@ -13,10 +13,10 @@ jobs:
       - HOME=/tmp/home
     image:
       uri: oras://depot.ciq.com/fuzzball/fuzzball-applications/xfce4-desktop.sif
-      secret: { { .DepotSecret: "" }: "" }
+      secret: {{.DepotSecret}}
     command:
       - /bin/sh
-      - "-c"
+      - '-c'
       - |
         echo
         echo "Accessing the virtual desktop requires port-forwarding via the CLI:"
@@ -28,10 +28,10 @@ jobs:
         /usr/local/bin/start-vncserver.sh
     resource:
       cpu:
-        cores: { { .Cores: "" }: "" }
+        cores: {{.Cores}}
       memory:
-        size: { { .Memory: "" }: "" }
-      exclusive: { { .Exclusive: "" }: "" }
+        size: {{.Memory}}
+      exclusive: {{.Exclusive}}
     policy:
       timeout:
-        execute: { { .Timeout: "" }: "" }
+        execute: {{.Timeout}}

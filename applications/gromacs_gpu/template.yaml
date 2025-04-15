@@ -12,13 +12,13 @@ jobs:
   setup:
     cwd: /scratch
     image:
-      uri: { { .Container: "" }: "" }
+      uri: {{.Container}}
     mounts:
       scratch:
         location: /scratch
     command:
       - /bin/sh
-      - "-xc"
+      - '-xc'
       - |
         mkdir gromacs-benchmarks
         tar --strip-components=1 -C gromacs-benchmarks --no-same-owner \
@@ -32,7 +32,7 @@ jobs:
   gromacs:
     cwd: /scratch/gromacs-benchmarks/{{.Benchmark}}
     image:
-      uri: { { .Container: "" }: "" }
+      uri: {{.Container}}
     mounts:
       scratch:
         location: /scratch
@@ -40,7 +40,7 @@ jobs:
       - GMX_ENABLE_DIRECT_GPU_COMM=1
     command:
       - /bin/sh
-      - "-xc"
+      - '-xc'
       - |
         #! /bin/bash -x
         if grep -q avx512 /proc/cpuinfo ; then
@@ -81,12 +81,12 @@ jobs:
       - setup
     resource:
       cpu:
-        cores: { { .Cores: "" }: "" }
+        cores: {{.Cores}}
         affinity: NUMA
       memory:
         size: 21GiB
       devices:
-        nvidia.com/gpu: { { .Gpus: "" }: "" }
+        nvidia.com/gpu: {{.Gpus}}
     policy:
       timeout:
         execute: 60m
