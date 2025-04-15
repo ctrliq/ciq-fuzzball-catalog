@@ -1,0 +1,86 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+volumes:
+  blast-volume:
+    name: blast-volume
+    reference: { { .Volume: "" }: "" }
+jobs:
+  create-dirs:
+    image:
+      uri: { { .BlastContainerURI: "" }: "" }
+    command: [mkdir, blastdb, queries, fasta, results, blastdb_custom]
+    cwd: /data
+    resource:
+      cpu:
+        cores: 1
+        affinity: NUMA
+      memory:
+        size: 1GiB
+    mounts:
+      blast-volume:
+        location: /data
+  retrieve-query-sequence:
+    image:
+      uri: { { .EdirectContainerURI: "" }: "" }
+    command: ["/bin/sh", "-xc", "{{.RetrieveQuerySequenceCommand}}"]
+    cwd: /data/queries
+    resource:
+      cpu:
+        cores: 1
+        affinity: NUMA
+      memory:
+        size: 1GiB
+    mounts:
+      blast-volume:
+        location: /data
+    requires: [create-dirs]
+  retrieve-database-sequences:
+    image:
+      uri: { { .EdirectContainerURI: "" }: "" }
+    command: ["/bin/sh", "-xc", "{{.RetrieveDatabaseSequenceCommand}}"]
+    cwd: /data/fasta
+    resource:
+      cpu:
+        cores: 1
+        affinity: NUMA
+      memory:
+        size: 1GiB
+    mounts:
+      blast-volume:
+        location: /data
+    requires: [create-dirs]
+  make-blast-database:
+    image:
+      uri: { { .BlastContainerURI: "" }: "" }
+    command: ["/bin/sh", "-xc", "{{.MakeBlastDatabaseCommand}}"]
+    cwd: /data/fasta
+    resource:
+      cpu:
+        cores: 1
+        affinity: NUMA
+      memory:
+        size: 1GiB
+    mounts:
+      blast-volume:
+        location: /data
+    requires: [retrieve-query-sequence, retrieve-database-sequences]
+  run-blast:
+    image:
+      uri: { { .BlastContainerURI: "" }: "" }
+    command:
+      - /bin/sh
+      - "-c"
+      - |
+        blastp -num_threads {{.BlastCores}} -query {{.BlastQueryFilePath}} -db {{.BlastDatabaseFilePath}} -out {{.BlastOutputFilePath}}
+        cat {{.BlastOutputFilePath}}
+    cwd: /data
+    resource:
+      cpu:
+        cores: { { .BlastCores: "" }: "" }
+        affinity: NUMA
+      memory:
+        size: { { .BlastMemory: "" }: "" }
+    mounts:
+      blast-volume:
+        location: /data
+    requires: [make-blast-database]

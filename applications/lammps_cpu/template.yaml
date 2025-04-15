@@ -1,0 +1,84 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+volumes:
+  scratch-volume:
+    ingress:
+      - destination:
+          uri: file://stagein.sh
+        source:
+          uri: { { .StageinScript: "" }: "" }
+      - destination:
+          uri: file://stageout.sh
+        source:
+          uri: { { .StageoutScript: "" }: "" }
+    name: scratch-volume
+    reference: { { .ScratchVolume: "" }: "" }
+  output-volume:
+    name: output-volume
+    reference: { { .OutputVolume: "" }: "" }
+jobs:
+  stagein:
+    command:
+      - /bin/sh
+      - stagein.sh
+      - { { .RunName: "" }: "" }
+    cwd: /scratch
+    image:
+      uri: docker://alpine:latest
+    mounts:
+      scratch-volume:
+        location: /scratch
+    name: stagein
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 512MIB
+  run-lammps:
+    command:
+      - /bin/sh
+      - -c
+      - lmp_mpi {{.LammpsOptions}} -in {{.LammpsInputFile}}
+    cwd: /scratch/{{.RunName}}
+    image:
+      uri: { { .LammpsContainerUri: "" }: "" }
+    mounts:
+      scratch-volume:
+        location: /scratch
+    multinode:
+      implementation: { { .MpiFlavor: "" }: "" }
+      nodes: { { .Nodes: "" }: "" }
+    name: run-lammps
+    policy:
+      timeout:
+        execute: { { .Timeout: "" }: "" }
+    requires:
+      - stagein
+    resource:
+      cpu:
+        affinity: NUMA
+        cores: { { .Cores: "" }: "" }
+      memory:
+        size: { { .Memory: "" }: "" }
+  stageout:
+    command:
+      - /bin/sh
+      - stageout.sh
+      - { { .RunName: "" }: "" }
+      - { { .PersistResults: "" }: "" }
+    cwd: /scratch
+    image:
+      uri: docker://alpine:latest
+    mounts:
+      scratch-volume:
+        location: /scratch
+      output-volume:
+        location: /output
+    name: stageout
+    requires:
+      - run-lammps
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 512MIB

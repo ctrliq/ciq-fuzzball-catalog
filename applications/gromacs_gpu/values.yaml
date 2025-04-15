@@ -1,0 +1,16 @@
+values:
+  - name: "Container"
+    display_name: "GROMACS container used for computation"
+    string_value: "docker://nvcr.io/hpc/gromacs:2023.2"
+  - name: "Benchmark"
+    display_name: "Which of the benchmarks from https://zenodo.org/records/3893789 to run [stmv, adh_dodec, aqp_ensemble, ion_channel, rnase_cubic]"
+    string_value: "stmv"
+  - name: "Gpus"
+    display_name: "Number of GPUs to use; GROMACS may not scale efficiencly to more than one"
+    uint_value: 1
+  - name: "Cores"
+    display_name: "Number of CPU Cores to use."
+    uint_value: 4
+  - name: "Steps"
+    display_name: "Number of MD steps to run."
+    uint_value: 10000

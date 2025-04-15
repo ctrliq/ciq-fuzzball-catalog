@@ -1,0 +1,42 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+volumes:
+  home:
+    name: home
+    reference: { { .Volume: "" }: "" }
+jobs:
+  jupyter:
+    image:
+      uri: oras://depot.ciq.com/fuzzball/fuzzball-applications/jupyter-{{.Type}}-notebook.sif
+      secret: { { .DepotSecret: "" }: "" }
+    mounts:
+      home:
+        location: /home/jovyan
+    env:
+      - HOME=/home/jovyan
+    command:
+      - /bin/sh
+      - "-c"
+      - |
+        export NB_USER=$(whoami)
+        test -d $HOME || mkdir $HOME
+        echo
+        echo "Accessing Jupyter requires port-forwarding via the CLI:"
+        echo
+        echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} jupyter 8888:8888"
+        echo
+        echo "Then navigate to http://localhost:8888"
+        echo
+        /opt/conda/bin/jupyter notebook --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token="${JUPYTER_TOKEN}" --notebook-dir="${HOME}"
+    resource:
+      cpu:
+        cores: { { .Cores: "" }: "" }
+        affinity: NUMA
+      memory:
+        size: { { .Memory: "" }: "" }
+      devices:
+        nvidia.com/gpu: { { .GPUs: "" }: "" }
+      exclusive: { { .Exclusive: "" }: "" }
+    policy:
+      timeout:
+        execute: { { .Timeout: "" }: "" }

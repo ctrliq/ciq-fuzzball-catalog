@@ -1,0 +1,92 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+volumes:
+  scratch:
+    ingress:
+      - source:
+          uri: https://zenodo.org/record/3893789/files/GROMACS_heterogeneous_parallelization_benchmark_info_and_systems_JCP.tar.gz
+        destination:
+          uri: file://gromacs-benchmarks.tar.gz
+    reference: volume://user/ephemeral
+jobs:
+  setup:
+    cwd: /scratch
+    image:
+      uri: { { .Container: "" }: "" }
+    mounts:
+      scratch:
+        location: /scratch
+    command:
+      - /bin/sh
+      - "-xc"
+      - |
+        mkdir gromacs-benchmarks
+        tar --strip-components=1 -C gromacs-benchmarks --no-same-owner \
+          -xf gromacs-benchmarks.tar.gz
+    resource:
+      cpu:
+        cores: 1
+        affinity: NUMA
+      memory:
+        size: 1GiB
+  gromacs:
+    cwd: /scratch/gromacs-benchmarks/{{.Benchmark}}
+    image:
+      uri: { { .Container: "" }: "" }
+    mounts:
+      scratch:
+        location: /scratch
+    env:
+      - GMX_ENABLE_DIRECT_GPU_COMM=1
+    command:
+      - /bin/sh
+      - "-xc"
+      - |
+        #! /bin/bash -x
+        if grep -q avx512 /proc/cpuinfo ; then
+          gmx=/usr/local/gromacs/avx_512/bin/gmx
+        elif grep -q avx2 /proc/cpuinfo ; then
+          gmx=/usr/local/gromacs/avx2_256/bin/gmx
+        elif grep -q avx /proc/cpuinfo ; then
+          gmx=/usr/local/gromacs/avx_256/bin/gmx
+        else
+          gmx=/usr/local/gromacs/sse4.1/bin/gmx
+        fi
+        max_gpuid=$(( {{.Gpus}} - 1 ))
+        ntmpi=$(( {{.Gpus}} * 2 ))
+        ntomp=$(( {{.Cores}} / ntmpi ))
+        if [ $ntomp -lt 1 ] ; then
+          ntomp=1
+        fi
+        gpuids=$(seq 0 1 $max_gpuid | tr -d '\n')
+        $gmx mdrun \
+          -ntmpi $ntmpi \
+          -ntomp $ntomp \
+          -nb gpu \
+          -pme gpu \
+          -npme 1 \
+          -update gpu \
+          -bonded gpu \
+          -nsteps {{.Steps}} \
+          -noconfout \
+          -dlb no \
+          -nstlist 300 \
+          -pin on \
+          -v -gpu_id $gpuids \
+          -g ./mdlog.log
+
+        echo "----------------------------------------------------------"
+        cat mdlog.log
+    requires:
+      - setup
+    resource:
+      cpu:
+        cores: { { .Cores: "" }: "" }
+        affinity: NUMA
+      memory:
+        size: 21GiB
+      devices:
+        nvidia.com/gpu: { { .Gpus: "" }: "" }
+    policy:
+      timeout:
+        execute: 60m

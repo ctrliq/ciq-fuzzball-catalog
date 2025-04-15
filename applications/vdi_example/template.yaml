@@ -1,0 +1,37 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+volumes:
+  data:
+    name: data
+    reference: { { .Volume: "" }: "" }
+jobs:
+  xfce4:
+    mounts:
+      data:
+        location: /mnt/data
+    env:
+      - HOME=/tmp/home
+    image:
+      uri: oras://depot.ciq.com/fuzzball/fuzzball-applications/xfce4-desktop.sif
+      secret: { { .DepotSecret: "" }: "" }
+    command:
+      - /bin/sh
+      - "-c"
+      - |
+        echo
+        echo "Accessing the virtual desktop requires port-forwarding via the CLI:"
+        echo
+        echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} xfce4 6080:6080"
+        echo
+        echo Then navigate to http://localhost:6080
+        echo
+        /usr/local/bin/start-vncserver.sh
+    resource:
+      cpu:
+        cores: { { .Cores: "" }: "" }
+      memory:
+        size: { { .Memory: "" }: "" }
+      exclusive: { { .Exclusive: "" }: "" }
+    policy:
+      timeout:
+        execute: { { .Timeout: "" }: "" }

@@ -1,0 +1,61 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+jobs:
+  ls-dyna-3d-internal-flow:
+    env:
+      - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
+      - LS_DYNA_PRECISION={{.LsDynaPrecision}}
+      - LSTC_LICENSE=ansys
+      - LD_LIBRARY_PATH=/.singularity.d/libs:/usr/lib64/mpich/lib
+    image:
+      uri: { { .AnsysLsDynaContainerURI: "" }: "" }
+      secret: { { .AnsysLsDynaContainerOciSecret: "" }: "" }
+    mounts:
+      data:
+        location: /data
+    policy:
+      timeout:
+        execute: { { .Timeout: "" }: "" }
+    cwd: /data
+    command:
+      - /bin/sh
+      - "-xc"
+      - |
+        #! /bin/bash -x
+
+        # Environment setup
+        ANSYS_VERSION={{.AnsysVersion}}
+        ANSYS_VERSION_NUMBER=$(echo ${ANSYS_VERSION/R/} | cut -c 3-)
+        PATH=/software/ansys/${ANSYS_VERSION/R/r}/v${ANSYS_VERSION_NUMBER}/ansys/bin/linx64:$PATH
+
+        # Data staging
+        mkdir ansys-ls-dyna-3d-internal-flow-$FB_WORKFLOW_ID;
+        cd ansys-ls-dyna-3d-internal-flow-$FB_WORKFLOW_ID;
+        mv /data/ICFD_example_3dinternalflow.zip .;
+        unzip ICFD_example_3dinternalflow.zip;
+
+        # Determine binary to be used
+        if [[ "${LS_DYNA_PRECISION}" == "double" ]]; then
+          LS_DYNA_EXE="lsdyna_dp_mpp.e"
+        elif [[ "${LS_DYNA_PRECISION}" == "single" ]]; then
+          LS_DYNA_EXE="lsdyna_sp_mpp.e"
+        else
+          echo "No binary for LS-DYNA precision ${LS_DYNA_PRECISION}!"
+          exit 1
+        fi
+
+        ${LS_DYNA_EXE} i=i.k ncpu={{.LsDynaCores}};
+    resource:
+      cpu:
+        cores: { { .LsDynaCores: "" }: "" }
+        affinity: NUMA
+      memory:
+        size: { { .LsDynaMemory: "" }: "" }
+volumes:
+  data:
+    reference: { { .Volume: "" }: "" }
+    ingress:
+      - source:
+          uri: https://ftp.lstc.com/anonymous/outgoing/inaki/tutorial/ICFD_example_3dinternalflow.zip
+        destination:
+          uri: file://ICFD_example_3dinternalflow.zip
