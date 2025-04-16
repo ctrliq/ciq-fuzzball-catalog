@@ -48,9 +48,6 @@ jobs:
       uri: "{{.OpenFoamContainerUri}}"
     env:
       - WM_PROJECT_DIR={{.WmProjectDir}}
-      # - OMPI_ALLOW_RUN_AS_ROOT=1
-      # - OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
-      # - OMPI_MCA_pml=^ucx
     command: ["/bin/bash", "-c", "source $WM_PROJECT_DIR/etc/bashrc; snappyHexMesh -overwrite -parallel;"]
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
@@ -72,9 +69,6 @@ jobs:
       uri: "{{.OpenFoamContainerUri}}"
     env:
       - WM_PROJECT_DIR={{.WmProjectDir}}
-      # - OMPI_ALLOW_RUN_AS_ROOT=1
-      # - OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
-      # - OMPI_MCA_pml=^ucx
     command: ["/bin/bash", "-c", "source $WM_PROJECT_DIR/etc/bashrc; topoSet -parallel;"]
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
@@ -120,9 +114,6 @@ jobs:
       uri: "{{.OpenFoamContainerUri}}"
     env:
       - WM_PROJECT_DIR={{.WmProjectDir}}
-      # - OMPI_ALLOW_RUN_AS_ROOT=1
-      # - OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
-      # - OMPI_MCA_pml=^ucx
     command: ["/bin/bash", "-c", "source $WM_PROJECT_DIR/etc/bashrc; patchSummary -parallel;"]
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
@@ -144,9 +135,6 @@ jobs:
       uri: "{{.OpenFoamContainerUri}}"
     env:
       - WM_PROJECT_DIR={{.WmProjectDir}}
-      # - OMPI_ALLOW_RUN_AS_ROOT=1
-      # - OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
-      # - OMPI_MCA_pml=^ucx
     command: ["/bin/bash", "-c", "source $WM_PROJECT_DIR/etc/bashrc; potentialFoam -writephi -parallel"]
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
@@ -168,9 +156,6 @@ jobs:
       uri: "{{.OpenFoamContainerUri}}"
     env:
       - WM_PROJECT_DIR={{.WmProjectDir}}
-      # - OMPI_ALLOW_RUN_AS_ROOT=1
-      # - OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
-      # - OMPI_MCA_pml=^ucx
     command: ["/bin/bash", "-c", "source $WM_PROJECT_DIR/etc/bashrc; checkMesh -parallel -writeFields '(nonOrthoAngle)' -constant"]
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
@@ -192,9 +177,6 @@ jobs:
       uri: "{{.OpenFoamContainerUri}}"
     env:
       - WM_PROJECT_DIR={{.WmProjectDir}}
-      # - OMPI_ALLOW_RUN_AS_ROOT=1
-      # - OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
-      # - OMPI_MCA_pml=^ucx
     command: ["/bin/bash", "-c", "source $WM_PROJECT_DIR/etc/bashrc; simpleFoam -parallel"]
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
