@@ -1,0 +1,40 @@
+values:
+  - name: NgcEnvVarSecret
+    display_name: Fuzzball environment variable secret containing a NGC API Key.
+    string_value: secret://user/NGC_API_KEY_ENV
+  - name: NgcOciSecret
+    display_name: Fuzzball OCI secret containing a user '$oauthtoken' and NGC API Key as password.
+    string_value: secret://user/NGC_API_KEY_OCI
+  - name: NimImageUri
+    display_name: URI to NVIDIA NIM image.
+    string_value: docker://nvcr.io/nim/nvidia/parakeet-ctc-1.1b-asr:latest
+  - name: NimCachePath
+    display_name: Path to cached models.
+    string_value: /home/nvs/.cache/nim
+  - name: NimGrpcPort
+    display_name: Port to run GPRC API.
+    string_value: "50051"
+  - name: NimHttpPort
+    display_name: Port to run HTTP API.
+    string_value: "9000"
+  - name: NimManifestProfile
+    display_name: UUID of model manifest profile to be downloaded found in /etc/nim/config/model_manifest.yaml of container.
+    string_value: 9136dd64-4777-11ef-9f27-37cfd56fa6ee
+  - name: Cores
+    display_name: How many CPU cores to allocate.
+    uint_value: 4
+  - name: Memory
+    display_name: How much memory to allocate.
+    string_value: 32768MiB
+  - name: GPUs
+    display_name: How many GPUs to allocate.
+    uint_value: 1
+  - name: Timeout
+    display_name: Maximum runtime.
+    string_value: 2h0m0s
+  - name: ModelRepoDataVolume
+    display_name: Where to store model repository data.
+    string_value: volume://user/ephemeral
+  - name: ModelCacheVolume
+    display_name: Where to store downloaded model data.
+    string_value: volume://account/persistent

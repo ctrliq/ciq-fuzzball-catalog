@@ -1,0 +1,38 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+jobs:
+  nvidia-nim:
+    env:
+      - NGC_API_KEY={{.NgcEnvVarSecret}}
+      - NIM_GRPC_API_PORT={{.NimGrpcPort}}
+      - NIM_HTTP_API_PORT={{.NimHttpPort}}
+      - NIM_CACHE_PATH={{.NimCachePath}}
+      - NIM_MANIFEST_PROFILE={{.NimManifestProfile}}
+    image:
+      uri: {{.NimImageUri}}
+      secret: {{.NgcOciSecret}}
+    mounts:
+      data:
+        location: /data
+      cache:
+        location: /home/nvs
+    policy:
+      timeout:
+        execute: {{.Timeout}}
+    command:
+      - /bin/sh
+      - '-c'
+      - nvidia-smi; /opt/nvidia/nvidia_entrypoint.sh start_server;
+    resource:
+      cpu:
+        cores: {{.Cores}}
+        affinity: NUMA
+      memory:
+        size: {{.Memory}}
+      devices:
+        nvidia.com/gpu: {{.GPUs}}
+volumes:
+  data:
+    reference: {{.ModelRepoDataVolume}}
+  cache:
+    reference: {{.ModelCacheVolume}}
