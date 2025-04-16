@@ -6,24 +6,24 @@ jobs:
       - HOME=/tmp/home
       - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
     image:
-      uri: { { .AnsysFluentDesktopContainerURI: "" }: "" }
-      secret: { { .AnsysFluentDesktopContainerOciSecret: "" }: "" }
+      uri: {{.AnsysFluentDesktopContainerURI}}
+      secret: {{.AnsysFluentDesktopContainerOciSecret}}
     mounts:
       data:
         location: /data
     policy:
       timeout:
-        execute: { { .Timeout: "" }: "" }
+        execute: {{.Timeout}}
     command:
       - /bin/sh
-      - "-c"
+      - '-c'
       - /usr/local/bin/start-vncserver.sh
     resource:
       cpu:
-        cores: { { .FluentDesktopCores: "" }: "" }
+        cores: {{.FluentDesktopCores}}
         affinity: NUMA
       memory:
-        size: { { .FluentDesktopMemory: "" }: "" }
+        size: {{.FluentDesktopMemory}}
 volumes:
   data:
-    reference: { { .Volume: "" }: "" }
+    reference: {{.Volume}}

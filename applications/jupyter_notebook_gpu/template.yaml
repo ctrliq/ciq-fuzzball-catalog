@@ -3,12 +3,12 @@ version: v1
 volumes:
   home:
     name: home
-    reference: { { .Volume: "" }: "" }
+    reference: {{.Volume}}
 jobs:
   jupyter:
     image:
       uri: oras://depot.ciq.com/fuzzball/fuzzball-applications/jupyter-{{.Type}}-notebook.sif
-      secret: { { .DepotSecret: "" }: "" }
+      secret: {{.DepotSecret}}
     mounts:
       home:
         location: /home/jovyan
@@ -16,7 +16,7 @@ jobs:
       - HOME=/home/jovyan
     command:
       - /bin/sh
-      - "-c"
+      - '-c'
       - |
         export NB_USER=$(whoami)
         test -d $HOME || mkdir $HOME
@@ -30,13 +30,13 @@ jobs:
         /opt/conda/bin/jupyter notebook --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token="${JUPYTER_TOKEN}" --notebook-dir="${HOME}"
     resource:
       cpu:
-        cores: { { .Cores: "" }: "" }
+        cores: {{.Cores}}
         affinity: NUMA
       memory:
-        size: { { .Memory: "" }: "" }
+        size: {{.Memory}}
       devices:
-        nvidia.com/gpu: { { .GPUs: "" }: "" }
-      exclusive: { { .Exclusive: "" }: "" }
+        nvidia.com/gpu: {{.GPUs}}
+      exclusive: {{.Exclusive}}
     policy:
       timeout:
-        execute: { { .Timeout: "" }: "" }
+        execute: {{.Timeout}}

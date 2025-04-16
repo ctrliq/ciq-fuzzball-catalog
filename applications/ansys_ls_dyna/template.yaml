@@ -8,18 +8,18 @@ jobs:
       - LSTC_LICENSE=ansys
       - LD_LIBRARY_PATH=/.singularity.d/libs:/usr/lib64/mpich/lib
     image:
-      uri: { { .AnsysLsDynaContainerURI: "" }: "" }
-      secret: { { .AnsysLsDynaContainerOciSecret: "" }: "" }
+      uri: {{.AnsysLsDynaContainerURI}}
+      secret: {{.AnsysLsDynaContainerOciSecret}}
     mounts:
       data:
         location: /data
     policy:
       timeout:
-        execute: { { .Timeout: "" }: "" }
+        execute: {{.Timeout}}
     cwd: /data
     command:
       - /bin/sh
-      - "-xc"
+      - '-xc'
       - |
         #! /bin/bash -x
 
@@ -47,15 +47,15 @@ jobs:
         ${LS_DYNA_EXE} i=i.k ncpu={{.LsDynaCores}};
     resource:
       cpu:
-        cores: { { .LsDynaCores: "" }: "" }
+        cores: {{.LsDynaCores}}
         affinity: NUMA
       memory:
-        size: { { .LsDynaMemory: "" }: "" }
+        size: {{.LsDynaMemory}}
 volumes:
   data:
-    reference: { { .Volume: "" }: "" }
+    reference: {{.Volume}}
     ingress:
-      - source:
-          uri: https://ftp.lstc.com/anonymous/outgoing/inaki/tutorial/ICFD_example_3dinternalflow.zip
-        destination:
-          uri: file://ICFD_example_3dinternalflow.zip
+    - source:
+        uri: https://ftp.lstc.com/anonymous/outgoing/inaki/tutorial/ICFD_example_3dinternalflow.zip
+      destination:
+        uri: file://ICFD_example_3dinternalflow.zip

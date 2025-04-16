@@ -5,8 +5,8 @@ jobs:
     env:
       - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
     image:
-      uri: { { .AnsysFluentContainerURI: "" }: "" }
-      secret: { { .AnsysFluentContainerOciSecret: "" }: "" }
+      uri: {{.AnsysFluentContainerURI}}
+      secret: {{.AnsysFluentContainerOciSecret}}
     mounts:
       data:
         location: /data
@@ -16,12 +16,15 @@ jobs:
     cwd: /data
     command:
       - /bin/sh
-      - "-c"
+      - '-c'
       - >-
-        mkdir ansys-fluent-tjunction-heat-transfer-$FB_WORKFLOW_ID; cd ansys-fluent-tjunction-heat-transfer-$FB_WORKFLOW_ID; mv /data/FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip .; unzip FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip; cd FLU_BTB_2022R2_EN_Wl2.6_Input_Files;
+        mkdir ansys-fluent-tjunction-heat-transfer-$FB_WORKFLOW_ID;
+        cd ansys-fluent-tjunction-heat-transfer-$FB_WORKFLOW_ID;
+        mv /data/FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip .;
+        unzip FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip;
+        cd FLU_BTB_2022R2_EN_Wl2.6_Input_Files;
 
         cat > setup-and-run-simulation.jou << _EOF
-
           ; configure batch options -- ensure exit on error
           /file/set-batch-options no yes yes no
 
@@ -82,20 +85,21 @@ jobs:
           /exit yes
         _EOF
 
-        ANSYS_VERSION={{.AnsysVersion}} ANSYS_VERSION_NUMBER=$(echo ${ANSYS_VERSION/R/} | cut -c 3-)
+        ANSYS_VERSION={{.AnsysVersion}}
+        ANSYS_VERSION_NUMBER=$(echo ${ANSYS_VERSION/R/} | cut -c 3-)
 
         {{.AnsysInstallDir}}/v${ANSYS_VERSION_NUMBER}/fluent/bin/fluent 3ddp -g -t4 -i setup-and-run-simulation.jou;
     resource:
       cpu:
-        cores: { { .FluentCores: "" }: "" }
+        cores: {{.FluentCores}}
         affinity: NUMA
       memory:
-        size: { { .FluentMemory: "" }: "" }
+        size: {{.FluentMemory}}
 volumes:
   data:
-    reference: { { .Volume: "" }: "" }
+    reference: {{.Volume}}
     ingress:
-      - source:
-          uri: https://ansys13.ansys.com/AnsysInnovationCourses/FBU/How-To-Series/Getting%20Started%20with%20Fluent/Course_9-Heat_Transfer/FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip
-        destination:
-          uri: file://FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip
+    - source:
+        uri: https://ansys13.ansys.com/AnsysInnovationCourses/FBU/How-To-Series/Getting%20Started%20with%20Fluent/Course_9-Heat_Transfer/FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip
+      destination:
+        uri: file://FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip

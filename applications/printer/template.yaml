@@ -3,13 +3,13 @@ version: v1
 jobs:
   printer:
     image:
-      uri: { { .Container: "" }: "" }
+      uri: {{.Container}}
     policy:
       timeout:
         execute: 1m{{.Seconds}}s
     command:
       - /bin/sh
-      - "-c"
+      - '-c'
       - for i in $(seq 1 {{.Seconds}}); do echo $i; sleep 1; done
     resource:
       cpu:
