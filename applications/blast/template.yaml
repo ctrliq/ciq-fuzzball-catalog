@@ -1,86 +1,194 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+{{-
+$blast_dbs := ( list
+  "nr"
+  "swissprot"
+  "refseq_protein"
+  "landmark"
+  "pdbaa"
+  "nt"
+  "core_nt"
+  "pdbnt"
+  "patnt"
+  "refseq_rna"
+  "ref_prok_rep_genomes"
+  "ref_viruses_rep_genomes"
+  "ref_viroids_rep_genomes"
+  "ref_euk_rep_genomes"
+  "cdd"
+  "GCF_000001405.39_top_level"
+  "GCF_000001635.27_top_level"
+  "16S_ribosomal_RNA"
+  "18S_fungal_sequences"
+  "28S_fungal_sequences"
+  "ITS_RefSeq_Fungi"
+  "ITS_eukaryote_sequences"
+  "env_nt"
+  "Betacoronavirus"
+  "pataa"
+  "refseq_select_prot"
+  "refseq_select_rna"
+  "env_nr"
+  "LSU_eukaryote_rRNA"
+  "LSU_prokaryote_rRNA"
+  "SSU_eukaryote_rRNA"
+  "mito"
+  "tsa_nr"
+  "tsa_nt"
+  "nt_euk"
+  "nt_prok"
+  "nt_viruses"
+  "nt_others" )
+  }}
+{{- $publicdb := true }}
+{{- if (and .BlastDbName (not (mustHas .BlastDbName $blast_dbs))) }}
+{{- $publicdb = false }}
+{{- end }}
+{{- if (and .BlastDbName .CustomBlastDbFetchCmd) }}
+{{- fail "BlastDbName and CustomBlastDbFetchCmd are mutually exclusive" }}
+{{- end }}
+{{- $container := "docker://community.wave.seqera.io/library/blast_entrez-direct:2443e1cf34bc04d8" }}
+{{- $dbpath := list "/data" .BlastDbPath | join "/"  }}
+{{- $permdbpath := $dbpath }}
+{{- $dbname := .BlastDbName }}
+
 version: v1
 volumes:
-  blast-volume:
-    name: blast-volume
-    reference: {{.Volume}}
+  data:
+    reference: {{.DataVolume}}
+  scratch:
+    reference: {{.ScratchVolume}}
 jobs:
-  create-dirs:
+{{- if .BlastDbName }}
+  fetch-db:
     image:
-      uri: {{.BlastContainerURI}}
-    command: [mkdir, blastdb, queries, fasta, results, blastdb_custom]
-    cwd: /data
+      uri: {{$container}}
+    mounts:
+      data:
+        location: /data
+      scratch:
+        location: /scratch
+    command: 
+      - /bin/bash
+      - "-c"
+      - |
+        mkdir -p "{{$dbpath}}" && cd "{{$dbpath}}" || exit 1
+        # fix update_blastdb.pl so it will use conda's curl since the container
+        # does not include curl in a standard location
+        sed 's:^my \$curl.*$:my $curl = "/opt/conda/bin/curl";:' /opt/conda/bin/update_blastdb.pl > update_blastdb.pl
+        chmod 750 update_blastdb.pl
+        now=$(date +%s)
+        if ! {{$publicdb}} ; then
+          # this is a custom database created previously
+          [[ -e {{$dbname}}__ ]] && exit 0
+          printf "{{$dbname}} does not exist.\n"
+          exit 1
+        fi
+        if [[ -e {{$dbname}}__ ]]; then
+          last=$(cat {{$dbname}}__)
+          if (( (now - last) < 86400 )) ; then
+            printf "{{$dbname}} is current - update skipped.\n"
+            exit
+          fi
+        fi
+        echo $now > {{$dbname}}__
+        ./update_blastdb.pl --num_threads=2 --decompress {{$dbname}}
+        echo "------------------------------------------------------------------------------------"
+        ls -lh {{$dbname}}*
     resource:
       cpu:
         cores: 1
-        affinity: NUMA
+        threads: true
       memory:
         size: 1GiB
-    mounts:
-      blast-volume:
-        location: /data
-  retrieve-query-sequence:
-    image:
-      uri: {{.EdirectContainerURI}}
-    command: ["/bin/sh", "-xc", "{{.RetrieveQuerySequenceCommand}}"]
-    cwd: /data/queries
-    resource:
-      cpu:
-        cores: 1
-        affinity: NUMA
-      memory:
-        size: 1GiB
-    mounts:
-      blast-volume:
-        location: /data
-    requires: [create-dirs]
+{{- else if .CustomBlastDbFetchCmd}}
+{{- $dbpath = "/scratch/db"}}
+{{- $dbname = default "custom" .CustomBlastDbName }}
   retrieve-database-sequences:
     image:
-      uri: {{.EdirectContainerURI}}
-    command: ["/bin/sh", "-xc", "{{.RetrieveDatabaseSequenceCommand}}"]
-    cwd: /data/fasta
+      uri: {{$container}}
+    mounts:
+      data:
+        location: /data
+      scratch:
+        location: /scratch
+    command: 
+      - /bin/bash
+      - "-c"
+      - {{.CustomBlastDbFetchCmd}} > {{$dbname}}.fa
     resource:
       cpu:
         cores: 1
-        affinity: NUMA
       memory:
         size: 1GiB
-    mounts:
-      blast-volume:
-        location: /data
-    requires: [create-dirs]
   make-blast-database:
     image:
-      uri: {{.BlastContainerURI}}
-    command: ["/bin/sh", "-xc", "{{.MakeBlastDatabaseCommand}}"]
-    cwd: /data/fasta
+      uri: {{$container}}
+    mounts:
+      data:
+        location: /data
+      scratch:
+        location: /scratch
+    command:
+      - /bin/bash
+      - "-c"
+      - |
+        mkdir -p "{{$dbpath}}" && cd "{{$dbpath}}" || exit 1
+        makeblastdb {{.CustomBlastDbOptions}} -in {{$dbname}}.fa -out {{$dbname}}
+        if [[ -n "{{.CustomBlastDbName}}" && -n "{{.BlastDbPath}}" ]] ; then
+          chown $(id -un) {{$dbname}}*
+          cp -a {{$dbname}}* "{{$permdbpath}}"
+          touch "{{$permdbpath}}/{{$dbname}}__"
+        fi
     resource:
       cpu:
         cores: 1
-        affinity: NUMA
+      memory:
+        size: 2GiB
+    requires: [retrieve-database-sequences]
+{{- else}}
+{{ fail "Either CustomBlastDbFetchCmd or BlastDbName have to be specified" -}}
+{{- end }}
+{{- $outdir := list "/data" .BlastOutputPath | join "/" }}
+{{- $name := trim .RunName }}
+  retrieve-query-sequences:
+    image:
+      uri: {{$container}}
+    mounts:
+      data:
+        location: /data
+      scratch:
+        location: /scratch
+    command:
+      - /bin/bash
+      - "-c"
+      - |
+        mkdir -p "{{$outdir}}" && cd "{{$outdir}}" || exit 1
+        {{.RetrieveQuerySequencesCmd}} > "{{$name}}.fa"
+    resource:
+      cpu:
+        cores: 1
       memory:
         size: 1GiB
-    mounts:
-      blast-volume:
-        location: /data
-    requires: [retrieve-query-sequence, retrieve-database-sequences]
   run-blast:
     image:
-      uri: {{.BlastContainerURI}}
+      uri: {{$container}}
+    mounts:
+      data:
+        location: /data
+      scratch:
+        location: /scratch
     command:
       - /bin/sh
       - "-c"
       - |
-        blastp -num_threads {{.BlastCores}} -query {{.BlastQueryFilePath}} -db {{.BlastDatabaseFilePath}} -out {{.BlastOutputFilePath}}
-        cat {{.BlastOutputFilePath}}
-    cwd: /data
+        cd "{{$outdir}}"
+        {{.BlastCmd}} -num_threads {{.BlastCores}} -query "{{$name}}.fa" -db {{$dbpath}}/{{$dbname}} -out {{$name}}.blast.out {{.BlastOpts}} || exit 1
+        cat {{$name}}.blast.out
     resource:
       cpu:
         cores: {{.BlastCores}}
         affinity: NUMA
       memory:
         size: {{.BlastMemory}}
-    mounts:
-      blast-volume:
-        location: /data
-    requires: [make-blast-database]
+    requires: [retrieve-query-sequences, {{if .BlastDbName -}}fetch-db {{- else -}} make-blast-database {{- end -}} ]
