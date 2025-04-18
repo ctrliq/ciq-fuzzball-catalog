@@ -68,7 +68,7 @@ jobs:
         location: /data
       scratch:
         location: /scratch
-    command: 
+    command:
       - /bin/bash
       - "-c"
       - |
@@ -92,7 +92,7 @@ jobs:
           fi
         fi
         echo $now > {{$dbname}}__
-        ./update_blastdb.pl --num_threads=2 --decompress {{$dbname}}
+        ./update_blastdb.pl --num_threads=2 --decompress {{$dbname}} || exit 1
         echo "------------------------------------------------------------------------------------"
         ls -lh {{$dbname}}*
     resource:
@@ -100,7 +100,7 @@ jobs:
         cores: 1
         threads: true
       memory:
-        size: 1GiB
+        size: 4GiB
 {{- else if .CustomBlastDbFetchCmd}}
 {{- $dbpath = "/scratch/db"}}
 {{- $dbname = default "custom" .CustomBlastDbName }}
@@ -112,7 +112,7 @@ jobs:
         location: /data
       scratch:
         location: /scratch
-    command: 
+    command:
       - /bin/bash
       - "-c"
       - {{.CustomBlastDbFetchCmd}} > {{$dbname}}.fa
