@@ -1,49 +1,4 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-{{-
-$blast_dbs := ( list
-  "nr"
-  "swissprot"
-  "refseq_protein"
-  "landmark"
-  "pdbaa"
-  "nt"
-  "core_nt"
-  "pdbnt"
-  "patnt"
-  "refseq_rna"
-  "ref_prok_rep_genomes"
-  "ref_viruses_rep_genomes"
-  "ref_viroids_rep_genomes"
-  "ref_euk_rep_genomes"
-  "cdd"
-  "GCF_000001405.39_top_level"
-  "GCF_000001635.27_top_level"
-  "16S_ribosomal_RNA"
-  "18S_fungal_sequences"
-  "28S_fungal_sequences"
-  "ITS_RefSeq_Fungi"
-  "ITS_eukaryote_sequences"
-  "env_nt"
-  "Betacoronavirus"
-  "pataa"
-  "refseq_select_prot"
-  "refseq_select_rna"
-  "env_nr"
-  "LSU_eukaryote_rRNA"
-  "LSU_prokaryote_rRNA"
-  "SSU_eukaryote_rRNA"
-  "mito"
-  "tsa_nr"
-  "tsa_nt"
-  "nt_euk"
-  "nt_prok"
-  "nt_viruses"
-  "nt_others" )
-  }}
-{{- $publicdb := true }}
-{{- if (and .BlastDbName (not (mustHas .BlastDbName $blast_dbs))) }}
-{{- $publicdb = false }}
-{{- end }}
 {{- if (and .BlastDbName .CustomBlastDbFetchCmd) }}
 {{- fail "BlastDbName and CustomBlastDbFetchCmd are mutually exclusive" }}
 {{- end }}
@@ -73,28 +28,29 @@ jobs:
       - "-c"
       - |
         mkdir -p "{{$dbpath}}" && cd "{{$dbpath}}" || exit 1
-{{- if $publicdb }}
-        # this is a public database available from NCBI
         # fix update_blastdb.pl so it will use conda's curl since the container
         # does not include curl in a standard location
         sed 's:^my \$curl.*$:my $curl = "/opt/conda/bin/curl";:' /opt/conda/bin/update_blastdb.pl > update_blastdb.pl
         chmod 750 update_blastdb.pl
-        now=$(date +%s)
-        if [[ -e {{$dbname}}__ ]]; then
-          last=$(cat {{$dbname}}__)
-          if (( (now - last) < 86400 )) ; then
-            printf "{{$dbname}} is current - update skipped.\n"
-            exit
+        if  ./update_blastdb.pl --showall | grep -q {{$dbname}} ; then
+          echo "{{$dbname}} is a public database available from NCBI"
+          now=$(date +%s)
+          if [[ -e {{$dbname}}__ ]]; then
+            last=$(cat {{$dbname}}__)
+            if (( (now - last) < 86400 )) ; then
+              echo "  {{$dbname}} is current - update skipped."
+              exit
+            fi
           fi
+          echo $now > {{$dbname}}__
+          echo "  updating/downloading {{$dbname}}"
+          ./update_blastdb.pl --num_threads=2 --decompress {{$dbname}} && exit 0 || exit 1
+        else
+          echo "{{$dbname}} is a custom database created previously"
+          [[ -e {{$dbname}}__ ]] && exit 0
+          echo "  {{$dbname}} does not exist in {{$dbpath}}"
+          exit 1
         fi
-        echo $now > {{$dbname}}__
-        ./update_blastdb.pl --num_threads=2 --decompress {{$dbname}} || exit 1
-{{- else }}
-        # this is a custom database created previously
-        [[ -e {{$dbname}}__ ]] && exit 0
-        printf "{{$dbname}} does not exist.\n"
-        exit 1
-{{- end }}
     resource:
       cpu:
         cores: 1
