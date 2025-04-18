@@ -1,0 +1,21 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+jobs:
+  helloworld:
+    image:
+      uri: "{{.ContainerUri}}"
+    policy:
+      retry:
+        attempts: 1
+      timeout:
+        execute: "{{.Timeout}}"
+    command:
+      - /bin/sh
+      - '-c'
+      - {{.Script}}
+    resource:
+      cpu:
+        cores: {{.Cores}}
+        affinity: NUMA
+      memory:
+        size: {{.Memory}}
