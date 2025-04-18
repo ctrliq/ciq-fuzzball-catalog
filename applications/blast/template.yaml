@@ -2,7 +2,6 @@
 {{- if (and .BlastDbName .CustomBlastDbFetchCmd) }}
 {{- fail "BlastDbName and CustomBlastDbFetchCmd are mutually exclusive" }}
 {{- end }}
-{{- $container := "docker://community.wave.seqera.io/library/blast_entrez-direct:2443e1cf34bc04d8" }}
 {{- $dbpath := list "/data" .BlastDbPath | join "/"  }}
 {{- $permdbpath := $dbpath }}
 {{- $dbname := .BlastDbName }}
@@ -17,7 +16,7 @@ jobs:
 {{- if .BlastDbName }}
   fetch-db:
     image:
-      uri: {{$container}}
+      uri: {{.WorkflowContainer}}
     mounts:
       data:
         location: /data
@@ -28,10 +27,17 @@ jobs:
       - "-c"
       - |
         mkdir -p "{{$dbpath}}" && cd "{{$dbpath}}" || exit 1
-        # fix update_blastdb.pl so it will use conda's curl since the container
-        # does not include curl in a standard location
-        sed 's:^my \$curl.*$:my $curl = "/opt/conda/bin/curl";:' /opt/conda/bin/update_blastdb.pl > update_blastdb.pl
+        # fix update_blastdb.pl if it's from a conda container
+        ubdb="$(type -p update_blastdb.pl)"
+        curl="$(type -p curl)"
+        [[ -z "$ubdb" || -z "$curl" ]] && exit 1
+        if [[ "$ubdb" =~ conda ]]; then
+          sed "s:^my \\\$curl.*$:my \$curl = '$curl';:" "${ubdb}" > update_blastdb.pl
+        else
+          cp "${ubdb}"  update_blastdb.pl
+        fi
         chmod 750 update_blastdb.pl
+
         if  ./update_blastdb.pl --showall | grep -q {{$dbname}} ; then
           echo "{{$dbname}} is a public database available from NCBI"
           now=$(date +%s)
@@ -62,7 +68,7 @@ jobs:
 {{- $dbname = default "custom" .CustomBlastDbName }}
   retrieve-database-sequences:
     image:
-      uri: {{$container}}
+      uri: {{.WorkflowContainer}}
     mounts:
       data:
         location: /data
@@ -79,7 +85,7 @@ jobs:
         size: 1GiB
   make-blast-database:
     image:
-      uri: {{$container}}
+      uri: {{.WorkflowContainer}}
     mounts:
       data:
         location: /data
@@ -109,7 +115,7 @@ jobs:
 {{- $name := trim .RunName }}
   retrieve-query-sequences:
     image:
-      uri: {{$container}}
+      uri: {{.WorkflowContainer}}
     mounts:
       data:
         location: /data
@@ -128,7 +134,7 @@ jobs:
         size: 1GiB
   run-blast:
     image:
-      uri: {{$container}}
+      uri: {{.WorkflowContainer}}
     mounts:
       data:
         location: /data
