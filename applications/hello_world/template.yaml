@@ -3,19 +3,19 @@ version: v1
 jobs:
   helloworld:
     image:
-      uri: "{{.docker_uri}}"
+      uri: "{{.ContainerUri}}"
     policy:
       retry:
         attempts: 1
       timeout:
-        execute: "{{.timeout}}"
+        execute: "{{.Timeout}}"
     command:
       - /bin/sh
       - '-c'
-      - {{.job_script}}
+      - {{.Script}}
     resource:
       cpu:
-        cores: {{.cpu_cores}}
+        cores: {{.Cores}}
         affinity: NUMA
       memory:
-        size: {{.memory_size_gib}}
+        size: {{.Memory}}
