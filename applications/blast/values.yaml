@@ -1,6 +1,6 @@
 values:
   - name: "DataVolume"
-    display_name: "Persistent data directory for public blast databases and (optionally) output."
+    display_name: "Persistent data directory for public BLAST databases and (optionally) output."
     string_value: "volume://user/persistent"
   - name: "ScratchVolume"
     display_name: "Ephemeral volume for temporary files."
@@ -9,15 +9,18 @@ values:
   - name: "WorkflowContainer"
     display_name: >-
       Container used for workflow. Needs to include bash, blast and any tools for fetching sequences you may need. The default
-      includes blast and edirect
+      includes BLAST and edirect
     string_value: "docker://community.wave.seqera.io/library/blast_entrez-direct:2443e1cf34bc04d8"
 
   - name: "BlastDbName"
-    display_name: "Name of a public NCBI Blast database (see https://blast.ncbi.nlm.nih.gov/Blast.cgi). Mutually exclusive with CustomBlastDbFetchCmd."
+    display_name: "Name of a public NCBI BLAST database (see https://blast.ncbi.nlm.nih.gov/Blast.cgi). Mutually exclusive with CustomBlastDbFetchCmd."
     string_value: "pdbaa"
   - name: "BlastDbPath"
-    display_name: "Path relative to the root of the data volume where public blast databases are stored."
+    display_name: "Path relative to the root of the data volume where public BLAST databases are stored."
     string_value: "refdb/blast"
+  - name: "BlastFetchTimeout"
+    display_name: "Time limit for fetching/updating the public BLAST database."
+    string_value: "4h"
 
   - name: "CustomBlastDbFetchCmd"
     display_name: >
@@ -28,15 +31,18 @@ values:
     display_name: "Options to pass to makeblastdb."
     string_value: "-dbtype prot -parse_seqids -title 'Nurse shark proteins' -taxid 7801"
   - name: "CustomBlastDbName"
-    display_name: "If a name is provided the generated Blast database will be persisted in BlastDbPath and can be referred to by this name in future runs."
+    display_name: "If a name is provided the generated BLAST database will be persisted in BlastDbPath and can be referred to by this name in future runs."
     string_value: ""
+  - name: "CustomBlastDbTimeout"
+    display_name: "Time limit for custom BLAST database build."
+    string_value: "1h"
 
   - name: "RetrieveQuerySequencesCmd"
     display_name: "Command to that writes query sequence(s) in fasta format to stdout. efetch, curl, and wget are available."
     string_value: "efetch -db protein -format fasta -id YP_233018.1,YP_233022.1,YP_233031.1,YP_233033.1,YP_233063.1,YP_232930.1,YP_232961.1,YP_232969.1,YP_232982.1,YP_232983.1,YP_232915.1,YP_232916.1,YP_232979.1,YP_232970.1,YP_232974.1,YP_910498.1"
 
   - name: "RunName"
-    display_name: "Name of the analysis. Used in naming the query file and the blast output."
+    display_name: "Name of the analysis. Used in naming the query file and the BLAST output."
     string_value: "pox_efc"
   - name: "BlastOutputPath"
     display_name: "Path relative to the root of the data volume where the results are stored."
@@ -53,3 +59,6 @@ values:
   - name: "BlastMemory"
     display_name: "How much memory to allocate to run BLAST."
     string_value: "30GiB"
+  - name: "BlastQueryTimeout"
+    display_name: "Time limit for BLAST query."
+    string_value: "4h"

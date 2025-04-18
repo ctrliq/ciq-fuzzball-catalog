@@ -63,6 +63,9 @@ jobs:
         threads: true
       memory:
         size: 4GiB
+    policy:
+      timeout:
+        execute: {{.BlastFetchTimeout}}
 {{- else if .CustomBlastDbFetchCmd}}
 {{- $dbpath = "/scratch/db"}}
 {{- $dbname = default "custom" .CustomBlastDbName }}
@@ -83,6 +86,9 @@ jobs:
         cores: 1
       memory:
         size: 1GiB
+    policy:
+      timeout:
+        execute: 1h
   make-blast-database:
     image:
       uri: {{.WorkflowContainer}}
@@ -107,6 +113,9 @@ jobs:
         cores: 1
       memory:
         size: 2GiB
+    policy:
+      timeout:
+        execute: {{.CustomBlastDbTimeout}}
     requires: [retrieve-database-sequences]
 {{- else}}
 {{ fail "Either CustomBlastDbFetchCmd or BlastDbName have to be specified" -}}
@@ -132,6 +141,9 @@ jobs:
         cores: 1
       memory:
         size: 1GiB
+    policy:
+      timeout:
+        execute: 30m
   run-blast:
     image:
       uri: {{.WorkflowContainer}}
@@ -153,4 +165,7 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.BlastMemory}}
+    policy:
+      timeout:
+        execute: {{.BlastQueryTimeout}}
     requires: [retrieve-query-sequences, {{if .BlastDbName -}}fetch-db {{- else -}} make-blast-database {{- end -}} ]
