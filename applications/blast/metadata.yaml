@@ -2,4 +2,8 @@
 id: "blast_application" # needs to be **unique** per application, changing results in a new application
 name: "BLAST"
 category: "OTHER"
-description: "The BLAST example job provides a basic skeleton Fuzzball workflow to retrieve query and database sequences using efetch, assembles the database, and runs the query against the assembled datbase using BLAST."
+description: >-
+  The BLAST example workflow provides a Fuzzball template to retrieve query sequences and either create
+  a custom database or fetch a named blast database from NCBI. Public databases are cached in a
+  persistent volume. Custom databases can be saved for later use as well. Note that some blast databases
+  are large and may be costly to store.
