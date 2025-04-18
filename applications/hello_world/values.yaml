@@ -1,16 +1,16 @@
 values:
   - name: docker_uri
-    displayName: URI for the docker image to use for this workflow
-    stringValue: docker://alpine:latest
+    display_name: URI for the docker image to use for this workflow
+    string_value: docker://alpine:latest
   - name: timeout
-    displayName: How long to wait for the workflow job to complete
-    stringValue: 5m0s
+    display_name: How long to wait for the workflow job to complete
+    string_value: 5m0s
   - name: cpu_cores
-    displayName: How many CPU cores to allocate for the workflow job
-    uintValue: 1
+    display_name: How many CPU cores to allocate for the workflow job
+    uint_value: 1
   - name: memory_size_gib
-    displayName: How much memory to allocate for the workflow job
-    stringValue: 1GiB
+    display_name: How much memory to allocate for the workflow job
+    string_value: 1GiB
   - name: job_script
-    displayName: Script to run for the 'hello world' job
-    stringValue: echo "Hello, world! Hostname ${HOSTNAME}"
+    display_name: Script to run for the 'hello world' job
+    string_value: echo "Hello, world! Hostname ${HOSTNAME}"
