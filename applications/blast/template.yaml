@@ -73,17 +73,13 @@ jobs:
       - "-c"
       - |
         mkdir -p "{{$dbpath}}" && cd "{{$dbpath}}" || exit 1
+{{- if $publicdb }}
+        # this is a public database available from NCBI
         # fix update_blastdb.pl so it will use conda's curl since the container
         # does not include curl in a standard location
         sed 's:^my \$curl.*$:my $curl = "/opt/conda/bin/curl";:' /opt/conda/bin/update_blastdb.pl > update_blastdb.pl
         chmod 750 update_blastdb.pl
         now=$(date +%s)
-        if ! {{$publicdb}} ; then
-          # this is a custom database created previously
-          [[ -e {{$dbname}}__ ]] && exit 0
-          printf "{{$dbname}} does not exist.\n"
-          exit 1
-        fi
         if [[ -e {{$dbname}}__ ]]; then
           last=$(cat {{$dbname}}__)
           if (( (now - last) < 86400 )) ; then
@@ -93,8 +89,12 @@ jobs:
         fi
         echo $now > {{$dbname}}__
         ./update_blastdb.pl --num_threads=2 --decompress {{$dbname}} || exit 1
-        echo "------------------------------------------------------------------------------------"
-        ls -lh {{$dbname}}*
+{{- else }}
+        # this is a custom database created previously
+        [[ -e {{$dbname}}__ ]] && exit 0
+        printf "{{$dbname}} does not exist.\n"
+        exit 1
+{{- end }}
     resource:
       cpu:
         cores: 1
