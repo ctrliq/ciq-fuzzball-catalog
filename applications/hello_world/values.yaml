@@ -1,0 +1,16 @@
+values:
+  - name: docker_uri
+    displayName: URI for the docker image to use for this workflow
+    stringValue: docker://alpine:latest
+  - name: timeout
+    displayName: How long to wait for the workflow job to complete
+    stringValue: 5m0s
+  - name: cpu_cores
+    displayName: How many CPU cores to allocate for the workflow job
+    uintValue: 1
+  - name: memory_size_gib
+    displayName: How much memory to allocate for the workflow job
+    stringValue: 1GiB
+  - name: job_script
+    displayName: Script to run for the 'hello world' job
+    stringValue: echo "Hello, world! Hostname ${HOSTNAME}"

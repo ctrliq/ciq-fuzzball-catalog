@@ -1,0 +1,21 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+jobs:
+  helloworld:
+    image:
+      uri: "{{.docker_uri}}"
+    policy:
+      retry:
+        attempts: 1
+      timeout:
+        execute: "{{.timeout}}"
+    command:
+      - /bin/sh
+      - '-c'
+      - {{.job_script}}
+    resource:
+      cpu:
+        cores: {{.cpu_cores}}
+        affinity: NUMA
+      memory:
+        size: {{.memory_size_gib}}
