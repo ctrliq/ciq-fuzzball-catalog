@@ -1,36 +1,48 @@
 values:
-  - name: "StageinScript"
-    display_name: "URL to a script that sets up a lammps run including a lammps.input file"
-    string_value: "https://raw.githubusercontent.com/wresch/lammps_examples/refs/heads/main/level1/lenard-jones-fluid/my-first-input/stagein.sh"
-  - name: "StageoutScript"
-    display_name: "URL to a script that copies data to S3 or some other location"
-    string_value: "https://raw.githubusercontent.com/wresch/lammps_examples/refs/heads/main/stageout.sh"
   - name: "ScratchVolume"
     display_name: "Used during LAMMPS run"
     string_value: "volume://user/ephemeral"
-  - name: "OutputVolume"
+  - name: "DataVolume"
     display_name: "Persistent volume to store data (if PersistResults is true)"
-    string_value: "volume://user/persistent/output"
-  - name: "PersistResults"
-    display_name: "Copy results as a tarball to a persistent volume"
-    bool_value: false
+    string_value: "volume://user/persistent"
+
+  - name: "ExperimentUrl"
+    display_name: >-
+      Base URL where workflow scripts can be found. The stagein script is required. The stageout is optional.
+    string_value: "https://raw.githubusercontent.com/wresch/lammps_examples/refs/heads/main/level1/lenard-jones-fluid/my-first-input"
+  - name: "StageinScript"
+    display_name: >
+      Path of a script relative to the ExperimentUrl that sets up a lammps run including a lammps input file. It takes the
+      name of the lammps run used to name the output as argument and assumes that it creates a main lammps input file called
+      'input.lammps'.
+    string_value: "stagein.sh"
+  - name: "StageoutScript"
+    display_name: >-
+      Path of a script relative to the ExperimentUrl that copies output data to S3 or some other location. It takes the
+      name of the run (RunName) and an output destination (OutputPath) as arguments. If no script is provided results
+      will not be persisted.
+    string_value: "stageout.sh"
   - name: "RunName"
-    display_name: "Name of the run directory passed to the stagein and stageout scripts"
+    display_name: "Name of the run directory passed to the stagein and stageout scripts."
     string_value: "lj-my-first-input"
-  - name: "LammpsInputFile"
-    display_name: "Name of the main input file created by the stagein script"
-    string_value: "input.lammps"
+  - name: "OutputPath"
+    display_name: >-
+      Path relative to the root of the data volume where results should be written to. Ignored if no stageout script is
+      provided.
+    string_value: "results/lammps_cpu"
+
   - name: "LammpsContainerUri"
     display_name: "URI of LAMMPS container that will be used for computation."
-    string_value: "docker://lammps/lammps:stable_29Sep2021_rockylinux8_openmpi_py3"
+    string_value: "docker://community.wave.seqera.io/library/lammps:2024.08.29--4e9c8f5535deab3e"
+    #string_value: "docker://lammps/lammps:stable_29Sep2021_rockylinux8_openmpi_py3"
   - name: "LammpsOptions"
     display_name: "Lammps options for run (-in is added automatically)."
     string_value: ""
   - name: "Cores"
-    display_name: "How many CPU cores to allocate."
-    uint_value: 8
+    display_name: "How many CPU cores per node to allocate."
+    uint_value: 4
   - name: "Memory"
-    display_name: "How much memory to allocate."
+    display_name: "How much memory to allocate per node."
     string_value: "32768MiB"
   - name: "Nodes"
     display_name: "How many nodes to allocate."

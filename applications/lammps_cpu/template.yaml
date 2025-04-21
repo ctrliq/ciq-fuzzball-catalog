@@ -1,32 +1,33 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 version: v1
 volumes:
-  scratch-volume:
+  scratch:
+    reference: {{ .ScratchVolume }}
     ingress:
-    - destination:
-        uri: file://stagein.sh
-      source:
-        uri: {{.StageinScript}}
-    - destination:
-        uri: file://stageout.sh
-      source:
-        uri: {{.StageoutScript}}
-    name: scratch-volume
-    reference: {{.ScratchVolume}}
-  output-volume:
-    name: output-volume
-    reference: {{.OutputVolume}}
+      - destination:
+          uri: file://stagein.sh
+        source:
+          uri: {{ .ExperimentUrl }}/{{ .StageinScript }}
+{{- if .StageoutScript }}
+      - destination:
+          uri: file://stageout.sh
+        source:
+          uri: {{ .ExperimentUrl }}/{{ .StageoutScript }}
+  data:
+    reference: {{ .DataVolume }}
+{{- end }}
+
 jobs:
   stagein:
     command:
       - /bin/sh
       - stagein.sh
-      - {{.RunName}}
+      - {{ .RunName }}
     cwd: /scratch
     image:
       uri: docker://alpine:latest
     mounts:
-      scratch-volume:
+      scratch:
         location: /scratch
     name: stagein
     resource:
@@ -34,16 +35,17 @@ jobs:
         cores: 1
       memory:
         size: 512MIB
+
   run-lammps:
     command:
       - /bin/sh
       - -c
-      - lmp_mpi {{.LammpsOptions}} -in {{.LammpsInputFile}}
+      - lmp_mpi {{.LammpsOptions}} -in input.lammps
     cwd: /scratch/{{.RunName}}
     image:
       uri: {{.LammpsContainerUri}}
     mounts:
-      scratch-volume:
+      scratch:
         location: /scratch
     multinode:
       implementation: {{.MpiFlavor}}
@@ -60,20 +62,21 @@ jobs:
         cores: {{.Cores}}
       memory:
         size: {{.Memory}}
+{{- if .StageoutScript }}
   stageout:
     command:
       - /bin/sh
       - stageout.sh
       - {{.RunName}}
-      - {{.PersistResults}}
+      - /data/{{.OutputPath}}
     cwd: /scratch
     image:
       uri: docker://alpine:latest
     mounts:
-      scratch-volume:
+      scratch:
         location: /scratch
-      output-volume:
-        location: /output
+      data:
+        location: /data
     name: stageout
     requires:
     - run-lammps
@@ -82,3 +85,4 @@ jobs:
         cores: 1
       memory:
         size: 512MIB
+{{- end }}
