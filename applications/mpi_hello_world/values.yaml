@@ -8,6 +8,6 @@ values:
   - name: Nodes
     display_name: Number of nodes to allocate.
     uint_value: 2
-  - name: Nodes
+  - name: MpiFlavor
     display_name: 'Flavor of MPI to use (mpich, openmpi). Default: mpich.'
     string_value: mpich
