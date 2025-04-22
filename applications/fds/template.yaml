@@ -1,0 +1,36 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+volumes:
+  vol_1:
+    name: vol_1
+    ingress:
+      - source:
+          uri: {{.Input_file_source}}
+        destination:
+          uri: {{.Input_file_destination}}
+    reference: volume://user/persistent/fds
+jobs:
+  fds:
+    cwd: /workspace
+    name: fds
+    image:
+      uri: docker://openbcl/fds
+    mounts:
+      vol_1:
+        location: /workspace
+    policy:
+      timeout:
+        execute: {{.Timeout}}
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        export OMP_NUM_THREADS=2
+        mpiexec -n {{.Cores}} fds couch.fds
+    resource:
+      cpu:
+        cores: {{.Cores}}
+        threads: true
+        affinity: SOCKET
+      memory:
+        size: {{.Memory}}
