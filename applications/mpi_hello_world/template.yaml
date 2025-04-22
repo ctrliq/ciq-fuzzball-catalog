@@ -1,0 +1,21 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+jobs:
+  mpi-hello-world:
+    env:
+      - PATH=/usr/lib64/{{.MpiFlavor}}/bin:/usr/local/bin:/usr/bin:/bin
+    image:
+      uri: oras://docker.io/anderbubble/{{.MpiFlavor}}-hello-world.sif
+    command:
+      - /bin/sh
+      - '-c'
+      - mpi_hello_world
+    resource:
+      cpu:
+        cores: 1
+        affinity: NUMA
+      memory:
+        size: 1GB
+    multinode:
+      nodes: 2
+      implementation: {{.MpiFlavor}}

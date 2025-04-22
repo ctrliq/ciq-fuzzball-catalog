@@ -1,0 +1,13 @@
+values:
+  - name: Cores
+    display_name: How many CPU cores to allocate.
+    uint_value: 2
+  - name: Memory
+    display_name: How much memory to allocate.
+    string_value: 1GiB
+  - name: Nodes
+    display_name: Number of nodes to allocate.
+    uint_value: 2
+  - name: MpiFlavor
+    display_name: 'Flavor of MPI to use (mpich, openmpi). Default: mpich.'
+    string_value: mpich
