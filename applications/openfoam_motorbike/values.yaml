@@ -1,10 +1,15 @@
 values:
+  - name: OpenFoamVersion
+    display_name: Version of OpeanFoam to use. Will be used as the tag for the docker container.
+    string_value: "2412"
   - name: OpenFoamContainerUri
-    display_name: URI for the OpenFOAM docker image to use for this workflow
-    string_value: docker://opencfd/openfoam-default:2212
+    display_name: URI for the OpenFOAM docker image to use for this workflow. Do not include a tag - OpenFoamVersion will be used.
+    string_value: docker://opencfd/openfoam-default
+
   - name: WmProjectDir
-    display_name: Environmental variable for the OpenFOAM project directory
-    string_value: /usr/lib/openfoam/openfoam2212
+    display_name: Root path of the openfoam lib directory. Do not include version - OpenFoamVersion will be used.
+    string_value: /usr/lib/openfoam/openfoam
+
   - name: UtilityJobCores
     display_name: CPU cores to allocate for the utility jobs
     uint_value: 1

@@ -1,22 +1,22 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+{{- $container := list .OpenFoamContainerUri .OpenFoamVersion | join ":" }}
+{{- $wmdir := list .WmProjectDir .OpenFoamVersion | join "" }}
+{{- $rc := list $wmdir "etc/bashrc" | join "/" }}
+
 version: v1
 volumes:
-  openfoam-data-volume:
-    name: openfoam-data-volume
+  scratch:
     reference: volume://user/ephemeral
 
 jobs:
-
   preprocess-model:
     image:
-      uri: "{{.OpenFoamContainerUri}}"
-    env:
-      - WM_PROJECT_DIR={{.WmProjectDir}}
+      uri: "{{$container}}"
     command:
       - "/bin/bash"
-      - "-c"
+      - "-xc"
       - |
-        cp -r $WM_PROJECT_DIR/tutorials/incompressible/simpleFoam/motorBike .;
+        cp -r {{$wmdir}}/tutorials/incompressible/simpleFoam/motorBike .;
         cp motorBike/system/decomposeParDict.6 motorBike/system/decomposeParDict;
 
         cd motorBike
@@ -26,7 +26,7 @@ jobs:
         sed -i 's/\(3 2 1\)/{{.Coefficients}}/g' system/decomposeParDict;
         cat system/decomposeParDict;
 
-        source $WM_PROJECT_DIR/etc/bashrc;
+        source {{$rc}};
         mkdir -p constant/triSurface;
         cp -f $FOAM_TUTORIALS/resources/geometry/motorBike.obj.gz constant/triSurface/;
         surfaceFeatureExtract;
@@ -38,17 +38,15 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.UtilityJobMemory}}
-    cwd: /data
+    cwd: /scratch
     mounts:
-      openfoam-data-volume:
-        location: /data
+      scratch:
+        location: /scratch
 
   snappy-hex-mesh:
     image:
-      uri: "{{.OpenFoamContainerUri}}"
-    env:
-      - WM_PROJECT_DIR={{.WmProjectDir}}
-    command: ["/bin/bash", "-c", "source $WM_PROJECT_DIR/etc/bashrc; snappyHexMesh -overwrite -parallel;"]
+      uri: "{{$container}}"
+    command: ["/bin/bash", "-c", "source {{$rc}}; snappyHexMesh -overwrite -parallel;"]
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -58,18 +56,16 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /data/motorBike
+    cwd: /scratch/motorBike
     mounts:
-      openfoam-data-volume:
-        location: /data
+      scratch:
+        location: /scratch
     requires: ["preprocess-model"]
 
   toposet:
     image:
-      uri: "{{.OpenFoamContainerUri}}"
-    env:
-      - WM_PROJECT_DIR={{.WmProjectDir}}
-    command: ["/bin/bash", "-c", "source $WM_PROJECT_DIR/etc/bashrc; topoSet -parallel;"]
+      uri: "{{$container}}"
+    command: ["/bin/bash", "-c", "source {{$rc}}; topoSet -parallel;"]
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -79,23 +75,21 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /data/motorBike
+    cwd: /scratch/motorBike
     mounts:
-      openfoam-data-volume:
-        location: /data
+      scratch:
+        location: /scratch
     requires: ["snappy-hex-mesh"]
 
   set-initial-conditions:
     image:
-      uri: "{{.OpenFoamContainerUri}}"
-    env:
-      - WM_PROJECT_DIR={{.WmProjectDir}}
+      uri: "{{$container}}"
     command:
       - "/bin/bash"
-      - "-c"
+      - "-xc"
       - |
-        source $WM_PROJECT_DIR/etc/bashrc;
-        source /usr/lib/openfoam/openfoam2212/bin/tools/RunFunctions;
+        source {{$rc}};
+        source {{$wmdir}}/bin/tools/RunFunctions;
         restore0Dir -processor;
     resource:
       cpu:
@@ -103,18 +97,16 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.UtilityJobMemory}}
-    cwd: /data/motorBike
+    cwd: /scratch/motorBike
     mounts:
-      openfoam-data-volume:
-        location: /data
+      scratch:
+        location: /scratch
     requires: ["toposet"]
 
   patch-summary:
     image:
-      uri: "{{.OpenFoamContainerUri}}"
-    env:
-      - WM_PROJECT_DIR={{.WmProjectDir}}
-    command: ["/bin/bash", "-c", "source $WM_PROJECT_DIR/etc/bashrc; patchSummary -parallel;"]
+      uri: "{{$container}}"
+    command: ["/bin/bash", "-c", "source {{$rc}}; patchSummary -parallel;"]
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -124,18 +116,16 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /data/motorBike
+    cwd: /scratch/motorBike
     mounts:
-      openfoam-data-volume:
-        location: /data
+      scratch:
+        location: /scratch
     requires: ["set-initial-conditions"]
 
   potential-foam:
     image:
-      uri: "{{.OpenFoamContainerUri}}"
-    env:
-      - WM_PROJECT_DIR={{.WmProjectDir}}
-    command: ["/bin/bash", "-c", "source $WM_PROJECT_DIR/etc/bashrc; potentialFoam -writephi -parallel"]
+      uri: "{{$container}}"
+    command: ["/bin/bash", "-c", "source {{$rc}}; potentialFoam -writephi -parallel"]
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -145,18 +135,16 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /data/motorBike
+    cwd: /scratch/motorBike
     mounts:
-      openfoam-data-volume:
-        location: /data
+      scratch:
+        location: /scratch
     requires: ["patch-summary"]
 
   check-mesh:
     image:
-      uri: "{{.OpenFoamContainerUri}}"
-    env:
-      - WM_PROJECT_DIR={{.WmProjectDir}}
-    command: ["/bin/bash", "-c", "source $WM_PROJECT_DIR/etc/bashrc; checkMesh -parallel -writeFields '(nonOrthoAngle)' -constant"]
+      uri: "{{$container}}"
+    command: ["/bin/bash", "-c", "source {{$rc}}; checkMesh -parallel -writeFields '(nonOrthoAngle)' -constant"]
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -166,18 +154,16 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /data/motorBike
+    cwd: /scratch/motorBike
     mounts:
-      openfoam-data-volume:
-        location: /data
+      scratch:
+        location: /scratch
     requires: ["potential-foam"]
 
   simple-foam:
     image:
-      uri: "{{.OpenFoamContainerUri}}"
-    env:
-      - WM_PROJECT_DIR={{.WmProjectDir}}
-    command: ["/bin/bash", "-c", "source $WM_PROJECT_DIR/etc/bashrc; simpleFoam -parallel"]
+      uri: "{{$container}}"
+    command: ["/bin/bash", "-c", "source {{$rc}}; simpleFoam -parallel"]
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -187,22 +173,20 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /data/motorBike
+    cwd: /scratch/motorBike
     mounts:
-      openfoam-data-volume:
-        location: /data
+      scratch:
+        location: /scratch
     requires: ["check-mesh"]
 
   reconstruct-mesh:
     image:
-      uri: "{{.OpenFoamContainerUri}}"
-    env:
-      - WM_PROJECT_DIR={{.WmProjectDir}}
+      uri: "{{$container}}"
     command:
       - "/bin/bash"
-      - "-c"
+      - "-xc"
       - |
-        source $WM_PROJECT_DIR/etc/bashrc;
+        source {{$rc}};
         reconstructParMesh -constant;
         reconstructPar -latestTime;
     resource:
@@ -211,17 +195,15 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.UtilityJobMemory}}
-    cwd: /data/motorBike
+    cwd: /scratch/motorBike
     mounts:
-      openfoam-data-volume:
-        location: /data
+      scratch:
+        location: /scratch
     requires: ["simple-foam"]
 
   tar-results:
     image:
-      uri: "{{.OpenFoamContainerUri}}"
-    env:
-      - WM_PROJECT_DIR={{.WmProjectDir}}
+      uri: "{{$container}}"
     command: ["/bin/bash", "-c", "tar -zcvf openfoam-results.tar.gz motorBike"]
     resource:
       cpu:
@@ -229,8 +211,8 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.UtilityJobMemory}}
-    cwd: /data
+    cwd: /scratch
     mounts:
-      openfoam-data-volume:
-        location: /data
+      scratch:
+        location: /scratch
     requires: ["reconstruct-mesh"]
