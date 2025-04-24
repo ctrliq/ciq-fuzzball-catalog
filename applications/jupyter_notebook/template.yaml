@@ -34,6 +34,10 @@ jobs:
       memory:
         size: {{.Memory}}
       exclusive: {{.Exclusive}}
+{{- if gt .GPUs 0 }}
+      devices:
+        nvidia.com/gpu: {{.GPUs}}
+{{- end }}
     policy:
       timeout:
         execute: {{.Timeout}}

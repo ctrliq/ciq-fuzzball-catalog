@@ -8,6 +8,9 @@ values:
   - name: "Memory"
     display_name: "How much memory to allocate."
     string_value: "1GiB"
+  - name: "GPUs"
+    display_name: "How many GPUs to allocate."
+    uint_value: 0
   - name: "Exclusive"
     display_name: "Disallow other jobs from using the same node/instance."
     bool_value: false
