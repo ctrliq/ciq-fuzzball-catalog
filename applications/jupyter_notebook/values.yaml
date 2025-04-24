@@ -1,7 +1,4 @@
 values:
-  - name: "DepotSecret"
-    display_name: "An OCI authentication credential for CIQ Depot."
-    string_value: "secret://user/depot"
   - name: "Type"
     display_name: "Notebook type. Options: base, minimal, r, julia, scipy, tensorflow, datascience, pyspark, all-spark, pytorch (https://quay.io/organization/jupyter)"
     string_value: "scipy"
