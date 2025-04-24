@@ -7,8 +7,7 @@ volumes:
 jobs:
   jupyter:
     image:
-      uri: oras://depot.ciq.com/fuzzball/fuzzball-applications/jupyter-{{.Type}}-notebook.sif
-      secret: {{.DepotSecret}}
+      uri: docker://quay.io/jupyter/{{.Type}}-notebook:latest
     mounts:
       home:
         location: /home/jovyan
@@ -35,6 +34,10 @@ jobs:
       memory:
         size: {{.Memory}}
       exclusive: {{.Exclusive}}
+{{- if gt .GPUs 0 }}
+      devices:
+        nvidia.com/gpu: {{.GPUs}}
+{{- end }}
     policy:
       timeout:
         execute: {{.Timeout}}
