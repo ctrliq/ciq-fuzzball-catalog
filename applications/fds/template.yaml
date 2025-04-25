@@ -5,9 +5,9 @@ volumes:
     name: vol_1
     ingress:
       - source:
-          uri: {{.Input_file_source}}
+          uri: {{.InputFileSource}}
         destination:
-          uri: {{.Input_file_destination}}
+          uri: {{.InputFileDestination}}
     reference: volume://user/persistent/fds
 jobs:
   fds:
