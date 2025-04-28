@@ -24,9 +24,7 @@ jobs:
     command:
       - /bin/sh
       - '-c'
-      - |
-        export OMP_NUM_THREADS=2
-        mpiexec -n {{.Cores}} fds couch.fds
+      - mpiexec -n {{.Cores}} fds couch.fds
     resource:
       cpu:
         cores: {{.Cores}}
