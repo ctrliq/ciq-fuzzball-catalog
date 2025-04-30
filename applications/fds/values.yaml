@@ -1,0 +1,16 @@
+values:
+  - name: "Cores"
+    display_name: "How many CPU cores to allocate."
+    uint_value: 2
+  - name: "Memory"
+    display_name: "How much memory to allocate."
+    string_value: "8gb"
+  - name: "Timeout"
+    display_name: "Set a time limit after which the workflow will automatically terminate, helping to control compute resource usage."
+    string_value: "2h0m0s"
+  - name: "InputFileSource"
+    display_name: "Specifies the location from which to retrieve the FDS input file, such as a GitHub repository URL."
+    string_value: "https://raw.githubusercontent.com/firemodels/fds/refs/heads/master/Verification/Fires/couch.fds"
+  - name: "InputFileDestination"
+    display_name: "Where to save the input file in the volume."
+    string_value: "file://couch.fds"
