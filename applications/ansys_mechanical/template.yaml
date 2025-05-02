@@ -1,0 +1,49 @@
+version: v1
+volumes:
+  data:
+    reference: {{.Volume}}
+    ingress:
+      - source:
+          uri: https://ansys13.ansys.com/AnsysInnovationCourses/MBU/AIC1UnderstandingThePhysics/MechanicalStrain/SE03HipImplantAnalysis.zip
+        destination:
+          uri: file://SE03HipImplantAnalysis.zip
+jobs:
+  hip-implant-analysis:
+    cwd: /data
+    env:
+      - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
+      - KMP_AFFINITY=disabled
+    image:
+      uri: {{.AnsysMechanicalContainerURI}}
+      secret: {{.AnsysMechanicalContainerOciSecret}}
+    mounts:
+      data:
+        location: /data
+    policy:
+      timeout:
+        execute: 30m0s
+    command:
+      - /bin/sh
+      - '-c'
+      - >-
+
+        mkdir hip-implant-analysis-$FB_WORKFLOW_ID;
+        cd hip-implant-analysis-$FB_WORKFLOW_ID;
+        mv /data/SE03HipImplantAnalysis.zip .
+
+        unzip SE03HipImplantAnalysis.zip;
+        unzip SE03HipImplantAnalysis/Completed\ -\ Hip\ Implant\ Analysis.wbpz;
+
+        cp Hip\ implant_files/dp0/SYS/MECH/ds.dat ./hip-implant-analysis.dat;
+
+        ANSYS_VERSION={{.AnsysVersion}};
+        ANSYS_VERSION_NUMBER=$(echo ${ANSYS_VERSION/R/} | cut -c 3-);
+        export LD_LIBRARY_PATH={{.AnsysInstallDir}}/v${ANSYS_VERSION_NUMBER}/Framework/bin/Linux64:$LD_LIBRARY_PATH;
+
+        {{.AnsysInstallDir}}/v${ANSYS_VERSION_NUMBER}/ansys/bin/ansys251 -b -i hip-implant-analysis.dat -np {{.MechanicalCores}};
+    resource:
+      cpu:
+        cores: {{.MechanicalCores}}
+        affinity: NUMA
+      memory:
+        size: {{.MechanicalMemory}}
