@@ -9,14 +9,14 @@ values:
     display_name: |
       URI where scripts for each workflow job can be found. http(s) and s3 are supported.
       Scripts are named '<job>.py'.
-    string_value: s3://co-ciq-misc-support/wresch/llm_client_server
+    string_value: https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/main/applications/llm_client_server/scripts
   - name: QueryDataUri
     display_name: |
       URI for a yaml file with queries to be executed by the client. The yaml file is a list of
       queries each containing a map with the keys 'description', 'messages', and 'temperature'.
       See the documentation for the OpenAI API for chat completions for the format expected for 'messages'.
       http(s) and s3 are supported
-    string_value: s3://co-ciq-misc-support/wresch/llm_client_server/queries.yaml
+    string_value: https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/main/applications/llm_client_server/data/queries.yaml
   - name: ResultsDataUri
     display_name: |
       [optional] URI for a results file to write. Has to either be a s3:// URI or a path relative to the root
