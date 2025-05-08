@@ -6,6 +6,7 @@
 {{- $port := randInt 10000 20000 }}
 {{- $workflow_script_uri := trim .WorkflowScriptUri }}
 {{- $query_data_uri := trim .QueryDataUri }}
+{{- $results_data_uri := trim .ResultsDataUri }}
 
 version: v1
 volumes:
@@ -29,6 +30,14 @@ volumes:
           {{ if (and (hasPrefix "s3://" $query_data_uri ) .S3Secret) }}secret: {{ .S3Secret }}{{end}}
         destination:
           uri: file://queries.yaml
+{{- if (and $results_data_uri (hasPrefix "s3://" $results_data_uri)) }}
+    egress:
+      - source:
+          uri: file://results.yaml
+      - destination:
+          uri: {{ $results_data_uri }}
+          secret: {{ .S3Secret }}
+{{- end }}
 jobs:
   server:
     image:
@@ -74,6 +83,13 @@ jobs:
       - FBS_API_QUERIES=/scratch/queries.yaml
       - FBS_KEY={{ $key }}
       - FBS_PORT={{ $port }}
+{{- if $results_data_uri }}
+{{- if (hasPrefix "s3://" $results_data_uri) }}
+      - FBS_API_RESULTS=/scratch/results.yaml
+{{- else }}
+      - FBS_API_RESULTS=/data/{{ $results_data_uri }}
+{{- end }}
+{{- end }}
     command:
       - /bin/sh
       - "-c"

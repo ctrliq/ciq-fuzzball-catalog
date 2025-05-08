@@ -17,10 +17,16 @@ values:
       See the documentation for the OpenAI API for chat completions for the format expected for 'messages'.
       http(s) and s3 are supported
     string_value: s3://co-ciq-misc-support/wresch/llm_client_server/queries.yaml
+  - name: ResultsDataUri
+    display_name: |
+      [optional] URI for a results file to write. Has to either be a s3:// URI or a path relative to the root
+      of the (persistent) DataVolume. It will contain the queries plus their results and the fuzzball workflow
+      id that generated the results.
+    string_value: results/llm/query-results.yaml
   - name: S3Secret
     display_name: |
-      Secret needed to fetch scripts and/or data if they are housed on S3. Will be used to fetch any scripts or data
-      files that start with s3:// protocol. Not needed if scripts and queries are via http(s).
+      [required for s3 transfers] Secret needed to fetch scripts and/or data if they are housed on S3. Will be used to
+      fetch any scripts or data files that start with s3:// protocol. Not needed if scripts and queries are via http(s).
     string_value: secret://user/s3
   - name: HFHubCache
     display_name: Path relative to the root of the DataVolume where the HuggingFace cache should be located.

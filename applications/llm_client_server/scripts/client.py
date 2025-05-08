@@ -6,11 +6,11 @@ OpenAI client
 import argparse
 import logging
 import os
+import pathlib
 import socket
 import sys
 import time
 import yaml
-import textwrap
 from typing import Any, Dict, List
 import openai
 
@@ -88,7 +88,14 @@ def parse_arguments() -> argparse.Namespace:
         action=EnvDefault,
         envvar="FBS_API_QUERIES",
         help="YAML file containing queries to run",
-        default="queries.yaml",
+    )
+    parser.add_argument(
+        "--results-file",
+        type=str,
+        action=EnvDefault,
+        envvar="FBS_API_RESULTS",
+        required=False,
+        help="YAML file containing queries with their completion results",
     )
     return parser.parse_args()
 
@@ -110,8 +117,8 @@ def load_queries(file_path: str) -> List[Dict]:
         sys.exit(1)
 
 
-def run_query(client, model: str, query: Dict, query_index: int):
-    """Run a single query and print the result."""
+def run_query(client, model: str, query: Dict, query_index: int) -> Dict | None:
+    """Run a single query and print the result. Returns the query with the added response"""
     if not isinstance(query, dict) or "messages" not in query:
         log.error(
             f"Query {query_index} is invalid. Each query must have a 'messages' key."
@@ -132,20 +139,16 @@ def run_query(client, model: str, query: Dict, query_index: int):
         if "description" in query:
             query_desc += f": {query['description']}"
 
-        print(f"\n### {query_desc} {'#' * 40}")
+        print(f"\n###\n### {query_desc}\n###")
 
-        for msg in messages:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-            if role and content:
-                short_content = content[:50] + "..." if len(content) > 50 else content
-                print(f"{role.upper()}: {short_content}")
-
-        print("\nRESPONSE:")
-        print(textwrap.fill(completion.choices[0].message.content))
+        query["completion_response"] = completion.model_dump()
+        query["fb_workflow_id"] = os.environ.get("FB_WORKFLOW_ID", "n/a")
+        print(yaml.dump(query, width=100, indent=4))
+        return query
 
     except Exception as e:
         log.error(f"Error running query {query_index}: {e}")
+        return None
 
 
 def shutdown_server(host: str, port: int, key: str):
@@ -194,9 +197,17 @@ if __name__ == "__main__":
     queries = load_queries(args.queries_file)
     log.info(f"Loaded {len(queries)} queries from {args.queries_file}")
 
+    results = []
     for i, query in enumerate(queries):
-        run_query(client, args.api_model, query, i)
+        if (r := run_query(client, args.api_model, query, i)) is not None:
+            results.append(r)
 
     shutdown_server(args.api_job, args.port, args.key)
+
+    if args.results_file is not None:
+        p = pathlib.Path(args.results_file)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "w", encoding="utf-8") as outfh:
+            yaml.dump(results, outfh, width=100, indent=4)
 
     sys.exit(0)
