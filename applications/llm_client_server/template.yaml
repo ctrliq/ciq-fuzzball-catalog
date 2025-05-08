@@ -75,6 +75,8 @@ jobs:
     mounts:
       scratch:
         location: /scratch
+      data:
+        location: /data
     env:
       - FBS_API_KEY={{ $vllm_api_key }}
       - FBS_API_PORT={{ $vllm_api_port }}
