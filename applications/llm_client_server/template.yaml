@@ -34,7 +34,7 @@ volumes:
     egress:
       - source:
           uri: file://results.yaml
-      - destination:
+        destination:
           uri: {{ $results_data_uri }}
           secret: {{ .S3Secret }}
 {{- end }}
