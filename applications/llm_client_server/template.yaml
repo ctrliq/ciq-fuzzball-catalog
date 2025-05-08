@@ -1,0 +1,80 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $vllm_api_key := (randInt 0 100000 | toString) }}
+{{- $vllm_api_port := randInt 10000 20000 }}
+{{- $key := (randInt 0 100000 | toString) }}
+{{- $port := randInt 10000 20000 }}
+{{- $workflow_script_uri := trim .WorkflowScriptUri }}
+{{- $query_data_uri := trim .QueryDataUri }}
+
+version: v1
+volumes:
+  data:
+    reference: {{ .DataVolume }}
+  scratch:
+    reference: {{ .ScratchVolume }}
+    ingress:
+      - source:
+          uri: {{ $workflow_script_uri }}/client.py
+          {{ if (and (hasPrefix "s3://" $workflow_script_uri ) .S3Secret) }}secret: {{ .S3Secret }}{{end}}
+        destination:
+          uri: file://job_scripts/client.py
+      - source:
+          uri: {{ $workflow_script_uri }}/server.py
+          {{ if (and (hasPrefix "s3://" $workflow_script_uri ) .S3Secret) }}secret: {{ .S3Secret }}{{end}}
+        destination:
+          uri: file://job_scripts/server.py
+      - source:
+          uri: {{ $query_data_uri }}
+          {{ if (and (hasPrefix "s3://" $query_data_uri ) .S3Secret) }}secret: {{ .S3Secret }}{{end}}
+        destination:
+          uri: file://queries.yaml
+jobs:
+  server:
+    image:
+      uri: docker://vllm/vllm-openai:latest
+    mounts:
+      scratch:
+        location: /scratch
+      data:
+        location: /data
+    env:
+      - HF_HUB_CACHE=/data/{{ trim .HFHubCache }}
+      - FBS_API_KEY={{ $vllm_api_key }}
+      - FBS_API_PORT={{ $vllm_api_port }}
+      - FBS_API_MODEL={{ trim .ModelName }}
+      - FBS_KEY={{ $key }}
+      - FBS_PORT={{ $port }}
+    command:
+      - /bin/sh
+      - "-c"
+      - python3 /scratch/job_scripts/${FB_JOB_NAME}.py
+    resource:
+      cpu:
+        cores: {{ .ServerCores }}
+        threads: true
+      devices:
+        nvidia.com/gpu: 1
+      memory:
+        size: {{ .ServerMemory }}
+    policy:
+      timeout:
+        execute: {{ .ServerTimeout }}
+  client:
+    image:
+      uri: {{ .ClientImage }}
+    mounts:
+      scratch:
+        location: /scratch
+    env:
+      - FBS_API_KEY={{ $vllm_api_key }}
+      - FBS_API_PORT={{ $vllm_api_port }}
+      - FBS_API_MODEL={{ trim .ModelName }}
+      - FBS_API_JOB=server
+      - FBS_API_QUERIES=/scratch/queries.yaml
+      - FBS_KEY={{ $key }}
+      - FBS_PORT={{ $port }}
+    command:
+      - /bin/sh
+      - "-c"
+      - python3 /scratch/job_scripts/${FB_JOB_NAME}.py
