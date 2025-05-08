@@ -209,5 +209,6 @@ if __name__ == "__main__":
         p.parent.mkdir(parents=True, exist_ok=True)
         with open(p, "w", encoding="utf-8") as outfh:
             yaml.dump(results, outfh, width=100, indent=4)
+        log.info(f"saved results to {args.results_file}")
 
     sys.exit(0)

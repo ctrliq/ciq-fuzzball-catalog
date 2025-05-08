@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 id: "llm_client_server" # needs to be **unique** per application, changing results in a new application
-name: "LLM client/server"
+name: "LLM client and server"
 category: "ML_AND_AI"
 description: >-
   This workflow starts a OpenAI compatible REST API server implemented with
