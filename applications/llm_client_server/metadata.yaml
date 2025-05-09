@@ -3,9 +3,9 @@ id: "llm_client_server" # needs to be **unique** per application, changing resul
 name: "LLM client and server"
 category: "ML_AND_AI"
 description: >-
-  This workflow starts a OpenAI compatible REST API server implemented with
+  This workflow starts an OpenAI compatible REST API server implemented with
   vLLM (https://docs.vllm.ai/en/stable) using a model downloaded from
-  HuggingFace (https://huggingface.co/) in one job and then runs a series of
+  HuggingFace (https://huggingface.co/) in one job, and then runs a series of
   queries against the server from a second job in the same workflow. See
   https://docs.vllm.ai/en/stable/models/supported_models.html#supported-models
   for supported models. Once queries are done, the server is shut down.
