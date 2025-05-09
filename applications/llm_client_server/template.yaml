@@ -7,6 +7,8 @@
 {{- $workflow_script_uri := trim .WorkflowScriptUri }}
 {{- $query_data_uri := trim .QueryDataUri }}
 {{- $results_data_uri := trim .ResultsDataUri }}
+{{- $scratch_mount := "/scratch" }}
+{{- $data_mount := "/data" }}
 
 version: v1
 volumes:
@@ -44,11 +46,11 @@ jobs:
       uri: docker://vllm/vllm-openai:latest
     mounts:
       scratch:
-        location: /scratch
+        location: {{ $scratch_mount }}
       data:
-        location: /data
+        location: {{ $data_mount }}
     env:
-      - HF_HUB_CACHE=/data/{{ trim .HFHubCache }}
+      - HF_HUB_CACHE={{ $data_mount }}/{{ trim .HFHubCache }}
       - FBS_API_KEY={{ $vllm_api_key }}
       - FBS_API_PORT={{ $vllm_api_port }}
       - FBS_API_MODEL={{ trim .ModelName }}
@@ -57,7 +59,7 @@ jobs:
     command:
       - /bin/sh
       - "-c"
-      - python3 /scratch/job_scripts/${FB_JOB_NAME}.py
+      - python3 {{ $scratch_mount }}/job_scripts/${FB_JOB_NAME}.py
     resource:
       cpu:
         cores: {{ .ServerCores }}
@@ -74,25 +76,25 @@ jobs:
       uri: {{ .ClientImage }}
     mounts:
       scratch:
-        location: /scratch
+        location: {{ $scratch_mount }}
       data:
-        location: /data
+        location: {{ $data_mount }}
     env:
       - FBS_API_KEY={{ $vllm_api_key }}
       - FBS_API_PORT={{ $vllm_api_port }}
       - FBS_API_MODEL={{ trim .ModelName }}
       - FBS_API_JOB=server
-      - FBS_API_QUERIES=/scratch/queries.yaml
+      - FBS_API_QUERIES={{ $scratch_mount }}/queries.yaml
       - FBS_KEY={{ $key }}
       - FBS_PORT={{ $port }}
 {{- if $results_data_uri }}
 {{- if (hasPrefix "s3://" $results_data_uri) }}
-      - FBS_API_RESULTS=/scratch/results.yaml
+      - FBS_API_RESULTS={{ $scratch_mount }}/results.yaml
 {{- else }}
-      - FBS_API_RESULTS=/data/{{ $results_data_uri }}
+      - FBS_API_RESULTS={{ $data_mount }}/{{ $results_data_uri }}
 {{- end }}
 {{- end }}
     command:
       - /bin/sh
       - "-c"
-      - python3 /scratch/job_scripts/${FB_JOB_NAME}.py
+      - python3 {{ $scratch_mount }}/job_scripts/${FB_JOB_NAME}.py
