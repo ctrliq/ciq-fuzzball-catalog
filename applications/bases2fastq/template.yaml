@@ -1,0 +1,99 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $data_mount := "/data" }}
+{{- $scratch_mount := "/scratch" }}
+
+{{- /* assume input and output is local and fix otherwise */}}
+{{- $aws := false}}
+{{- $bases_http := false }}
+
+{{- $bases := printf "%s/%s/%s" $data_mount (trim .InputPath) (trim .RunName) }}
+{{- if (hasPrefix "s3://" (trim .InputPath)) }}
+  {{- $bases = printf "%s/%s" (trim .InputPath) (trim .RunName) }}
+  {{- $aws = true }}
+{{- end }}
+{{- if (or (hasPrefix "https://" (trim .InputPath)) (hasPrefix "http://" (trim .InputPath))) }}
+  {{- $bases = printf "%s/%s.tar.gz" (trim .InputPath) (trim .RunName) }}
+  {{- $bases_http = true }}
+{{- end }}
+
+{{- $fastq := printf "%s/%s/%s" $data_mount (trim .OutputPath) (trim .RunName) }}
+{{- if (hasPrefix "s3://" (trim .OutputPath)) }}
+  {{- $fastq = printf "%s/%s" (trim .OutputPath) (trim .RunName) }}
+  {{- $aws = true }}
+{{- end }}
+
+{{- if (or (hasPrefix "s3://" .InputPath) (hasPrefix "s3://" .OutputPath)) }}
+  {{- if not .AWSAccessKeyIdSecret }}{{- fail "AWSAccessKeyIdSecret is required when using S3" }}{{- end }}
+  {{- if not .AWSSecretAccessKeySecret }}{{- fail "AWSSecretAccessKeySecret is required when using S3" }}{{- end }}
+  {{- if not .AWSRegion }}{{- fail "AWSRegion is required when using S3" }}{{- end }}
+{{- end }}
+
+version: v1
+volumes:
+  scratch:
+    reference: {{ .ScratchVolume }}
+{{- if $bases_http }}
+    ingress:
+      - source:
+          uri: {{ $bases }}
+        destination:
+          uri: file://{{ printf "%s.tar.gz" (trim .RunName) }}
+{{- end }}
+{{- if (trim .DataVolume) }}
+  data:
+    reference: {{ .DataVolume }}
+{{- end }}
+jobs:
+  bases2fastq:
+    image:
+      uri: {{ .Bases2FastqContainer }}
+    resource:
+      cpu:
+        affinity: NUMA
+        cores: {{ .Cores }}
+        threads: true
+      memory:
+        size: {{ .Memory }}
+    mounts:
+      scratch:
+        location: {{ $scratch_mount }}
+      data:
+        location: {{ $data_mount }}
+    cwd: {{ $scratch_mount }}
+    env:
+{{- if $aws }}
+      - AWS_ACCESS_KEY_ID={{ trim .AWSAccessKeyIdSecret }}
+      - AWS_SECRET_ACCESS_KEY={{ trim .AWSSecretAccessKeySecret }}
+      - AWS_DEFAULT_REGION={{ trim .AWSRegion }}
+{{- end }}
+      - TMPDIR={{ $scratch_mount }}/tmp
+      - RUN_NAME={{ trim .RunName }}
+      - BASES={{ $bases }}
+      - FASTQ={{ $fastq }}
+    command:
+      - /bin/bash
+      - "-c"
+      - |
+        fail() {
+          printf "ERROR: %s\n" "$*"
+          exit 1
+        }
+        mkdir -p "$TMPDIR"
+
+        # if the input file is a tar archive from http(s) unpack the downloaded file in scratch and point $BASES to that
+        if [[ "$BASES" =~ ^https?:// ]] ; then
+            _tmp="{{ $scratch_mount }}/$RUN_NAME".tar.gz
+            [[ -e  "$_tmp" ]] || fail "unable to find downloaded run folder archive"
+            mkdir "$RUN_NAME"
+            tar --strip-components 1 -C "$RUN_NAME" -xzf "$_tmp" || fail "unable to uncompress dowloaded run folder archive"
+            [[ -e "$RUN_NAME/RunParameters.json" ]] || fail "Downloaded archive does not look like a run folder"
+            BASES="{{ $scratch_mount }}/$RUN_NAME"
+        fi
+
+        # the local destination should not exist yet
+        if [[ -d "$FASTQ" ]] ; then
+            fail "'$FASTQ' already exists; This should not happen. Processing skipped, no files deleted. Resolve manually"
+        fi
+
+        bases2fastq --num-threads $(( {{ .Cores }} * 2 )) "$BASES" "$FASTQ"
