@@ -1,0 +1,63 @@
+values:
+  - name: ScratchVolume
+    display_name: Ephemeral storage during run.
+    string_value: volume://user/ephemeral
+  - name: DataVolume
+    display_name: |
+      [optional] Persistent data storage volume. If neither InputPath nor
+      OutputPath are local paths, this volume can be omitted.
+    string_value: volume://user/persistent
+
+  - name: Bases2FastqContainer
+    display_name: Container used for bases2fastq.
+    string_value: docker://elembio/bases2fastq:2.1
+
+  - name: InputPath
+    display_name: |
+      This is either a local path relative to the root of the data volume or a
+      s3:// path and should point to the parent directory of the sequencing run
+      folder <RunName>. If an s3:// path is used the optional AWS parameters
+      must be set. A third possibility is to provide a http(s) URL root such that
+      <InputPath>/<RunName>.tar.gz points to a compressed tar archive of the
+      sequencing run folder. In this case the tar archive will be downloaded to
+      the scratch volume and unpacked there before processing.
+    string_value: http://element-public-data.s3.amazonaws.com/bases2fastq-share/bases2fastq-v2
+  - name: OutputPath
+    display_name: |
+      This is either a local path relative to the (persistent) data volume root
+      or a s3:// path. If an s3:// path is used the optional AWS parameters must
+      be set.
+    string_value: results/aviti_out
+  - name: RunName
+    display_name: |
+      The name of the sequencing run. Input is expected to be at
+      <InputPath>/<RunName> for all modes of input and output will be at
+      <OutputPath>/<RunName>.
+    string_value: 20230404-bases2fastq-sim-151-151-9-9
+
+  - name: AWSAccessKeyIdSecret
+    display_name: |
+      [optional] Fuzzball env secret containing an AWS access key id used to
+      access the S3 bucket for input and/or output. This has to be an env secret
+      since the environment variable is directly used by bases2fastq. This
+      parameter and all other AWS* parameters can be omitted if all input and
+      output is local.
+    string_value: secret://user/aws_aki1
+  - name: AWSSecretAccessKeySecret
+    display_name: |
+      [optional] Fuzzball env secret containing an AWS secret access key used to
+      access the S3 bucket storing the raw Sequencer output. Like
+      AWSAccessKeyIdSecret, this has to be an env secret since the environment
+      variable is directly used by bases2fastq.
+    string_value: secret://user/aws_sak1
+  - name: AWSRegion
+    display_name: |
+      [optional] Region housing the S3 bucket used for iinput and/or output.
+    string_value: us-east-2
+
+  - name: Cores
+    display_name: Number of cores to allocate for bases2fastq.
+    uint_value: 8
+  - name: Memory
+    display_name: Amount of memory to allocate for bases2fastq.
+    string_value: 30GiB
