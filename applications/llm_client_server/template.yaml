@@ -1,9 +1,9 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 
 {{- $vllm_api_key := (randInt 0 100000 | toString) }}
-{{- $vllm_api_port := randInt 10000 20000 }}
+{{- $vllm_api_port := randInt 10000 12000 }}
 {{- $key := (randInt 0 100000 | toString) }}
-{{- $port := randInt 10000 20000 }}
+{{- $port := randInt 12001 14000 }}
 {{- $workflow_script_uri := trim .WorkflowScriptUri }}
 {{- $query_data_uri := trim .QueryDataUri }}
 {{- $results_data_uri := trim .ResultsDataUri }}
