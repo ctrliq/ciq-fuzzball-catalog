@@ -1,27 +1,36 @@
-# Copyright 2025 CIQ, Inc. All rights reserved.
 version: v1
 volumes:
   bwa-data:
-     ingress:
+    ingress:
       - source:
-          uri: {{.ReferenceGenomeURL}}
+          uri: {{.ReferenceGenomeURL | default "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"}}
         destination:
           uri: file:///reference.fa.gz
       - source:
-          uri: {{.Read1URL}}
+          uri: {{.Read1URL | default "https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/Garvan_NA12878_HG001_HiSeq_Exome/NIST7035_TAAGGCGA_L001_R1_001.fastq.gz"}}
         destination:
           uri: file:///sample_1.fastq.gz
       - source:
-          uri: {{.Read2URL}}
+          uri: {{.Read2URL | default "https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/Garvan_NA12878_HG001_HiSeq_Exome/NIST7035_TAAGGCGA_L001_R2_001.fastq.gz"}}
         destination:
           uri: file:///sample_2.fastq.gz
     reference: volume://user/ephemeral
+    egress:
+      {{- range $source, $dest := dict "aligned.sam" "aligned.sam" "aligned.stats.txt" "aligned.stats.txt" "filtered.sam" "filtered.sam" }}
+      - source:
+          uri: file:///{{ $source }}
+        destination:
+          uri: {{$.EgressDestination | default (printf "s3://%s/%s%s" ($.S3Bucket | default "output-bucket") ($.S3Prefix | default "") $dest)}}
+          {{- if $.S3Secret }}
+          secret: {{ $.S3Secret }}
+          {{- end }}
+      {{- end }}
 jobs:
-  bwa-index:
+  bwa-mem2-index:
     cwd: /data
-    name: bwa-index
+    name: bwa-mem2-index
     image:
-      uri: docker://biocontainers/bwa:v0.7.17_cv1
+      uri: {{.ContainerImage | default "docker://quay.io/biocontainers/bwa-mem2:2.2.1--he513fc3_0"}}
     mounts:
       bwa-data:
         location: /data
@@ -33,21 +42,21 @@ jobs:
           gunzip -f reference.fa.gz
         fi
 
-        if [ -f reference.fa ] && [ ! -f reference.fa.bwt ]; then
-          bwa index reference.fa
+        if [ -f reference.fa ] && [ ! -f reference.fa.bwt.2bit.64 ]; then
+          bwa-mem2 index reference.fa
         elif [ ! -f reference.fa ]; then
           exit 1
         fi
     resource:
       cpu:
-        cores: {{.BwaIndexCpuCores}}
+        cores: {{.IndexCpuCores | default 16}}
       memory:
-        size: {{.BwaIndexMemory}}GiB
-    id: job-{{.JobId}}
-  bwa-align:
+        size: {{.IndexMemory | default 16}}GiB
+    id: job-{{.JobId | default "bwamem2"}}
+  bwa-mem2-align:
     cwd: /data
     image:
-      uri: docker://biocontainers/bwa:v0.7.17_cv1
+      uri: {{.ContainerImage | default "docker://quay.io/biocontainers/bwa-mem2:2.2.1--he513fc3_0"}}
     mounts:
       bwa-data:
         location: /data
@@ -67,76 +76,98 @@ jobs:
           exit 1
         fi
 
-        bwa mem -t {{.BwaAlignThreads}} reference.fa sample_1.fastq sample_2.fastq > aligned.sam
+        # Add read group if provided
+        RG_OPTS=""
+        {{- if .ReadGroupString }}
+        RG_OPTS="-R '{{.ReadGroupString}}'"
+        {{- end }}
 
+        # Get any additional alignment options
+        EXTRA_OPTS="{{.AlignmentExtraOptions | default ""}}"
+
+        # Run BWA-MEM2 alignment
+        bwa-mem2 mem -t {{.AlignThreads | default 16}} ${RG_OPTS} ${EXTRA_OPTS} reference.fa sample_1.fastq sample_2.fastq > aligned.sam
+        
         echo "Alignment Date: $(date)" > aligned.stats.txt
-        echo "Reference Genome: {{.ReferenceGenomeName}}" >> aligned.stats.txt
-        echo "Total reads: $(grep -v "^@" aligned.sam | wc -l)" >> aligned.stats.txt
-        echo "Mapped reads: $(grep -v "^@" aligned.sam | grep -v "XA:Z:" | wc -l)" >> aligned.stats.txt
+        echo "Reference Genome: {{.ReferenceGenomeName | default "GCF_000005845.2_ASM584v2"}}" >> aligned.stats.txt
+        total_reads=$(grep -v "^@" aligned.sam | wc -l)
+        echo "Total reads: $total_reads" >> aligned.stats.txt
+        mapped_reads=$(grep -v "^@" aligned.sam | grep -v "XA:Z:" | wc -l)
+        echo "Mapped reads: $mapped_reads" >> aligned.stats.txt
         echo "File sizes:" >> aligned.stats.txt
         du -h aligned.sam >> aligned.stats.txt
-
-        head -{{.SampleSize}} aligned.sam > aligned_sample.sam
     requires:
-      - bwa-index
+      - bwa-mem2-index
     resource:
       cpu:
-        cores: {{.BwaAlignCpuCores}}
+        cores: {{.AlignCpuCores | default 16}}
       memory:
-        size: {{.BwaAlignMemory}}GiB
-  github-upload:
+        size: {{.AlignMemory | default 16}}GiB
+  msamtools-filter:
     cwd: /data
-    env:
-      - GITHUB_TOKEN={{.GithubToken}}
-      - GITHUB_REPO={{.GithubRepo}}
-      - GITHUB_USERNAME={{.GithubUsername}}
-      - GITHUB_EMAIL={{.GithubEmail}}
-      - GITHUB_PATH={{.GithubOutputPath}}
-      - TARGET_BRANCH={{.GithubBranch}}
     image:
-      uri: docker://alpine:latest
+      uri: {{.MsamtoolsContainerImage | default "docker://quay.io/biocontainers/msamtools:1.1.2--h7132678_0"}}
     mounts:
       bwa-data:
         location: /data
     command:
-      - /bin/sh
+      - /bin/bash
       - '-c'
       - |
-        apk add --no-cache git curl jq
-
-        export HOME=/data
-        git config --global user.email "${GITHUB_EMAIL}"
-        git config --global user.name "${GITHUB_USERNAME}"
-
-        git clone https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git /data/repo
-        git config --global --add safe.directory /data/repo
-
-        cd /data/repo
-        git checkout ${TARGET_BRANCH}
-
-        mkdir -p ${GITHUB_PATH}
-
-        cp /data/aligned_sample.sam ${GITHUB_PATH}/
-        cp /data/aligned.stats.txt ${GITHUB_PATH}/
-
-        cat << EOF > ${GITHUB_PATH}/README.md
-# BWA Alignment Results
-Generated: $(date)
-
-This directory contains a sample of BWA alignment results for {{.ReferenceGenomeName}}.
-Only the first {{.SampleSize}} lines of the SAM file are included due to size constraints.
-The full SAM file size is approximately $(du -h /data/aligned.sam | cut -f1).
-EOF
-
-        TIMESTAMP=$(date +%Y%m%d%H%M%S)
-
-        git add ${GITHUB_PATH}/
-        git commit -m "{{.CommitMessagePrefix}} - ${TIMESTAMP}"
-        git push origin ${TARGET_BRANCH}
+        # Test various filter thresholds to find what works
+        msamtools filter -S -l 1 -p 1 -z 1 aligned.sam > test_filtered.sam
+        test_count=$(grep -v "^@" test_filtered.sam | wc -l)
+        
+        msamtools filter -S -l 30 aligned.sam > filtered_l30.sam
+        l30_count=$(grep -v "^@" filtered_l30.sam | wc -l)
+        
+        msamtools filter -S -l 30 -p 80 aligned.sam > filtered_l30_p80.sam
+        l30p80_count=$(grep -v "^@" filtered_l30_p80.sam | wc -l)
+        
+        msamtools filter -S -l 30 -p 80 -z 50 aligned.sam > filtered_l30_p80_z50.sam
+        l30p80z50_count=$(grep -v "^@" filtered_l30_p80_z50.sam | wc -l)
+        
+        if [ $l30p80z50_count -gt 0 ]; then
+          cp filtered_l30_p80_z50.sam filtered.sam
+          min_length=30
+          min_identity=80
+          min_aligned=50
+        elif [ $l30p80_count -gt 0 ]; then
+          cp filtered_l30_p80.sam filtered.sam
+          min_length=30
+          min_identity=80
+          min_aligned=0
+        elif [ $l30_count -gt 0 ]; then
+          cp filtered_l30.sam filtered.sam
+          min_length=30
+          min_identity=0
+          min_aligned=0
+        else
+          cp test_filtered.sam filtered.sam
+          min_length=1
+          min_identity=0
+          min_aligned=0
+        fi
+        
+        filtered_count=$(grep -v "^@" filtered.sam | wc -l)
+        
+        # Add filter info to stats file
+        echo "" >> aligned.stats.txt
+        echo "MSAMtools Filter Applied:" >> aligned.stats.txt
+        echo "- Minimum length: $min_length bp" >> aligned.stats.txt
+        if [ $min_identity -gt 0 ]; then
+          echo "- Minimum percent identity: $min_identity%" >> aligned.stats.txt
+        fi
+        if [ $min_aligned -gt 0 ]; then
+          echo "- Minimum aligned fraction: $min_aligned%" >> aligned.stats.txt
+        fi
+        echo "Filtered reads: $filtered_count" >> aligned.stats.txt
+        
+        rm -f test_filtered.sam filtered_l30.sam filtered_l30_p80.sam filtered_l30_p80_z50.sam
     requires:
-      - bwa-align
+      - bwa-mem2-align
     resource:
       cpu:
-        cores: {{.GithubUploadCpuCores}}
+        cores: {{.FilterCpuCores | default 4}}
       memory:
-        size: {{.GithubUploadMemory}}GiB
+        size: {{.FilterMemory | default 8}}GiB

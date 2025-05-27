@@ -1,109 +1,64 @@
 values:
   - name: ReferenceGenomeURL
     display_name: Reference Genome URL
-    uint_value:
-    string_value: https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz
+    string_value: ""
 
   - name: Read1URL
     display_name: Read 1 URL
-    uint_value:
-    string_value: https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/Garvan_NA12878_HG001_HiSeq_Exome/NIST7035_TAAGGCGA_L001_R1_001.fastq.gz
+    string_value: ""
 
   - name: Read2URL
     display_name: Read 2 URL
-    uint_value:
-    string_value: https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/Garvan_NA12878_HG001_HiSeq_Exome/NIST7035_TAAGGCGA_L001_R2_001.fastq.gz
+    string_value: ""
 
-  - name: ReferenceGenomeName
-    display_name: Reference Genome Name
-    uint_value:
-    string_value: GCF_000005845.2_ASM584v2
+  - name: ContainerImage
+    display_name: Container Image
+    string_value: ""
 
-  - name: BwaContainerImage
-    display_name: BWA Container Image
-    uint_value:
-    string_value: docker://biocontainers/bwa:v0.7.17_cv1
-
-  - name: GithubUploadImage
-    display_name: GitHub Upload Image
-    uint_value:
-    string_value: docker://alpine:latest
-
-  - name: BwaIndexCpuCores
-    display_name: BWA Index CPU Cores
+  - name: IndexCpuCores
+    display_name: Index CPU Cores
     uint_value: 4
-    string_value:
 
-  - name: BwaIndexMemory
-    display_name: BWA Index Memory
+  - name: IndexMemory
+    display_name: Index Memory
     uint_value: 8
-    string_value:
 
-  - name: BwaAlignCpuCores
-    display_name: BWA Align CPU Cores
+  - name: ReadGroupString
+    display_name: Read Group String
+    string_value: ""
+
+  - name: AlignThreads
+    display_name: Align Threads
     uint_value: 16
-    string_value:
-
-  - name: BwaAlignMemory
-    display_name: BWA Align Memory
-    uint_value: 32
-    string_value:
-
-  - name: BwaAlignThreads
-    display_name: BWA Align Threads
-    uint_value: 16
-    string_value:
-
-  - name: GithubUploadCpuCores
-    display_name: GitHub Upload CPU Cores
-    uint_value: 1
-    string_value:
-
-  - name: GithubUploadMemory
-    display_name: GitHub Upload Memory
-    uint_value: 1
-    string_value:
-
-  - name: GithubToken
-    display_name: GitHub Token
-    uint_value:
-    string_value: <your-github-token>
-  - name: GithubRepo
-    display_name: GitHub Repository
-    uint_value:
-    string_value: <your-github-repo>
-
-  - name: GithubUsername
-    display_name: GitHub Username
-    uint_value:
-    string_value: <your-github-username>
-
-  - name: GithubEmail
-    display_name: GitHub Email
-    uint_value:
-    string_value: <your-email>
-
-  - name: GithubOutputPath
-    display_name: GitHub Output Path
-    uint_value:
-    string_value: <your-github-path>
-
-  - name: GithubBranch
-    display_name: GitHub Branch
-    uint_value:
-    string_value: main
-
-  - name: JobId
-    display_name: Job ID
-    uint_value: 3
-    string_value:
 
   - name: SampleSize
     display_name: Sample Size
-    uint_value: 1000 # Number of lines to sample from the aligned SAM file
-    string_value:
+    uint_value: 1000
 
-  - name: CommitMessagePrefix
-    display_name: Commit Message Prefix
-    uint_value:
-    string_value: BWA alignment sample results [automated]
+  - name: ReferenceGenomeName
+    display_name: Reference Genome Name
+    string_value: ""
+
+  - name: AlignCpuCores
+    display_name: Align CPU Cores
+    uint_value: 16
+
+  - name: AlignMemory
+    display_name: Align Memory
+    uint_value: 32
+
+  - name: S3Bucket
+    display_name: S3 Bucket
+    string_value: "" # S3 Bucket name
+
+  - name: S3Prefix
+    display_name: S3 Prefix
+    string_value: "" # S3 Prefix
+
+  - name: S3Secret
+    display_name: S3 Secret
+    string_value: "" # S3 Secret for accessing the S3 Bucket
+
+  - name: EgressDestination
+    display_name: Egress Destination
+    string_value: "" # Egress Destination (if S3Bucket & S3Secret variables aren't set)
