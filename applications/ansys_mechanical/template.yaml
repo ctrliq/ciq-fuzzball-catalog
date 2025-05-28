@@ -12,7 +12,6 @@ jobs:
     cwd: /data
     env:
       - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
-      - KMP_AFFINITY=disabled
     image:
       uri: {{.AnsysMechanicalContainerURI}}
       secret: {{.AnsysMechanicalContainerOciSecret}}
@@ -40,7 +39,7 @@ jobs:
         ANSYS_VERSION_NUMBER=$(echo ${ANSYS_VERSION/R/} | cut -c 3-);
         export LD_LIBRARY_PATH={{.AnsysInstallDir}}/v${ANSYS_VERSION_NUMBER}/Framework/bin/Linux64:$LD_LIBRARY_PATH;
 
-        {{.AnsysInstallDir}}/v${ANSYS_VERSION_NUMBER}/ansys/bin/ansys251 -b -i hip-implant-analysis.dat -np {{.MechanicalCores}};
+        {{.AnsysInstallDir}}/v${ANSYS_VERSION_NUMBER}/ansys/bin/ansys251 -b -i hip-implant-analysis.dat -np {{.MechanicalCores}} -mpi openmpi;
     resource:
       cpu:
         cores: {{.MechanicalCores}}
