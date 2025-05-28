@@ -16,7 +16,7 @@ volumes:
           uri: file:///sample_2.fastq.gz
     reference: volume://user/ephemeral
     egress:
-      {{- range $source, $dest := dict "aligned.sam" "aligned.sam" "aligned.stats.txt" "aligned.stats.txt" "filtered.sam" "filtered.sam" }}
+      {{- range $source, $dest := dict "aligned.stats.txt" "aligned.stats.txt" "filtered.sam" "filtered.sam" }}
       - source:
           uri: file:///{{ $source }}
         destination:
