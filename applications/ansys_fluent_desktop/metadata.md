@@ -1,5 +1,7 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+---
 id: "ansys_fluent_vdi_application" # needs to be **unique** per application, changing results in a new application
 name: "ANSYS FLUENT (VDI)"
 category: "SIMULATION"
-description: "An application template providing access to the Ansys Fluent simulation software in a VDI environment."
+---
+An application template providing access to the Ansys Fluent simulation software in a VDI environment.
