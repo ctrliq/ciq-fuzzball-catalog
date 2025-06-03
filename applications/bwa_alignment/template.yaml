@@ -1,0 +1,91 @@
+
+version: v1
+volumes:
+  bwa-data:
+    ingress:
+      - source:
+          uri: {{.ReferenceGenomeURL}}
+        destination:
+          uri: file:///reference.fa.gz
+      - source:
+          uri: {{.Read1URL}}
+        destination:
+          uri: file:///sample_1.fastq.gz
+      - source:
+          uri: {{.Read2URL}}
+        destination:
+          uri: file:///sample_2.fastq.gz
+    reference: volume://user/ephemeral
+    {{- if .S3Bucket }}
+    egress:
+      {{- range $file := list "aligned.bam" "aligned.stats.txt" }}
+      - source:
+          uri: file:///{{ $file }}
+        destination:
+          uri: {{$.EgressDestination | default (printf "s3://%s/%s%s" $.S3Bucket $.S3Prefix $file)}}
+          {{- if $.S3Secret }}
+          secret: {{ $.S3Secret }}
+          {{- end }}
+      {{- end }}
+    {{- end }}
+jobs:
+  bwa-mem2-index:
+    cwd: /data
+    name: bwa-mem2-index
+    image:
+      uri: {{.ContainerImage}}
+    mounts:
+      bwa-data:
+        location: /data
+    command:
+      - /bin/bash
+      - '-c'
+      - |
+
+        if [ -f reference.fa ] && [ ! -f reference.fa.bwt.2bit.64 ]; then
+          bwa-mem2 index reference.fa
+        elif [ ! -f reference.fa ]; then
+          exit 1
+        fi
+    resource:
+      cpu:
+        cores: {{.IndexCpuCores}}
+      memory:
+        size: {{.IndexMemory}}GiB
+  bwa-mem2-align:
+    cwd: /data
+    image:
+      uri: {{.ContainerImage}}
+    mounts:
+      bwa-data:
+        location: /data
+    command:
+      - /bin/bash
+      - '-c'
+      - |
+        # Add read group if provided
+        RG_OPTS=""
+        {{- if .ReadGroupString }}
+        RG_OPTS="-R '{{.ReadGroupString}}'"
+        {{- end }}
+
+        # Get any additional alignment options
+        EXTRA_OPTS="{{.AlignmentExtraOptions}}"
+
+        # Run BWA-MEM2 alignment and convert directly to BAM
+        bwa-mem2 mem -t {{.AlignThreads}} ${RG_OPTS} ${EXTRA_OPTS} reference.fa sample_1.fastq.gz sample_2.fastq.gz | samtools view -o aligned.bam -
+        
+        # Generate statistics using samtools
+        echo "Alignment Date: $(date)" > aligned.stats.txt
+        echo "Reference Genome: {{.ReferenceGenomeName}}" >> aligned.stats.txt
+        echo "File sizes:" >> aligned.stats.txt
+        du -h aligned.bam >> aligned.stats.txt
+        echo "----- Flagstat -------" >> aligned.stats.txt
+        samtools flagstat aligned.bam >> aligned.stats.txt
+    requires:
+      - bwa-mem2-index
+    resource:
+      cpu:
+        cores: {{.AlignCpuCores}}
+      memory:
+        size: {{.AlignMemory}}GiB
