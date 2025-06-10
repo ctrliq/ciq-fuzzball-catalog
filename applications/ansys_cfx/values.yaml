@@ -16,7 +16,7 @@ values:
     string_value: "volume://user/persistent/data"
   - name: "AnsysInstallDir"
     display_name: "Absolute path to ANSYS installation directory"
-    string_value: "/software/ansys/2025R1"
+    string_value: "/software/ansys/2025r1"
   - name: "CfxCores"
     display_name: "How many CPU cores to allocate to run ANSYS CFX"
     uint_value: 4
