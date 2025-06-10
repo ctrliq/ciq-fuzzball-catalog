@@ -26,6 +26,9 @@ jobs:
         cp {{.AnsysInstallDir}}/v${ANSYS_VERSION_NUMBER}/CFX/examples/StaticMixer.def .
 
         {{.AnsysInstallDir}}/v${ANSYS_VERSION_NUMBER}/CFX/bin/cfx5solve -def StaticMixer.def -par-dist "$(hostname)*{{.CfxCores}}";
+
+        # cat the latest output file
+        cat $(ls -1t StaticMixer_*.out 2>/dev/null | head -n 1)
     resource:
       cpu:
         cores: {{.CfxCores}}
