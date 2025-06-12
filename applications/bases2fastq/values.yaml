@@ -7,7 +7,7 @@ values:
       [optional] Persistent data storage volume. If neither InputPath nor
       OutputPath are local paths, this volume can be omitted.
     string_value: volume://user/persistent
-    dsplay_category: Storage
+    display_category: Storage
 
   - name: Bases2FastqContainer
     display_name: Container used for bases2fastq.
