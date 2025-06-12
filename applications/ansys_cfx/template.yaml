@@ -1,0 +1,41 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+{{- $lver := lower .AnsysVersion }}
+version: v1
+jobs:
+  cfx-static-mixer:
+    env:
+      - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
+    image:
+      uri: {{.AnsysCfxContainerURI}}
+      secret: {{.AnsysCfxContainerOciSecret}}
+    mounts:
+      data:
+        location: /data
+    policy:
+      timeout:
+        execute: 30m0s
+    cwd: /data
+    command:
+      - /bin/sh
+      - '-c'
+      - >-
+        ANSYS_VERSION={{.AnsysVersion}}
+        ANSYS_VERSION_NUMBER=$(echo ${ANSYS_VERSION/R/} | cut -c 3-)
+
+        mkdir ansys-cfx-static-mixer-example-$FB_WORKFLOW_ID;
+        cd ansys-cfx-static-mixer-example-$FB_WORKFLOW_ID;
+        cp {{.AnsysInstallDir}}/{{$lver}}/v${ANSYS_VERSION_NUMBER}/CFX/examples/StaticMixer.def .
+
+        {{.AnsysInstallDir}}/{{$lver}}/v${ANSYS_VERSION_NUMBER}/CFX/bin/cfx5solve -def StaticMixer.def -par-dist "$(hostname)*{{.CfxCores}}";
+
+        # cat the latest output file
+        cat $(ls -1t StaticMixer_*.out 2>/dev/null | head -n 1)
+    resource:
+      cpu:
+        cores: {{.CfxCores}}
+        affinity: NUMA
+      memory:
+        size: {{.CfxMemory}}
+volumes:
+  data:
+    reference: {{.Volume}}
