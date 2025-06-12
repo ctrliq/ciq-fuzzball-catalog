@@ -2,39 +2,52 @@ values:
   - name: NgcEnvVarSecret
     display_name: Fuzzball environment variable secret containing a NGC API Key.
     string_value: secret://user/NGC_API_KEY_ENV
+    display_category: Environment Variables
   - name: NgcOciSecret
     display_name: Fuzzball OCI secret containing a user '$oauthtoken' and NGC API Key as password.
     string_value: secret://user/NGC_API_KEY_OCI
+    display_category: Container
   - name: NimImageUri
     display_name: URI to NVIDIA NIM image.
     string_value: docker://nvcr.io/nim/nvidia/parakeet-ctc-1.1b-asr:latest
-  - name: NimCachePath
-    display_name: Path to cached models.
-    string_value: /home/nvs/.cache/nim
+    display_category: Container
   - name: NimGrpcPort
     display_name: Port to run GPRC API.
     string_value: "50051"
+    display_category: Networking
   - name: NimHttpPort
     display_name: Port to run HTTP API.
     string_value: "9000"
+    display_category: Networking
   - name: NimManifestProfile
     display_name: UUID of model manifest profile to be downloaded found in /etc/nim/config/model_manifest.yaml of container.
     string_value: 9136dd64-4777-11ef-9f27-37cfd56fa6ee
+    display_category: Configuration
   - name: Cores
     display_name: How many CPU cores to allocate.
     uint_value: 4
+    display_category: Resources
   - name: Memory
     display_name: How much memory to allocate.
     string_value: 32768MiB
+    display_category: Resources
   - name: GPUs
     display_name: How many GPUs to allocate.
     uint_value: 1
+    display_category: Resources
   - name: Timeout
     display_name: Maximum runtime.
     string_value: 2h0m0s
+    display_category: Execution
+  - name: NimCachePath
+    display_name: Path to cached models.
+    string_value: /home/nvs/.cache/nim
+    display_category: Storage
   - name: ModelRepoDataVolume
     display_name: Where to store model repository data.
     string_value: volume://user/ephemeral
+    display_category: Storage
   - name: ModelCacheVolume
     display_name: Where to store downloaded model data.
     string_value: volume://account/persistent
+    display_category: Storage

@@ -2,9 +2,11 @@ values:
   - name: "ScratchVolume"
     display_name: "Used during LAMMPS run"
     string_value: "volume://user/ephemeral"
+    display_category: "Storage"
   - name: "DataVolume"
     display_name: "Persistent volume to store data (if PersistResults is true)"
     string_value: "volume://user/persistent"
+    display_category: "Storage"
 
   - name: "ExperimentUrl"
     display_name: >-

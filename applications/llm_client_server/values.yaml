@@ -2,14 +2,17 @@ values:
   - name: DataVolume
     display_name: Volume to use for the huggingface cache. Ideally persistent to avoid unnecessary data transfers.
     string_value: volume://user/persistent
+    display_category: Storage
   - name: ScratchVolume
     display_name: Ephemeral volume for temporary data.
     string_value: volume://user/ephemeral
+    display_category: Storage
   - name: WorkflowScriptUri
     display_name: |
       URI where scripts for each workflow job can be found. http(s) and s3 are supported.
       Scripts are named '<job>.py'.
     string_value: https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/main/applications/llm_client_server/scripts
+    display_category: Scripts
   - name: QueryDataUri
     display_name: |
       URI for a yaml file with queries to be executed by the client. The yaml file is a list of
@@ -17,32 +20,41 @@ values:
       See the documentation for the OpenAI API for chat completions for the format expected for 'messages'.
       http(s) and s3 are supported
     string_value: https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/main/applications/llm_client_server/data/queries.yaml
+    display_category: Input Data
   - name: ResultsDataUri
     display_name: |
       [optional] URI for a results file to write. Has to either be a s3:// URI or a path relative to the root
       of the (persistent) DataVolume. It will contain the queries plus their results and the fuzzball workflow
       id that generated the results.
     string_value: results/llm/query-results.yaml
+    display_category: I/O
+  - name: HFHubCache
+    display_name: Path relative to the root of the DataVolume where the HuggingFace cache should be located.
+    string_value: cache/huggingface
+    display_category: I/O
   - name: S3Secret
     display_name: |
       [required for s3 transfers] Secret needed to fetch scripts and/or data if they are housed on S3. Will be used to
       fetch any scripts or data files that start with s3:// protocol. Not needed if scripts and queries are via http(s).
     string_value: secret://user/s3
-  - name: HFHubCache
-    display_name: Path relative to the root of the DataVolume where the HuggingFace cache should be located.
-    string_value: cache/huggingface
+    display_category: Storage
   - name: ModelName
     display_name: Name of the HuggingFace model to use.
     string_value: HuggingFaceTB/SmolLM2-360M-Instruct
+    display_category: Model Configuration
   - name: ServerTimeout
     display_name: Maximum runtime of server.
     string_value: 2h
+    display_category: Execution
   - name: ServerCores
     display_name: Cores to allocate for the LLM server job.
     uint_value: 4
+    display_category: Resources
   - name: ServerMemory
     display_name: Amount of memory to allocate for the LLM server job.
     string_value: 12GiB
+    display_category: Resources
   - name: ClientImage
     display_name: Container image to use for the client job
     string_value: docker://community.wave.seqera.io/library/pip_pyyaml_openai:20672161f8e013fe
+    display_category: Container
