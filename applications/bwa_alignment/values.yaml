@@ -3,63 +3,79 @@ values:
   - name: ReferenceGenomeURL
     display_name: Reference Genome URL
     string_value: "https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/005/845/GCF_000005845.2_ASM584v2/GCF_000005845.2_ASM584v2_genomic.fna.gz"
-
-  - name: Read1URL
-    display_name: Read 1 URL
-    string_value: "https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/Garvan_NA12878_HG001_HiSeq_Exome/NIST7035_TAAGGCGA_L001_R1_001.fastq.gz"
-
-  - name: Read2URL
-    display_name: Read 2 URL
-    string_value: "https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/Garvan_NA12878_HG001_HiSeq_Exome/NIST7035_TAAGGCGA_L001_R2_001.fastq.gz"
-
-  - name: ContainerImage
-    display_name: Container Image
-    string_value: "docker://quay.io/biocontainers/mulled-v2-e5d375990341c5aef3c9aff74f96f66f65375ef6:01a0c9ec663f64217ceb05c225380e9150d8bc52-0"
-
-  - name: IndexCpuCores
-    display_name: Index CPU Cores
-    uint_value: 16
-
-  - name: IndexMemory
-    display_name: Index Memory
-    uint_value: 16
-
-  - name: ReadGroupString
-    display_name: Read Group String
-    string_value: ""
-
-  - name: AlignThreads
-    display_name: Align Threads
-    uint_value: 16
-
-  - name: AlignmentExtraOptions
-    display_name: Alignment Extra Options
-    string_value: ""
+    display_category: Reference Genome
 
   - name: ReferenceGenomeName
     display_name: Reference Genome Name
     string_value: "GCF_000005845.2_ASM584v2"
+    display_category: Reference Genome
+
+  - name: Read1URL
+    display_name: Read 1 URL
+    string_value: "https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/Garvan_NA12878_HG001_HiSeq_Exome/NIST7035_TAAGGCGA_L001_R1_001.fastq.gz"
+    display_category: Input Data
+
+  - name: Read2URL
+    display_name: Read 2 URL
+    string_value: "https://ftp-trace.ncbi.nlm.nih.gov/giab/ftp/data/NA12878/Garvan_NA12878_HG001_HiSeq_Exome/NIST7035_TAAGGCGA_L001_R2_001.fastq.gz"
+    display_category: Input Data
+
+  - name: ContainerImage
+    display_name: Container Image
+    string_value: "docker://quay.io/biocontainers/mulled-v2-e5d375990341c5aef3c9aff74f96f66f65375ef6:01a0c9ec663f64217ceb05c225380e9150d8bc52-0"
+    display_category: Container
+
+  - name: ReadGroupString
+    display_name: Read Group String
+    string_value: ""
+    display_category: Read Group
+
+  - name: AlignmentExtraOptions
+    display_name: Alignment Extra Options
+    string_value: ""
+    display_category: Alignment
+
+  - name: IndexCpuCores
+    display_name: Index CPU Cores
+    uint_value: 16
+    display_category: Resources
+
+  - name: IndexMemory
+    display_name: Index Memory
+    uint_value: 16
+    display_category: Resources
+
+  - name: AlignThreads
+    display_name: Align Threads
+    uint_value: 16
+    display_category: Resources
 
   - name: AlignCpuCores
     display_name: Align CPU Cores
     uint_value: 16
+    display_category: Resources
 
   - name: AlignMemory
     display_name: Align Memory
     uint_value: 16
+    display_category: Resources
 
   - name: S3Bucket
     display_name: S3 Bucket
     string_value: ""
+    display_category: Storage
 
   - name: S3Prefix
     display_name: S3 Prefix
     string_value: ""
+    display_category: Storage
 
   - name: S3Secret
     display_name: S3 Secret
     string_value: ""
+    display_category: Storage
 
   - name: EgressDestination
     display_name: Egress Destination
     string_value: ""
+    display_category: Egress Configuration

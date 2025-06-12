@@ -2,6 +2,8 @@ values:
   - name: "Container"
     display_name: "container for printer job (must contain the sleep command)"
     string_value: "docker://docker.io/alpine:latest"
+    display_category: "Container"
   - name: "Seconds"
     display_name: "How many seconds do you want the printer job to run and count?"
     uint_value: 300
+    display_category: "Execution"
