@@ -1,4 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+{{- $ver := .AnsysVersion }}
+{{- $ansys_version_number := printf "v%s%s" (substr 2 4 $ver) (substr 5 6 $ver) }}
 version: v1
 jobs:
   ls-dyna-3d-internal-flow:
@@ -19,14 +21,11 @@ jobs:
     cwd: /data
     command:
       - /bin/sh
-      - '-xc'
+      - '-c'
       - |
-        #! /bin/bash -x
 
         # Environment setup
-        ANSYS_VERSION={{.AnsysVersion}}
-        ANSYS_VERSION_NUMBER=$(echo ${ANSYS_VERSION/R/} | cut -c 3-)
-        PATH=/software/ansys/${ANSYS_VERSION/R/r}/v${ANSYS_VERSION_NUMBER}/ansys/bin/linx64:$PATH
+        PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/ansys/bin/linx64:$PATH
 
         # Data staging
         mkdir ansys-ls-dyna-3d-internal-flow-$FB_WORKFLOW_ID;
