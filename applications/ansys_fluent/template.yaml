@@ -87,7 +87,7 @@ jobs:
           /exit yes
         _EOF
 
-        PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/fluent/bin:$PATH;
+        export PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/fluent/bin:$PATH;
 
         fluent 3ddp -g -t4 -i setup-and-run-simulation.jou;
     resource:
