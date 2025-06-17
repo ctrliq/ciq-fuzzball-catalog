@@ -3,7 +3,7 @@
 {{- $ansys_version_number := printf "v%s%s" (substr 2 4 $ver) (substr 5 6 $ver) }}
 version: v1
 jobs:
-  xfce4-desktop:
+  xfce4:
     env:
       - HOME=/tmp/home
       - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
@@ -20,7 +20,15 @@ jobs:
       - /bin/sh
       - '-c'
       - |
-        export PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/fluent/bin:$PATH
+        export PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/fluent/bin:{{.AnsysInstallDir}}/{{$ansys_version_number}}/Framework/bin/Linux64:$PATH
+
+        echo
+        echo "Accessing the virtual desktop requires port-forwarding via the CLI:"
+        echo
+        echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} xfce4 6080:6080"
+        echo
+        echo Then navigate to http://localhost:6080
+        echo
         /usr/local/bin/start-vncserver.sh
     resource:
       cpu:
