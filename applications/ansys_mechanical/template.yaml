@@ -38,7 +38,7 @@ jobs:
 
         cp Hip\ implant_files/dp0/SYS/MECH/ds.dat ./hip-implant-analysis.dat;
 
-        export LD_LIBRARY_PATH={.AnsysInstallDir}}/{{$ansys_version_number}}/Framework/bin/Linux64:$LD_LIBRARY_PATH;
+        export LD_LIBRARY_PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/Framework/bin/Linux64:$LD_LIBRARY_PATH;
         export PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/ansys/bin:$PATH
 
         ansys251 -b -i hip-implant-analysis.dat -np {{.MechanicalCores}} -mpi openmpi;
