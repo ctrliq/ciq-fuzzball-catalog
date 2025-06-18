@@ -22,6 +22,7 @@ values:
   - name: "AnsysInstallDir"
     display_name: "Absolute path to ANSYS installation directory"
     string_value: "/software/ansys/2025r1"
+    display_category: "Installation"
   - name: "FluentCores"
     display_name: "How many CPU cores to allocate to run ANSYS Fluent"
     uint_value: 4

@@ -9,7 +9,7 @@ values:
     display_category: "Installation"
   - name: "AnsysInstallDir"
     display_name: "Absolute path to ANSYS installation directory"
-    string_value: "/software/ansys"
+    string_value: "/software/ansys/2025r1"
     display_category: "Installation"
   - name: "AnsysCfxContainerURI"
     display_name: "URI of ANSYS CFX container that will be used."

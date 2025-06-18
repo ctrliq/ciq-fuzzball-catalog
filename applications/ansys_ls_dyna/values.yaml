@@ -22,6 +22,7 @@ values:
   - name: "AnsysInstallDir"
     display_name: "Absolute path to ANSYS installation directory"
     string_value: "/software/ansys/2025r1"
+    display_category: "Installation"
   - name: "LsDynaPrecision"
     display_name: "Precision of ANSYS LS-DYNA solver"
     string_value: "double"
