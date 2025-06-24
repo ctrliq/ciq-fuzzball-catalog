@@ -1,0 +1,23 @@
+values:
+  - name: "Cores"
+    display_name: "How many CPU cores to allocate."
+    uint_value: 4
+    display_category: "Resources"
+  - name: "Memory"
+    display_name: "How much memory to allocate."
+    string_value: "8gb"
+    display_category: "Resources"
+  - name: "Port"
+    display_name: "Port number where RStudio Server will be exposed."
+    uint_value: 6776
+    display_category: "Network"
+  - name: "Timeout"
+    display_name: "Set a time limit after which the workflow will automatically terminate, helping to control compute resource usage."
+    string_value: "2h0m0s"
+    display_category: "Execution"
+  - name: "Volume"
+    display_name: "Storage volume for user data and R workspace files."
+    string_value: "volume://user/ephemeral"
+    display_category: "Storage"
+
+
