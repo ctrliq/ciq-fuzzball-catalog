@@ -1,0 +1,29 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+volumes:
+  scratch:
+    name: scratch
+    reference: {{.Volume}}
+jobs:
+  rstudio:
+    env:
+      - HOME=/scratch
+      - PORT={{.Port}}
+    name: rstudio
+    image:
+      uri: docker://adere2/rstudio-fb
+    mounts:
+      scratch:
+        location: /scratch
+    policy:
+      timeout:
+        execute: {{.Timeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - /usr/local/bin/start-rstudio.sh
+    resource:
+      cpu:
+        cores: {{.Cores}}
+      memory:
+        size: {{.Memory}}
