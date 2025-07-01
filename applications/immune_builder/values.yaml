@@ -1,0 +1,20 @@
+values:
+  - name: "BuilderType"
+    display_name: "Structure prediction type. Options: 'antibody', 'nanobody', or 'tcr'"
+    string_value: "antibody"
+    display_category: "Model Configuration"
+
+  - name: "SecretName"
+    display_name: "Reference to AWS credentials stored in Fuzzball Secrets"
+    string_value: "secret://user/aws-credentials"
+    display_category: "Authentication"
+
+  - name: "InputFasta"
+    display_name: "S3 fasta file that contains heavy and light chains"
+    string_value: ""
+    display_category: "Input"
+
+  - name: "OutputPath"
+    display_name: "S3 bucket and directory where outputs will be stored"
+    string_value: ""
+    display_category: "Output"
