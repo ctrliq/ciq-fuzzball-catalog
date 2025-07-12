@@ -81,7 +81,7 @@ jobs:
         location: /scratch
     policy:
       timeout:
-        execute: {{ .TrainingTimeout }}h
+        execute: {{ .TrainingTimeout }}
     requires:
       - model-loading
     resource:
