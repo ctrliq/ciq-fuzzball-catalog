@@ -1,0 +1,82 @@
+values:
+  # Script Configuration
+  - name: GitHubRepoUrl
+    display_name: GitHub Repository URL
+    string_value: "https://raw.githubusercontent.com/your-username/your-repo/main"
+
+  - name: DataPrepScript
+    display_name: Data Preparation Script
+    string_value: "test.py"
+
+  - name: ModelLoadScript
+    display_name: Model Loading Script
+    string_value: "model_loading.py"
+
+  - name: FineTuningScript
+    display_name: Fine-tuning Script
+    string_value: "fine_tuning.py"
+
+  - name: TestingScript
+    display_name: Model Testing Script
+    string_value: "model_testing.py"
+
+  # Container and Resource Configuration
+  - name: ContainerImage
+    display_name: Container Image
+    string_value: "docker://huggingface/transformers-pytorch-gpu:latest"
+
+  - name: CpuCores
+    display_name: CPU Cores
+    uint_value: 16
+
+  - name: MemoryGb
+    display_name: Memory (GB)
+    uint_value: 32
+
+  # Model Configuration
+  - name: ModelName
+    display_name: Base Model Name
+    string_value: "google/flan-t5-base"
+
+  # Data Configuration
+  - name: MaxExamples
+    display_name: Maximum Training Examples
+    uint_value: 5000
+
+  - name: MaxInputLength
+    display_name: Maximum Input Length
+    uint_value: 512
+
+  - name: MaxTargetLength
+    display_name: Maximum Target Length
+    uint_value: 128
+
+  # Training Parameters
+  - name: NumEpochs
+    display_name: Number of Training Epochs
+    uint_value: 1
+
+  - name: BatchSize
+    display_name: Training Batch Size
+    uint_value: 8
+
+  - name: LearningRate
+    display_name: Learning Rate
+    string_value: "3e-4"
+
+  - name: GradientAccumulationSteps
+    display_name: Gradient Accumulation Steps
+    uint_value: 4
+
+  - name: TrainSplit
+    display_name: Training Split Ratio
+    string_value: "0.9"
+
+  - name: TrainingTimeout
+    display_name: Training Timeout
+    string_value: "3h"
+
+  # Testing Parameters
+  - name: MaxTestExamples
+    display_name: Maximum Test Examples
+    uint_value: 50
