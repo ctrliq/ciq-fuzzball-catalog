@@ -6,21 +6,22 @@ volumes:
     reference: volume://user/persistent
     ingress:
 {{- range $index, $fasta := splitList "," (.InputFastas | toString) }}
-{{- $filename := $fasta | trim | regexFind "[^/]+$" }}
+{{- $filename := $fasta | trim | base }}
       - source:
           uri: {{ $fasta | trim }}
-          secret: {{ $.SecretName }}
         destination:
           uri: file://alphafold2/input-fastas/{{ $filename }}
 {{- end }}
+{{- if not (empty .OutputPathOptional) }}
     egress:
 {{- range $index, $fasta := splitList "," (.InputFastas | toString) }}
-{{- $filenameNoExt := $fasta | trim | regexFind "[^/]+$" | trimSuffix ".fasta" }}
+{{- $filenameNoExt := $fasta | trim | base | trimSuffix ".fasta" }}
       - source:
           uri: file://alphafold2/outputs/{{ $filenameNoExt }}/ranked_0.pdb
         destination:
-          uri: {{ $.OutputPath }}/{{ $filenameNoExt }}.pdb
-          secret: {{ $.SecretName }}
+          uri: {{ $.OutputPathOptional }}/{{ $filenameNoExt }}.pdb
+          secret: {{ $.SecretNameOptional }}
+{{- end }}
 {{- end }}
 
 jobs:
@@ -569,13 +570,13 @@ jobs:
         location: /data
     policy:
       timeout:
-        execute: {{ $timeoutFastas := splitList "," (.inputFastas | toString) }}{{- $fastaCount := len $timeoutFastas }}{{- $baseHours := 24 }}{{- $additionalHours := mul (sub $fastaCount 1) 8 }}{{- $totalHours := add $baseHours $additionalHours }}{{ $totalHours }}h0m0s
+        execute: {{ $timeoutFastas := splitList "," (.InputFastas | toString) }}{{- $fastaCount := len $timeoutFastas }}{{- $baseHours := 24 }}{{- $additionalHours := mul (sub $fastaCount 1) 8 }}{{- $totalHours := add $baseHours $additionalHours }}{{ $totalHours }}h0m0s
     command:
       - /bin/sh
       - '-c'
       - |
         python /app/alphafold/run_alphafold.py \
-        --fasta_paths={{- range $index, $fasta := splitList "," (.inputFastas | toString) }}{{- if $index }},{{- end }}/data/alphafold2/input-fastas/{{ $fasta | trim | regexFind "[^/]+$" }}{{- end }} \
+        --fasta_paths={{- range $index, $fasta := splitList "," (.InputFastas | toString) }}{{- if $index }},{{- end }}/data/alphafold2/input-fastas/{{ $fasta | trim | base }}{{- end }} \
         --max_template_date=2022-01-01 \
         --data_dir=/data/alphafold2 \
         --output_dir=/data/alphafold2/outputs \

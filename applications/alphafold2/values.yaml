@@ -6,15 +6,15 @@ values:
 
   - name: "InputFastas"
     display_name: "Comma-separated list of input FASTA file URLs/paths. Supports s3://, https://, and http:// (e.g., 's3://bucket/protein1.fasta,https://example.com/protein2.fasta')"
-    string_value: ""
+    string_value: "https://www.rcsb.org/fasta/entry/5ZE6"
     display_category: "Input"
 
-  - name: "OutputPath"
-    display_name: "S3 bucket/path for output PDB files"
+  - name: "OutputPathOptional"
+    display_name: "S3 bucket/path for output PDB files (optional)"
     string_value: ""
     display_category: "Output"
 
-  - name: "SecretName"
-    display_name: "Secret name for S3 credentials"
-    string_value: "secret://user/s3-credentials"
+  - name: "SecretNameOptional"
+    display_name: "Secret name for S3 credentials (optional, required for private S3 resources)"
+    string_value: ""
     display_category: "Authentication"
