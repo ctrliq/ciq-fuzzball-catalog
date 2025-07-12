@@ -4,19 +4,20 @@ volumes:
   data_volume:
     reference: volume://user/persistent
     ingress:
-{{- $filename := .inputFasta | regexFind "[^/]+$" }}
+{{- $filename := .InputFasta | base }}
       - source:
-          uri: {{ .inputFasta }}
-          secret: {{ .secretName }}
+          uri: {{ .InputFasta }}
         destination:
           uri: file://immunebuilder/input/{{ $filename }}
+{{- if .OutputPathOptional }}
     egress:
 {{- $filenameNoExt := $filename | trimSuffix ".fasta" }}
       - source:
           uri: file://immunebuilder/output/{{ $filenameNoExt }}.pdb
         destination:
-          uri: {{ .outputPath }}/{{ $filenameNoExt }}.pdb
-          secret: {{ .secretName }}
+          uri: {{ .OutputPathOptional }}/{{ $filenameNoExt }}.pdb
+          secret: {{ .SecretNameOptional }}
+{{- end }}
 
 jobs:
   immunebuilder-predict:
@@ -32,11 +33,12 @@ jobs:
       - |
         #!/bin/sh
 {{- $commands := dict "antibody" "ABodyBuilder2" "nanobody" "NanoBodyBuilder2" "tcr" "TCRBuilder2" }}
-{{- $command := index $commands (.builderType | default "antibody") | default "ABodyBuilder2" }}
-{{- $filename := .inputFasta | regexFind "[^/]+$" }}
+{{- $command := index $commands (.BuilderType | default "antibody") | default "ABodyBuilder2" }}
+{{- $filename := .InputFasta | base }}
 {{- $filenameNoExt := $filename | trimSuffix ".fasta" }}
         
         mkdir -p /data/immunebuilder/output
+        sed -i 's/>.*[Hh]eavy [Cc]hain.*/>H/g; s/>.*[Ll]ight [Cc]hain.*/>L/g' /data/immunebuilder/input/{{ $filename }}
         
         {{ $command }} \
           --fasta_file /data/immunebuilder/input/{{ $filename }} \
