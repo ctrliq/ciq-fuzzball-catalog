@@ -4,10 +4,6 @@ values:
     string_value: "antibody"
     display_category: "Model Configuration"
 
-  - name: "SecretNameOptional"
-    display_name: "Reference to credentials stored in Fuzzball Secrets for private resources"
-    string_value: ""
-    display_category: "Authentication"
 
   - name: "InputFasta"
     display_name: "URL of for fasta file that contains heavy and light chains"
@@ -18,3 +14,8 @@ values:
     display_name: "S3 bucket and directory where outputs will be stored"
     string_value: ""
     display_category: "Output"
+  
+  - name: "SecretNameOptional"
+    display_name: "Reference to credentials stored in Fuzzball Secrets for private resources"
+    string_value: ""
+    display_category: "Authentication"
