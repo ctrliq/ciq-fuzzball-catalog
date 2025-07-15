@@ -1,0 +1,109 @@
+values:
+  - name: DataVolume
+    display_name: |
+      Persistent data storage volume. Required even if the input and
+      outputs are not in a data volume since it will be used to store
+      the boltz2 cache.
+    string_value: volume://user/persistent
+  - name: ScratchVolume
+    display_name: |
+      Ephemeral data storage volume. Used for temporary files and initial
+      results.
+    string_value: volume://user/ephemeral
+
+  - name: boltz2Container
+    display_name: Container used for boltz2.
+    string_value: docker://community.wave.seqera.io/library/gcc_python_pip_boltz:8cef4eee85e1e314
+
+  - name: ProteinSequence
+    display_name: |
+      Protein sequence to use for the affinity screen. This is expected to be a
+      single-letter amino acid sequence.
+    string_value: MVTPEGNVSLVDESLLVGVTDEDRAVRSAHQFYERLIGLWAPAVMEAAHELGVFAALAEAPADSGELARRLDCDARAMRVLLDALYAYDVIDRIHDTNGFRYLLSAEARECLLPGTLFSLVGKFMHDINVAWPAWRNLAEVVRHGARDTSGAESPNGIAQEDYESLVGGINFWAPPIVTTLSRKLRASGRSGDATASVLDVGCGTGLYSQLLLREFPRWTATGLDVERIATLANAQALRLGVEERFATRAGDFWRGGWGTGYDLVLFANIFHLQTPASAVRLMRHAAACLAPDGLVAVVDQIVDADREPKTPQDRFALLFAASMTNTGGGDAYTFQEYEEWFTAAGLQRIETLDTPMHRILLARRATEPSAVPEGQASENLYFQ
+  - name: Pocket
+    display_name: |
+      [optional] Comma seperated list of protein residues that define the desired
+      binding pocket.
+    string_value: ""
+  - name: MSAFile
+    display_name: |
+      Multiple sequence alignment (MSA) file to use for the affinity screen.
+      This should be a file in the CSV format expected by boltz2, i.e. with
+      `key` and `sequence` columns. Can be a local file relative to the root of
+      the DataVolume, a s3 URI, or a http(s) URI. If a s3 URI is used, a S3
+      secret must be provided as well.
+    string_value: https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/main/applications/boltz2_fixed_affinity_screen/data/msa.csv
+  - name: Template
+    display_name: |
+      [optional] mmCIF template for the protein. Can be a local file relative to
+      the root of the DataVolume, a s3 URI, or a http(s) URI. If a s3 URI is
+      used, a S3 secret must be provided as well. Note that in some cases boltz2
+      has been reported to fail.
+    string_value: ""
+  - name: CompoundLibrary
+    display_name: |
+      Compound library to use for the affinity screen. This is a comma-separated
+      list of compounds with two required columns: `id` and `smiles`. Other
+      columns are ignored. Can be a local file relative to the root of the
+      DataVolume, a s3 URI, or a http(s) URI. If a s3 URI is used, a S3 secret
+      must be provided as well.
+    string_value: https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/main/applications/boltz2_fixed_affinity_screen/data/compounds.csv
+
+  - name: RunName
+    display_name: |
+      Name of the run. This is used to name the output directory.
+    string_value: boltz2-fixed-screen
+  - name: BoltzCache
+    display_name: |
+      [optional] Path to a directory where boltz2 can store its cache. This should be a
+      directory on the persistent storage to avoid repeated downloads and the
+      path should be relative to the DataVolume root. Defaults to cache/boltz2.
+    string_value: cache/boltz2
+  - name: BoltzOptions
+    display_name: |
+      [optional] Boltz2 options to use for the affinity screen. Any options other than
+      those related to resources, inputs, and outputs can be set here.
+    string_value: ""
+  - name: NSplit
+    display_name: |
+      [optional] Split the input into N total jobs.
+    uint_value: 1
+  - name: NConcurrent
+    display_name: |
+      [optional] Run N of the splits concurrently. Needs to be less than or equal to NSplit.
+    uint_value: 1
+  - name: RunTime
+    display_name: |
+      Run time limit for the prediction task(s).
+    string_value: 8h
+
+  - name: OutputPath
+    display_name: |
+      [optional] Path to the output directory. This is either a local path
+      relative to the (persistent) data volume root or a s3:// path. If an s3://
+      path is used the optional AWS parameters must be set.
+    string_value: results/boltz2
+
+  - name: AWSAccessKeyIdSecret
+    display_name: |
+      [optional] Fuzzball env secret containing an AWS access key id used to
+      access the S3 bucket for input and/or output. This has to be an
+      environment secret.
+    string_value: ""
+  - name: AWSSecretAccessKeySecret
+    display_name: |
+      [optional] Fuzzball env secret containing an AWS secret access key used to
+      access the S3 bucket storing the raw Sequencer output. Like
+      AWSAccessKeyIdSecret, this has to be an environment secret.
+    string_value: ""
+  - name: AWSRegion
+    display_name: |
+      [optional] Region housing the S3 bucket used for input and/or output.
+    string_value: ""
+
+  - name: Cores
+    display_name: Number of cores to allocate.
+    uint_value: 6
+  - name: Memory
+    display_name: Amount of memory to allocate.
+    string_value: 30GiB
