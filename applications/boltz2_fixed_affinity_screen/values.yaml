@@ -26,7 +26,7 @@ values:
     display_category: Input
   - name: Pocket
     display_name: |
-      [optional] Comma seperated list of protein residues that define the desired
+      [optional] Comma separated list of protein residues that define the desired
       binding pocket.
     string_value: ""
     display_category: Input
