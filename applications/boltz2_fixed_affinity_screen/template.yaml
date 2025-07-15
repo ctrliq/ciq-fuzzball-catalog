@@ -166,7 +166,7 @@ jobs:
     requires:
       - setup
     image:
-      uri: docker://community.wave.seqera.io/library/gcc_python_pip_boltz:8cef4eee85e1e314
+      uri: docker://community.wave.seqera.io/library/gcc_pip_python_boltz:7d8711f18a588aad
     cwd: {{ $scratch_mount }}
     resource:
       cpu:
