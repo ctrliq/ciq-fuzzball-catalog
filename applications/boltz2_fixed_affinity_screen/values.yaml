@@ -13,9 +13,9 @@ values:
     string_value: volume://user/ephemeral
     display_category: Storage
 
-  - name: boltz2Container
+  - name: Boltz2Container
     display_name: Container used for boltz2.
-    string_value: docker://community.wave.seqera.io/library/gcc_python_pip_boltz:8cef4eee85e1e314
+    string_value: docker://community.wave.seqera.io/library/gcc_pip_python_boltz:7d8711f18a588aad
     display_category: Container
 
   - name: ProteinSequence
