@@ -22,15 +22,15 @@ jobs:
     command:
       - /bin/sh
       - '-c'
-      - >-
+      - |
         mkdir simcenter-starccm-acoustic-wave-$FB_WORKFLOW_ID;
         cd simcenter-starccm-acoustic-wave-$FB_WORKFLOW_ID;
 
-        cp /StarCCM+VerificationSuite/VerificationData/acousticWave/acousticWave_PlanarWave_final.sim .
+        cp /StarCCM+VerificationSuite/VerificationData/acousticWave/acousticWave_PlanarWave_final.sim .;
 
         export PATH=/opt/Siemens/{{.StarccmBuildNumber}}/STAR-CCM+{{.StarccmBuildNumber}}/star/bin:$PATH;
 
-        starccm+ -podkey {{.Podkey}} -rsh ssh -power -batch -np {{.StarccmCores}} -load acousticWave_PlanarWave_final.sim
+        starccm+ -podkey {{.PodKey}} -rsh ssh -power -batch -np {{.StarccmCores}} -load acousticWave_PlanarWave_final.sim;
     resource:
       cpu:
         cores: {{.StarccmCores}}
