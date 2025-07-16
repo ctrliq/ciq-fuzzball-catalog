@@ -1,0 +1,284 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $data_mount := "/data" }}
+{{- $scratch_mount := "/scratch" }}
+
+{{- $msa := trim .MSAFile }}
+{{- if not $msa }}{{- fail "MSAFile is required" }}{{- end }}
+{{- $template := trim .Template}}
+{{- $compounds := trim .CompoundLibrary }}
+{{- if not $compounds }}{{- fail "CompoundLibrary is required" }}{{- end }}
+{{- $abs_output_path := trim .OutputPath }}
+{{- $run_name := trim .RunName }}
+{{- if not $run_name }}{{- fail "RunName is required" }}{{- end }}
+
+{{- $aws := false }}
+{{- range $i, $v := (list $msa $template $compounds $abs_output_path) }}
+  {{- if (hasPrefix "s3://" $v) }}
+    {{- $aws = true }}
+  {{- end }}
+{{- end }}
+
+# make output_path absolute if it is a local path
+{{- if (and (not (hasPrefix "s3://" $abs_output_path)) (not (hasPrefix $data_mount $abs_output_path))) }}
+  {{- $abs_output_path =  list $data_mount $abs_output_path  | join "/" }}
+{{- end }}
+
+# make boltz cache an absolute path
+{{- $boltz_cache := (default "cache/boltz2" (trim .BoltzCache)) }}
+{{- if (and (not (hasPrefix "s3://" $boltz_cache)) (not (hasPrefix $data_mount $boltz_cache))) }}
+  {{- $boltz_cache =  list $data_mount $boltz_cache  | join "/" }}
+{{- end }}
+
+{{- if $aws }}
+  {{- if not .AWSAccessKeyIdSecret }}{{- fail "AWSAccessKeyIdSecret is required when using S3 for egress or ingress" }}{{- end }}
+  {{- if not .AWSSecretAccessKeySecret }}{{- fail "AWSSecretAccessKeySecret is required when using S3 for egress or ingress" }}{{- end }}
+  {{- if not .AWSRegion }}{{- fail "AWSRegion is required when using S3 for egress or ingress" }}{{- end }}
+{{- end }}
+
+{{- $nsplit := .NSplit }}
+{{- $nconcurrent := .NConcurrent}}
+
+{{- if (gt $nconcurrent $nsplit) }}
+  {{- $nconcurrent = $nsplit }}
+{{- end }}
+{{- if (le $nconcurrent 1) }}
+  {{- $nsplit = 1 }}
+{{- end }}
+
+
+version: v1
+
+volumes:
+  scratch:
+    reference: {{ .ScratchVolume }}
+  data:
+    reference: {{ .DataVolume }}
+
+jobs:
+  setup:
+    image:
+      uri: docker://community.wave.seqera.io/library/pip_pyyaml_boto3_google-cloud-storage_pruned:0e2f4410f52d7676
+    cwd: {{ $scratch_mount }}
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 1GiB
+    mounts:
+      scratch:
+        location: {{ $scratch_mount }}
+      data:
+        location: {{ $data_mount }}
+    env:
+      - BOLTZ_CACHE={{ $boltz_cache }}
+{{- if $aws }}
+      - AWS_ACCESS_KEY_ID={{ trim .AWSAccessKeyIdSecret }}
+      - AWS_SECRET_ACCESS_KEY={{ trim .AWSSecretAccessKeySecret }}
+      - AWS_DEFAULT_REGION={{ trim .AWSRegion }}
+{{- end }}
+    command:
+      - /usr/bin/env
+      - python
+      - "-c"
+      - |
+        import csv
+        import os
+        import sys
+        from urllib.parse import urlparse
+        from smart_open import open
+        import yaml
+        from yaml.representer import SafeRepresenter
+
+        class IndentListDumper(yaml.SafeDumper):
+            def increase_indent(self, flow=False, indentless=False):
+                return super().increase_indent(flow, False)
+
+        def die(message: str):
+            print(f"Error: {message}")
+            sys.exit(1)
+
+        def fetch_file(source: str, dest_dir: str) -> str:
+            if not source:
+                return None
+            parsed = urlparse(source)
+            if parsed.scheme == "":
+                # Local file path
+                if not os.path.exists(source):
+                    die(f"Local file {source} does not exist")
+                return source
+            os.makedirs(dest_dir, exist_ok=True)
+            filename = os.path.basename(parsed.path)
+            dest_path = os.path.abspath(os.path.join(dest_dir, filename))
+
+            # Fetch the file
+            try:
+                with open(source, 'rb') as remote_file, open(dest_path, 'wb') as local_file:
+                    local_file.write(remote_file.read())
+            except Exception as e:
+                die(f"Failed to fetch file {source}: {e}")
+
+            return dest_path
+
+        downloads_dir = "{{ $scratch_mount }}/downloads"
+        template_file = fetch_file("{{ trim .Template }}", downloads_dir)
+        msa_file = fetch_file("{{ trim .MSAFile }}", downloads_dir)
+        compounds_file = fetch_file("{{ trim .CompoundLibrary }}", downloads_dir)
+        nsplit = {{ $nsplit }}
+
+        boltz_input = {
+            "sequences": [
+                  {"protein": {"id": "A", "sequence": "{{ trim .ProteinSequence }}", "msa": msa_file}},
+                  {"ligand": {"id": "B", "smiles": None}},
+            ],
+            "properties": [
+                {"affinity": {"binder": "B"}},
+            ],
+        }
+        if template_file:
+            boltz_input["templates"] = [
+                {"cif": template_file, "chain_id": "A"}
+            ]
+        pocket = "{{ trim .Pocket }}"
+        if pocket:
+            boltz_input["constraints"] = [
+                {"pocket": {"binder": "B", "contacts": [["A", res.strip()] for res in pocket.split(",") if res.strip()]}},
+            ]
+        os.makedirs("inputs", exist_ok=True)
+
+        with open(compounds_file, 'r', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            if not ("id" in reader.fieldnames and "smiles" in reader.fieldnames):
+                die("Compound library must contain 'id' and 'smiles' columns")
+            n = 0
+            for row in reader:
+                n += 1
+                boltz_input["sequences"][1]["ligand"]["smiles"] = row["smiles"]
+                if nsplit > 1:
+                    out_filename = f"inputs/split_{(n % nsplit) + 1}/{row['id']}.yaml"
+                    os.makedirs(os.path.dirname(out_filename), exist_ok=True)
+                else:
+                    out_filename = f"inputs/{row['id']}.yaml"
+                with open(out_filename, 'w', encoding='utf-8') as outfile:
+                    yaml.dump(boltz_input, outfile, Dumper=IndentListDumper, default_flow_style=False, sort_keys=False)
+                print(f"Generated Boltz input for compound {row['id']} in {out_filename}")
+  boltz-predict:
+    requires:
+      - setup
+    image:
+      uri: {{ .Boltz2Container }}
+    cwd: {{ $scratch_mount }}
+    resource:
+      cpu:
+        cores: 4
+        threads: true
+      devices:
+        nvidia.com/gpu: 1
+      memory:
+        size: 18GiB
+{{- if (gt $nconcurrent 1 ) }}
+    task-array:
+      start: 1
+      end: {{ $nsplit }}
+      concurrency: {{ $nconcurrent }}
+{{- end }}
+    policy:
+      timeout:
+        execute: {{ .RunTime }}
+    mounts:
+      scratch:
+        location: {{ $scratch_mount }}
+      data:
+        location: {{ $data_mount }}
+    env:
+      - HOME=/data/home/wresch
+      - BOLTZ_CACHE={{ $boltz_cache }}
+    command:
+      - /bin/bash
+      - "-c"
+      - |
+        lockfile="${BOLTZ_CACHE}.lock"
+        while :; do
+          if mkdir "${lockfile}" 2>/dev/null; then
+            # We got the lock
+            if [[ ! -d "${BOLTZ_CACHE}" ]]; then
+              printf "Downloading model to %s\n" "${BOLTZ_CACHE}"
+              mkdir -p "${BOLTZ_CACHE}"
+              python -c "from pathlib import Path; from boltz.main import download_boltz2; download_boltz2(Path('${BOLTZ_CACHE}'))" || exit 1
+            fi
+            rmdir "${lockfile}"
+            break
+          else
+            # Wait for the lock to be released
+            printf "Waiting for model cache download to complete...\n"
+            sleep 1
+          fi
+        done
+        mkdir -p outputs
+{{- if (gt $nsplit 1) }}
+        boltz predict --out_dir ./outputs inputs/split_${FB_TASK_ID}
+{{- else }}
+        boltz predict --out_dir ./outputs inputs
+{{- end }}
+{{- if $abs_output_path }}
+  teardown:
+    requires:
+      - boltz-predict
+    image:
+      uri: docker://community.wave.seqera.io/library/pip_pyyaml_boto3_google-cloud-storage_pruned:0e2f4410f52d7676
+    cwd: {{ $scratch_mount }}
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 1GiB
+    mounts:
+      scratch:
+        location: {{ $scratch_mount }}
+      data:
+        location: {{ $data_mount }}
+    env:
+{{- if $aws }}
+      - AWS_ACCESS_KEY_ID={{ trim .AWSAccessKeyIdSecret }}
+      - AWS_SECRET_ACCESS_KEY={{ trim .AWSSecretAccessKeySecret }}
+      - AWS_DEFAULT_REGION={{ trim .AWSRegion }}
+{{- end }}
+    command:
+      - /usr/bin/env
+      - python
+      - "-c"
+      - |
+        import os
+        import sys
+        from urllib.parse import urlparse
+        from smart_open import open
+
+        def die(message: str) -> None:
+            print(f"Error: {message}")
+            sys.exit(1)
+
+        def save_file(source: str, dest: str) -> None:
+            if not source:
+                return
+            parsed = urlparse(dest)
+            if parsed.scheme == "":
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+            try:
+                with open(source, 'rb') as temp_file, open(dest, 'wb') as persistent_file:
+                    persistent_file.write(temp_file.read())
+            except Exception as e:
+                die(f"Failed to persist file {source}: {e}")
+
+        boltz_output_dir = "outputs"
+        dest_dir = f"{{ $abs_output_path }}/{{ $run_name }}"
+
+        for root, dirs, files in os.walk(boltz_output_dir):
+            for file in files:
+                source_path = os.path.join(root, file)
+                if not os.path.isfile(source_path):
+                    continue
+                rel_path = os.path.relpath(source_path, boltz_output_dir)
+                dest_path = os.path.join(dest_dir, rel_path)
+                save_file(source_path, dest_path)
+                print(f"Saved {source_path} to {dest_path}")
+{{- end }}
