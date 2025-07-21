@@ -9,6 +9,11 @@ values:
     string_value: "https://www.rcsb.org/fasta/entry/5ZE6"
     display_category: "Input"
 
+  - name: "VolumeType"
+    display_name: "Volume type for data storage, 'ephemeral' or 'persistent'. Note: This application downloads 2.62 TB of reference databases, requiring storage capacity and associated costs, especially for 'persistent' volumes."
+    string_value: "ephemeral"
+    display_category: "Storage"
+
   - name: "OutputPathOptional"
     display_name: "S3 bucket/path for output PDB files (optional)"
     string_value: ""
