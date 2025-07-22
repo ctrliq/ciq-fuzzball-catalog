@@ -15,6 +15,7 @@ jobs:
     cwd: /data
     env:
       - CDLMD_LICENSE_FILE={{.CdlmdLicenseFile}}
+      - STARCCM_POD_KEY={{.StarccmPodKey}}
     image:
       uri: >-
         {{.StarccmContainerURI}}:{{.StarccmVersion}}-{{.StarccmPrecision}}
@@ -36,7 +37,7 @@ jobs:
 
         export PATH=/opt/Siemens/{{.buildVersion}}/STAR-CCM+{{.buildVersion}}/star/bin:$PATH;
 
-        starccm+ -podkey {{.PodKey}} -rsh ssh -power -batch -np {{.StarccmCores}} -load acousticWave_PlanarWave_final.sim;
+        starccm+ -podkey $STARCCM_POD_KEY -rsh ssh -power -batch -np {{.StarccmCores}} -load acousticWave_PlanarWave_final.sim;
     resource:
       cpu:
         cores: {{.StarccmCores}}
