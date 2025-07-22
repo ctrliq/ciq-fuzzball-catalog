@@ -1,5 +1,11 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 
+{{- if eq .StarccmPrecision "double" }}
+  {{- $buildVersion := printf "%s-R8" .StarccmBuildVersion }}
+{{- else }}
+  {{- $buildVersion := .StarccmBuildVersion }}
+{{- end }}
+
 version: v1
 volumes:
   data:
@@ -28,7 +34,7 @@ jobs:
 
         cp /StarCCM+VerificationSuite/VerificationData/acousticWave/acousticWave_PlanarWave_final.sim .;
 
-        export PATH=/opt/Siemens/{{.StarccmBuildNumber}}/STAR-CCM+{{.StarccmBuildNumber}}/star/bin:$PATH;
+        export PATH=/opt/Siemens/{{.buildVersion}}/STAR-CCM+{{.buildVersion}}/star/bin:$PATH;
 
         starccm+ -podkey {{.PodKey}} -rsh ssh -power -batch -np {{.StarccmCores}} -load acousticWave_PlanarWave_final.sim;
     resource:

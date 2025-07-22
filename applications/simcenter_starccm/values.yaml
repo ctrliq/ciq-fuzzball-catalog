@@ -17,7 +17,7 @@ values:
     display_category: "Installation"
   - name: "StarccmBuildNumber"
     display_name: "Build number of Simcenter STAR-CCM+ installation"
-    string_value: "20.04.007-R8"
+    string_value: "20.04.007"
     display_category: "Installation"
   - name: "StarccmContainerURI"
     display_name: "URI of Simcenter STAR-CCM+ container that will be used."
