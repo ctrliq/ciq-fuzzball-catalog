@@ -1,0 +1,615 @@
+
+version: v1
+
+volumes:
+  data_volume:
+    reference: volume://user/{{ .VolumeType }}
+    ingress:
+{{- range $index, $fasta := splitList "," (.InputFastas | toString) }}
+{{- $filename := $fasta | trim | base }}
+      - source:
+          uri: {{ $fasta | trim }}
+        destination:
+          uri: file://alphafold2/input-fastas/{{ $filename }}
+{{- end }}
+{{- if not (empty .OutputPathOptional) }}
+    egress:
+{{- range $index, $fasta := splitList "," (.InputFastas | toString) }}
+{{- $filenameNoExt := $fasta | trim | base | trimSuffix ".fasta" }}
+      - source:
+          uri: file://alphafold2/outputs/{{ $filenameNoExt }}-results.tar.gz
+        destination:
+          uri: {{ $.OutputPathOptional }}/{{ $filenameNoExt }}-results.tar.gz
+          secret: {{ $.SecretNameOptional }}
+{{- end }}
+{{- end }}
+
+jobs:
+  download-params:
+    cwd: /data/alphafold2/params
+    image:
+      uri: docker://p3terx/aria2-pro
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      timeout:
+        execute: 8h0m0s
+    env:
+      - PARAMS_URL=https://storage.googleapis.com/alphafold/alphafold_params_2022-12-06.tar
+      - PARAMS_FILENAME=alphafold_params_2022-12-06.tar
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        #!/bin/sh
+        echo "Starting AlphaFold params download"
+        
+        sync
+        sleep 1
+        if [ -f "params_model_1.npz" ] && [ -f "params_model_5.npz" ]; then
+          echo "Params files already exist, skipping download"
+          exit 0
+        fi
+        
+        echo "Downloading params with aria2c"
+        aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 "${PARAMS_URL}" --dir=.
+        echo "Extracting params with tar"
+        tar --extract --verbose --file="${PARAMS_FILENAME}"
+        rm "${PARAMS_FILENAME}"
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 2GB
+
+  download-bfd:
+    cwd: /data/alphafold2/bfd
+    image:
+      uri: docker://p3terx/aria2-pro
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      timeout:
+        execute: 48h0m0s
+    env:
+      - BFD_FILENAME=bfd_metaclust_clu_complete_id30_c90_final_seq.sorted_opt.tar.gz
+      - BFD_BASE_NAME=bfd_metaclust_clu_complete_id30_c90_final_seq.sorted_opt
+      - BFD_URL=https://storage.googleapis.com/alphafold-databases/casp14_versions/bfd_metaclust_clu_complete_id30_c90_final_seq.sorted_opt.tar.gz
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        #!/bin/sh
+        echo "Starting BFD database download"
+        
+        sync
+        sleep 1
+        if [ -f "${BFD_BASE_NAME}_a3m.ffdata" ] && \
+           [ -f "${BFD_BASE_NAME}_a3m.ffindex" ] && \
+           [ -f "${BFD_BASE_NAME}_cs219.ffdata" ] && \
+           [ -f "${BFD_BASE_NAME}_cs219.ffindex" ] && \
+           [ -f "${BFD_BASE_NAME}_hhm.ffdata" ] && \
+           [ -f "${BFD_BASE_NAME}_hhm.ffindex" ]; then
+          echo "BFD files already exist, skipping download"
+          exit 0
+        fi
+        
+        echo "Downloading BFD with aria2c"
+        aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
+          "$BFD_URL" \
+          --dir=.
+        
+        echo "Extracting BFD with tar"
+        tar --extract --file="$BFD_FILENAME"
+        rm "$BFD_FILENAME"
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 2GB
+
+  download-uniref30:
+    cwd: /data/alphafold2/uniref30
+    image:
+      uri: docker://p3terx/aria2-pro
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      timeout:
+        execute: 24h0m0s
+    env:
+      - UNIREF30_FILENAME=UniRef30_2021_03.tar.gz
+      - UNIREF30_URL=https://storage.googleapis.com/alphafold-databases/v2.3/UniRef30_2021_03.tar.gz
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        #!/bin/sh
+        echo "Starting UniRef30 database download"
+        
+        sync
+        sleep 1
+        if [ -f "UniRef30_2021_03_a3m.ffdata" ] && [ -f "UniRef30_2021_03_a3m.ffindex" ] && \
+           [ -f "UniRef30_2021_03_cs219.ffdata" ] && [ -f "UniRef30_2021_03_cs219.ffindex" ] && \
+           [ -f "UniRef30_2021_03_hhm.ffdata" ] && [ -f "UniRef30_2021_03_hhm.ffindex" ] && \
+           [ -f "UniRef30_2021_03.md5sums" ]; then
+          echo "UniRef30 files already exist, skipping download"
+          exit 0
+        fi
+        
+        echo "Downloading UniRef30 with aria2c"
+        aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
+          "$UNIREF30_URL" \
+          --dir=.
+        
+        echo "Extracting UniRef30 with tar"
+        tar --extract --verbose --file="$UNIREF30_FILENAME"
+        rm "$UNIREF30_FILENAME"
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 2GB
+
+  download-uniref90:
+    cwd: /data/alphafold2/uniref90
+    image:
+      uri: docker://p3terx/aria2-pro
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      timeout:
+        execute: 24h0m0s
+    env:
+      - UNIREF90_URL=https://ftp.ebi.ac.uk/pub/databases/uniprot/uniref/uniref90/uniref90.fasta.gz
+      - UNIREF90_GZ_FILE=uniref90.fasta.gz
+      - UNIREF90_FASTA_FILE=uniref90.fasta
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        #!/bin/sh
+        echo "Starting UniRef90 database download"
+        
+        sync
+        sleep 1
+        if [ -f "${UNIREF90_FASTA_FILE}" ]; then
+          echo "UniRef90 file already exists, skipping download"
+          exit 0
+        fi
+        
+        echo "Downloading UniRef90 with aria2c"
+        aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 "${UNIREF90_URL}" --dir=.
+        echo "Extracting UniRef90 with gunzip"
+        gunzip "${UNIREF90_GZ_FILE}"
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 2GB
+
+{{- if eq .ModelPreset "multimer" }}
+  download-uniprot-trembl:
+    cwd: /data/alphafold2/uniprot
+    env:
+      - TREMBL_FILENAME=uniprot_trembl.fasta.gz
+      - TREMBL_URL=https://ftp.ebi.ac.uk/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_trembl.fasta.gz
+    image:
+      uri: docker://p3terx/aria2-pro
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      timeout:
+        execute: 24h0m0s
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        #!/bin/sh
+        echo "Starting UniProt TrEMBL download"
+        
+        sync
+        sleep 1
+        if [ -f "uniprot.fasta" ]; then
+          echo "Final uniprot.fasta already exists, skipping download"
+          exit 0
+        fi
+        
+        if [ -f "uniprot_trembl.fasta" ]; then
+          echo "uniprot_trembl.fasta already exists, skipping download"
+          exit 0
+        fi
+        
+        echo "Downloading UniProt TrEMBL with aria2c"
+        aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
+          "$TREMBL_URL" \
+          --dir=.
+        
+        echo "Extracting UniProt TrEMBL with gunzip"
+        gunzip "$TREMBL_FILENAME"
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 2GB
+
+  download-uniprot-sprot:
+    cwd: /data/alphafold2/uniprot
+    env:
+      - SPROT_FILENAME=uniprot_sprot.fasta.gz
+      - SPROT_URL=https://ftp.ebi.ac.uk/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
+    image:
+      uri: docker://p3terx/aria2-pro
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      timeout:
+        execute: 24h0m0s
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        #!/bin/sh
+        echo "Starting UniProt SwissProt download"
+        
+        sync
+        sleep 1
+        if [ -f "uniprot.fasta" ]; then
+          echo "Final uniprot.fasta already exists, skipping download"
+          exit 0
+        fi
+        
+        if [ -f "uniprot_sprot.fasta" ]; then
+          echo "uniprot_sprot.fasta already exists, skipping download"
+          exit 0
+        fi
+        
+        echo "Downloading UniProt SwissProt with aria2c"
+        aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
+          "$SPROT_URL" \
+          --dir=.
+        
+        echo "Extracting UniProt SwissProt with gunzip"
+        gunzip "$SPROT_FILENAME"
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 2GB
+
+  download-uniprot-concatenate:
+    requires:
+      - download-uniprot-sprot
+      - download-uniprot-trembl
+    cwd: /data/alphafold2/uniprot
+    image:
+      uri: docker://p3terx/aria2-pro
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      timeout:
+        execute: 24h0m0s
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        #!/bin/sh
+        echo "Starting UniProt concatenation"
+        
+        sync
+        sleep 1
+        if [ -f "uniprot.fasta" ]; then
+          echo "Final uniprot.fasta already exists, skipping concatenation"
+          exit 0
+        fi
+        
+        cat uniprot_sprot.fasta >> uniprot_trembl.fasta
+        mv uniprot_trembl.fasta uniprot.fasta
+        rm uniprot_sprot.fasta
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 2GB
+{{- end }}
+
+  download-mgnify:
+    cwd: /data/alphafold2/mgnify
+    image:
+      uri: docker://p3terx/aria2-pro
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      retry:
+        attempts: 2
+      timeout:
+        execute: 8h0m0s
+    env:
+      - MGNIFY_FILENAME=mgy_clusters_2022_05.fa.gz
+      - MGNIFY_EXTRACTED=mgy_clusters_2022_05.fa
+      - MGNIFY_URL=https://storage.googleapis.com/alphafold-databases/v2.3/mgy_clusters_2022_05.fa.gz
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        #!/bin/sh
+        echo "Starting MGnify database download"
+        
+        sync
+        sleep 1
+        if [ -f "$MGNIFY_EXTRACTED" ]; then
+          echo "MGnify file already exists, skipping download"
+          exit 0
+        fi
+        
+        echo "Downloading MGnify with aria2c"
+        aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
+          "$MGNIFY_URL" \
+          --dir=.
+        
+        echo "Extracting MGnify with gunzip"
+        gunzip "$MGNIFY_FILENAME"
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 2GB
+
+{{- if eq .ModelPreset "monomer" }}
+  download-pdb70:
+    cwd: /data/alphafold2/pdb70
+    image:
+      uri: docker://p3terx/aria2-pro
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      retry:
+        attempts: 2
+      timeout:
+        execute: 8h0m0s
+    env:
+      - PDB70_FILENAME=pdb70_from_mmcif_200401.tar.gz
+      - PDB70_EXTRACTED_DIR=pdb70_from_mmcif_200401
+      - PDB70_URL=http://wwwuser.gwdg.de/~compbiol/data/hhsuite/databases/hhsuite_dbs/old-releases/pdb70_from_mmcif_200401.tar.gz
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        #!/bin/sh
+        echo "Starting PDB70 database download"
+        
+        sync
+        sleep 1
+        if [ -f "pdb70_a3m.ffdata" ] && [ -f "pdb70_a3m.ffindex" ] && [ -f "pdb70_hhm.ffdata" ] && [ -f "pdb70_hhm.ffindex" ]; then
+          echo "PDB70 files already exist, skipping download"
+          exit 0
+        fi
+        
+        echo "Downloading PDB70 with aria2c"
+        aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
+          "$PDB70_URL" \
+          --dir=.
+        
+        echo "Extracting PDB70 with tar"
+        tar --extract --verbose --file="$PDB70_FILENAME"
+        rm "$PDB70_FILENAME"
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 2GB
+{{- end }}
+
+{{- if eq .ModelPreset "multimer" }}
+  download-pdb-seqres:
+    cwd: /data/alphafold2/pdb_seqres
+    env:
+      - SEQRES_FILE=pdb_seqres.txt
+      - SEQRES_URL=https://files.rcsb.org/pub/pdb/derived_data/pdb_seqres.txt.gz
+    image:
+      uri: docker://p3terx/aria2-pro
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      retry:
+        attempts: 2
+      timeout:
+        execute: 8h0m0s
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        #!/bin/sh
+        echo "Starting PDB seqres download"
+        
+        sync
+        sleep 1
+        if [ -f "$SEQRES_FILE" ] && grep -q 'mol:protein' "$SEQRES_FILE"; then
+          echo "Valid PDB seqres file already exists, skipping download"
+          exit 0
+        fi
+        
+        echo "Downloading PDB seqres with aria2c"
+        aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
+          "$SEQRES_URL" \
+          --dir=.
+        
+        echo "Extracting PDB seqres with gunzip"
+        gunzip pdb_seqres.txt.gz
+        
+        grep -A 1 '>.* mol:protein' "$SEQRES_FILE" | grep -v '^--$' > "${SEQRES_FILE}_filtered"
+        mv "${SEQRES_FILE}_filtered" "$SEQRES_FILE"
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 2GB
+{{- end }}
+
+  download-pdb-mmcif:
+    cwd: /data/alphafold2/pdb-mmcif
+    image:
+      uri: docker://eeacms/rsync
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      retry:
+        attempts: 2
+      timeout:
+        execute: 12h0m0s
+    env:
+      - RAW_DIR=/data/alphafold2/pdb-mmcif/raw
+      - MMCIF_DIR=/data/alphafold2/pdb-mmcif/mmcif-files
+      - RSYNC_URL=rsync.rcsb.org::ftp_data/structures/divided/mmCIF/
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        #!/bin/sh
+        echo "Starting PDB mmCIF download"
+        
+        sync
+        sleep 1
+        if [ -d "$MMCIF_DIR" ]; then
+          file_count=$(ls -1A "$MMCIF_DIR" 2>/dev/null | wc -l)
+          if [ "$file_count" -ge 236963 ]; then
+            exit 0
+          fi
+        fi
+        
+        mkdir -p "$RAW_DIR" "$MMCIF_DIR"
+        
+        echo "Syncing PDB mmCIF with rsync"
+        rsync --recursive --links --perms --times --ignore-existing \
+          --compress --info=progress2 --delete --port=33444 \
+          "$RSYNC_URL" "$RAW_DIR"
+        
+        echo "Extracting CIF files with gunzip"
+        find "$RAW_DIR" -type f -name "*.gz" -exec gunzip {} +
+        find "$RAW_DIR" -name "*.cif" -exec mv {} "$MMCIF_DIR/" \;
+        find "$RAW_DIR" -type d -empty -delete
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 2GB
+
+  download-pdb-obsolete:
+    cwd: /data/alphafold2/pdb-mmcif
+    image:
+      uri: docker://p3terx/aria2-pro
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      retry:
+        attempts: 2
+      timeout:
+        execute: 1h0m0s
+    env:
+      - OBSOLETE_FILE=obsolete.dat
+      - OBSOLETE_URL=https://files.wwpdb.org/pub/pdb/data/status/obsolete.dat
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        #!/bin/sh
+        echo "Starting PDB obsolete file download"
+        
+        sync
+        sleep 1
+        if [ -f "$OBSOLETE_FILE" ] && [ -s "$OBSOLETE_FILE" ]; then
+          echo "Obsolete file already exists and is not empty, skipping download"
+          exit 0
+        fi
+        
+        echo "Downloading obsolete file with aria2c"
+        aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
+          "$OBSOLETE_URL" \
+          --dir=.
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 1GB
+
+  alphafold2-predict:
+    requires:
+      - download-params
+      - download-bfd
+      - download-uniref30
+      - download-uniref90
+{{- if eq .ModelPreset "multimer" }}
+      - download-uniprot-concatenate
+{{- end }}
+      - download-mgnify
+{{- if eq .ModelPreset "monomer" }}
+      - download-pdb70
+{{- end }}
+{{- if eq .ModelPreset "multimer" }}
+      - download-pdb-seqres
+{{- end }}
+      - download-pdb-mmcif
+      - download-pdb-obsolete
+    cwd: /data/alphafold2
+    image:
+      uri: docker://unlhcc/alphafold:latest
+    mounts:
+      data_volume:
+        location: /data
+    policy:
+      timeout:
+        execute: {{ $timeoutFastas := splitList "," (.InputFastas | toString) }}{{- $fastaCount := len $timeoutFastas }}{{- $baseHours := 24 }}{{- $additionalHours := mul (sub $fastaCount 1) 8 }}{{- $totalHours := add $baseHours $additionalHours }}{{ $totalHours }}h0m0s
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        python /app/alphafold/run_alphafold.py \
+        --fasta_paths={{- range $index, $fasta := splitList "," (.InputFastas | toString) }}{{- if $index }},{{- end }}/data/alphafold2/input-fastas/{{ $fasta | trim | base }}{{- end }} \
+        --max_template_date=2022-01-01 \
+        --data_dir=/data/alphafold2 \
+        --output_dir=/data/alphafold2/outputs \
+        --model_preset={{ .ModelPreset }} \
+        --bfd_database_path=/data/alphafold2/bfd/bfd_metaclust_clu_complete_id30_c90_final_seq.sorted_opt \
+        --uniref30_database_path=/data/alphafold2/uniref30/UniRef30_2021_03 \
+        --uniref90_database_path=/data/alphafold2/uniref90/uniref90.fasta \
+        --mgnify_database_path=/data/alphafold2/mgnify/mgy_clusters_2022_05.fa \
+{{- if eq .ModelPreset "monomer" }}
+        --pdb70_database_path=/data/alphafold2/pdb70/pdb70 \
+{{- end }}
+{{- if eq .ModelPreset "multimer" }}
+        --uniprot_database_path=/data/alphafold2/uniprot/uniprot.fasta \
+        --pdb_seqres_database_path=/data/alphafold2/pdb_seqres/pdb_seqres.txt \
+{{- end }}
+        --template_mmcif_dir=/data/alphafold2/pdb-mmcif/mmcif-files \
+        --obsolete_pdbs_path=/data/alphafold2/pdb-mmcif/obsolete.dat \
+        --use_gpu_relax=true \
+        --db_preset=full_dbs \
+        --use_precomputed_msas=true
+
+{{- range $index, $fasta := splitList "," (.InputFastas | toString) }}
+{{- $filenameNoExt := $fasta | trim | base | trimSuffix ".fasta" }}
+        if [ -d "outputs/{{ $filenameNoExt }}" ]; then
+          tar -czf outputs/{{ $filenameNoExt }}-results.tar.gz -C outputs {{ $filenameNoExt }}/
+        fi
+{{- end }}
+    resource:
+      cpu:
+        cores: 4
+        threads: true
+        affinity: NUMA
+      memory:
+        size: 35GB
+      devices:
+        nvidia.com/gpu: 1

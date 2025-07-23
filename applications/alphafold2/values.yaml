@@ -1,0 +1,25 @@
+values:
+  - name: "ModelPreset"
+    display_name: "AlphaFold model type. 'monomer' for single protein chains or 'multimer' for protein complexes"
+    string_value: "monomer"
+    display_category: "Model Configuration"
+
+  - name: "InputFastas"
+    display_name: "Comma-separated list of input FASTA file URLs/paths. Supports s3://, https://, and http:// (e.g., 's3://bucket/protein1.fasta,https://example.com/protein2.fasta')"
+    string_value: "https://www.rcsb.org/fasta/entry/5ZE6"
+    display_category: "Input"
+
+  - name: "VolumeType"
+    display_name: "Volume type for data storage, 'ephemeral' or 'persistent'. Note: This application downloads 2.62 TB of reference databases, requiring storage capacity and associated costs, especially for 'persistent' volumes."
+    string_value: "ephemeral"
+    display_category: "Storage"
+
+  - name: "OutputPathOptional"
+    display_name: "S3 bucket/path for output PDB files (optional)"
+    string_value: ""
+    display_category: "Output"
+
+  - name: "SecretNameOptional"
+    display_name: "Secret name for S3 credentials (optional, required for private S3 resources)"
+    string_value: ""
+    display_category: "Authentication"
