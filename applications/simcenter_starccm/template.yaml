@@ -1,0 +1,45 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $buildNumber := .StarccmBuildNumber }}
+{{- if eq .StarccmPrecision "double" }}
+  {{- $buildNumber = printf "%s-R8" .StarccmBuildNumber }}
+{{- end }}
+
+version: v1
+volumes:
+  data:
+    reference: {{.Volume}}
+jobs:
+  starccm-acoustic-wave-simulation:
+    cwd: /data
+    env:
+      - CDLMD_LICENSE_FILE={{.CdlmdLicenseFile}}
+      - STARCCM_POD_KEY={{.StarccmPodKey}}
+    image:
+      uri: >-
+        {{.StarccmContainerURI}}:{{.StarccmVersion}}-{{.StarccmPrecision}}
+      secret: {{.StarccmContainerOciSecret}}
+    mounts:
+      data:
+        location: /data
+    policy:
+      timeout:
+        execute: 30m0s
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        mkdir simcenter-starccm-acoustic-wave-$FB_WORKFLOW_ID;
+        cd simcenter-starccm-acoustic-wave-$FB_WORKFLOW_ID;
+
+        cp /StarCCM+VerificationSuite/VerificationData/acousticWave/acousticWave_PlanarWave_final.sim .;
+
+        export PATH=/opt/Siemens/{{ $buildNumber }}/STAR-CCM+{{ $buildNumber }}/star/bin:$PATH;
+
+        starccm+ -podkey $STARCCM_POD_KEY -rsh ssh -power -batch -np {{.StarccmCores}} -load acousticWave_PlanarWave_final.sim;
+    resource:
+      cpu:
+        cores: {{.StarccmCores}}
+        affinity: NUMA
+      memory:
+        size: {{.StarccmMemory}}
