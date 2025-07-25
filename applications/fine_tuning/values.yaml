@@ -1,16 +1,16 @@
 values:
   # Script Configuration
   - name: GitHubRepoUrl
-    display_name: GitHub Repository URL
-    string_value: "https://raw.githubusercontent.com/your-username/your-repo/main"
+    display_name: URL to the Git repository where your workflow scripts are stored
+    string_value: "https://raw.githubusercontent.com/GodloveD/ciq-fine-tune/main"
 
   - name: DataPrepScript
     display_name: Data Preparation Script
-    string_value: "test.py"
+    string_value: "data_prep.py"
 
   - name: ModelLoadScript
     display_name: Model Loading Script
-    string_value: "model_loading.py"
+    string_value: "model_load.py"
 
   - name: FineTuningScript
     display_name: Fine-tuning Script
@@ -22,7 +22,7 @@ values:
 
   # Container and Resource Configuration
   - name: ContainerImage
-    display_name: Container Image
+    display_name: URL to the container image that will provide the environment for all jobs
     string_value: "docker://huggingface/transformers-pytorch-gpu:latest"
 
   - name: CpuCores
@@ -32,6 +32,10 @@ values:
   - name: MemoryGb
     display_name: Memory (GB)
     uint_value: 32
+
+  - name: GPUNumber
+    display_name: Number of GPUs to use for fine tuning (within a single node)
+    uint_value: 1
 
   # Model Configuration
   - name: ModelName

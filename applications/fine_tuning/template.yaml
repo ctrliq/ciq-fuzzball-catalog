@@ -86,9 +86,11 @@ jobs:
       - model-loading
     resource:
       cpu:
-        cores: {{ .CpuCores }}
+        cores: 4 # current resource definition requires 4 cores for a GPU node
       memory:
         size: {{ .MemoryGb }}GB
+      devices:
+        nvidia.com/gpu: {{ .GPUNumber }}
   model-testing:
     command:
       - python3
