@@ -1,0 +1,118 @@
+version: v1
+volumes:
+  scratch:
+    ingress:
+      - destination:
+          uri: file://{{ .DataPrepScript }}
+        source:
+          uri: {{ .GitHubRepoUrl }}/{{ .DataPrepScript }}
+      - destination:
+          uri: file://{{ .ModelLoadScript }}
+        source:
+          uri: {{ .GitHubRepoUrl }}/{{ .ModelLoadScript }}
+      - destination:
+          uri: file://{{ .FineTuningScript }}
+        source:
+          uri: {{ .GitHubRepoUrl }}/{{ .FineTuningScript }}
+      - destination:
+          uri: file://{{ .TestingScript }}
+        source:
+          uri: {{ .GitHubRepoUrl }}/{{ .TestingScript }}
+    reference: {{ .VolumeReference }}
+
+jobs:
+  data-preparation:
+    command:
+      - python3
+      - /scratch/{{ .DataPrepScript }}
+      - '--cpu_cores'
+      - '{{ .CpuCores }}'
+      - '--memory_gb'
+      - '{{ .MemoryGb }}'
+    cwd: /scratch
+    image:
+      uri: {{ .ContainerImage }}
+    mounts:
+      scratch:
+        location: /scratch
+    resource:
+      cpu:
+        cores: {{ .CpuCores }}
+      memory:
+        size: {{ .MemoryGb }}GB
+
+  model-loading:
+    command:
+      - python3
+      - /scratch/{{ .ModelLoadScript }}
+      - '--cpu_cores'
+      - '{{ .CpuCores }}'
+      - '--memory_gb'
+      - '{{ .MemoryGb }}'
+      - '--model_name'
+      - '{{ .ModelName }}'
+    cwd: /scratch
+    image:
+      uri: {{ .ContainerImage }}
+    mounts:
+      scratch:
+        location: /scratch
+    requires:
+      - data-preparation
+    resource:
+      cpu:
+        cores: {{ .CpuCores }}
+      memory:
+        size: {{ .MemoryGb }}GB
+
+  fine-tuning:
+    command:
+      - python3
+      - /scratch/{{ .FineTuningScript }}
+      - '--cpu_cores'
+      - '{{ .CpuCores }}'
+      - '--memory_gb'
+      - '{{ .MemoryGb }}'
+    cwd: /scratch
+    image:
+      uri: {{ .ContainerImage }}
+    mounts:
+      scratch:
+        location: /scratch
+    policy:
+      timeout:
+        execute: {{ .TrainingTimeout }}
+    requires:
+      - model-loading
+    resource:
+      cpu:
+        cores: 4 # current resource definition requires 4 cores for a GPU node
+      memory:
+        size: {{ .MemoryGb }}GB
+      devices:
+        nvidia.com/gpu: {{ .GPUNumber }}
+  model-testing:
+    command:
+      - python3
+      - /scratch/{{ .TestingScript }}
+      - '--cpu_cores'
+      - '{{ .CpuCores }}'
+      - '--memory_gb'
+      - '{{ .MemoryGb }}'
+      - '--original_model'
+      - '{{ .ModelName }}'
+      - '--finetuned_model_path'
+      - '/scratch/fine_tuned_model'
+    cwd: /scratch
+    image:
+      uri: {{ .ContainerImage }}
+    mounts:
+      scratch:
+        location: /scratch
+    requires:
+      - fine-tuning
+    resource:
+      cpu:
+        cores: {{ .CpuCores }}
+      memory:
+        size: {{ .MemoryGb }}GB
