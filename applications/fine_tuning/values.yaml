@@ -25,6 +25,10 @@ values:
     display_name: URL to the container image that will provide the environment for all jobs
     string_value: "docker://huggingface/transformers-pytorch-gpu:latest"
 
+  - name: VolumeReference
+    display_name: Volume Reference for the scratch directory
+    string_value: "volume://user/ephemeral/scratch"
+
   - name: CpuCores
     display_name: CPU Cores
     uint_value: 16

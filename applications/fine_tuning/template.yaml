@@ -18,7 +18,7 @@ volumes:
           uri: file://{{ .TestingScript }}
         source:
           uri: {{ .GitHubRepoUrl }}/{{ .TestingScript }}
-    reference: volume://user/ephemeral/scratch
+    reference: {{ .VolumeReference }}
 
 jobs:
   data-preparation:
