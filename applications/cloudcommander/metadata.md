@@ -5,5 +5,5 @@ name: "Fuzzball Cloud Commander File Browser"
 category: "UTILITIES"
 ---
 This application will start an instance of [Cloud
-Commander](https://cloudcmd.io/), a file browser which allows to to manage,
+Commander](https://cloudcmd.io/), a file browser which allows you to manage,
 preview, edit, download, and upload files in your Fuzzball persistent storage volumes.
