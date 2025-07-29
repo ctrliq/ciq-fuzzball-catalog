@@ -1,0 +1,54 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+{{- $volumes := splitList "," .Volumes }}
+
+version: v1
+volumes:
+{{- range $i, $v := $volumes }}
+  vol-{{ $i }}:
+    reference: {{$v}}
+{{- end }}
+jobs:
+  cloud-commander:
+    image:
+      uri: docker://coderaiser/cloudcmd:latest-alpine
+{{- if (trim .Volumes) }}
+    mounts:
+  {{- range $i, $v := $volumes }}
+      vol-{{ $i }}:
+        location: /fuzzball/{{ trimPrefix "volume://" $v }}
+  {{- end }}
+{{- end }}
+    cwd: /fuzzball
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        port=$(( (RANDOM % 1000) + 8000 ))
+        user="$(cat /dev/urandom | tr -d -c 'a-zA-Z0-9' | head -c10)"
+        pw="$(cat /dev/urandom | tr -d -c 'a-zA-Z0-9' | head -c10)"
+        echo
+        echo "Access cloud commander requires port-forwarding via the CLI:"
+        echo
+        echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} cloud-commander $port:$port"
+        echo
+        echo "Then navigate to http://${user}:${pw}@localhost:$port"
+        echo
+        /usr/src/app/bin/cloudcmd.mjs \
+          --port $port \
+          --name "Fuzzball Cloud Commander" \
+          --keys-panel \
+          --config-dialog \
+          --terminal \
+          --no-console \
+          --username "$user" \
+          --password "$pw" \
+          --auth 2>&1 > /dev/null
+
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 6GiB
+    policy:
+      timeout:
+        execute: {{.Timeout}}

@@ -1,0 +1,9 @@
+values:
+  - name: "Volumes"
+    display_name: "Comma separated list of volumes to mount"
+    string_value: "volume://user/persistent"
+    display_category: "Storage"
+  - name: "Timeout"
+    display_name: "Execution timeout"
+    string_value: "2h"
+    display_category: "General"
