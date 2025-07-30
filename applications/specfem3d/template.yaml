@@ -1,0 +1,139 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+volumes:
+  scratch:
+    egress:
+      - source:
+          uri: file://results.tar.gz
+        destination:
+          uri: {{.ResultsDestination}}
+          secret: {{.S3Secret}}
+    reference: volume://user/ephemeral
+jobs:
+  fetch-project:
+    cwd: /mnt
+    image:
+      uri: {{.GitContainer}}
+    mounts:
+      scratch:
+        location: /mnt
+    policy:
+      timeout:
+        execute: {{.FetchTimeout}}
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        echo "Cloning example project from remote repo.."
+        git clone {{.ProjectRepo}}
+        echo "Complete"
+  mesh-generation:
+    cwd: /mnt/{{.ProjectDir}}
+    image:
+      uri: {{.SpecfemContainer}}
+    mounts:
+      scratch:
+        location: /mnt
+    policy:
+      timeout:
+        execute: {{.MeshTimeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - >
+        NPROC=`grep ^NPROC DATA/Par_file | grep -v -E '^[[:space:]]*#' | cut -d
+        = -f 2`
+
+        BASEMPIDIR=`grep ^LOCAL_PATH DATA/Par_file | cut -d = -f 2 `
+
+        mkdir -p $BASEMPIDIR
+
+
+
+        echo "decomposing mesh..."
+
+        echo
+
+        xdecompose_mesh $NPROC ./MESH-default $BASEMPIDIR
+
+        echo "Complete"
+    requires:
+      - fetch-project
+    resource:
+      cpu:
+        cores: {{.MeshCores}}
+      memory:
+        size: {{.MeshMemory}}
+  db-generation:
+    cwd: /mnt/{{.ProjectDir}}
+    image:
+      uri: {{.SpecfemContainer}}
+    mounts:
+      scratch:
+        location: /mnt
+    policy:
+      timeout:
+        execute: {{.DbTimeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - >
+        NPROC=`grep ^NPROC DATA/Par_file | grep -v -E '^[[:space:]]*#' | cut -d
+        = -f 2`
+
+        echo "Running database generation on $NPROC processors..."
+
+        mpirun -np $NPROC xgenerate_databases
+
+        echo "Database generation complete."
+    requires:
+      - mesh-generation
+    resource:
+      cpu:
+        cores: {{.DbCores}}
+      memory:
+        size: {{.DbMemory}}
+  forward-simulation:
+    cwd: /mnt/{{.ProjectDir}}
+    image:
+      uri: {{.SpecfemContainer}}
+    mounts:
+      scratch:
+        location: /mnt
+    policy:
+      timeout:
+        execute: {{.SimTimeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - >
+        NPROC=`grep ^NPROC DATA/Par_file | grep -v -E '^[[:space:]]*#' | cut -d
+        = -f 2`
+
+
+        echo "Running forward simulation on $NPROC processors..."
+
+        echo "This may take several minutes..."
+
+        mpirun -np $NPROC xspecfem3D
+
+        if [[ $? -ne 0 ]]; then exit 1; fi
+
+        echo "Simulation completed!" 
+
+        echo  
+
+        echo "see results in directory: $(pwd)/OUTPUT_FILES/"
+
+        tar -czvf /mnt/results.tar.gz ./OUTPUT_FILES/
+
+        echo 
+
+        echo "Results have also been archived at /mnt/results.tar.gz"
+    requires:
+      - db-generation
+    resource:
+      cpu:
+        cores: {{.SimCores}}
+      memory:
+        size: {{.SimMemory}}
