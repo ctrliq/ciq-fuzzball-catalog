@@ -25,7 +25,7 @@ jobs:
       - |
         port=$(( (RANDOM % 1000) + 8000 ))
         echo
-        echo "Access cloud commander requires port-forwarding via the CLI:"
+        echo "Access to cloud commander requires port-forwarding via the CLI:"
         echo
         echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} cloud-commander $port:$port"
         echo
