@@ -1,0 +1,14 @@
+values:
+  - name: "Volumes"
+    display_name: |
+      Comma separated list of volumes to mount. These are Fuzzball volume references
+      such as `volume://user/persistent`. By default the example volume would be available
+      as `user/persistent` in the file browser. If you would like to use a custom path for
+      a particular volume in the file browser, you can specify it like this:
+      `volume://user/persistent:/custom/path`. The leading slash is optional.
+    string_value: "volume://user/persistent:data"
+    display_category: "Storage"
+  - name: "Timeout"
+    display_name: "Execution timeout"
+    string_value: "2h"
+    display_category: "General"
