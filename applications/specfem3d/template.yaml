@@ -2,18 +2,22 @@
 version: v1
 volumes:
   scratch:
+    {{- if .ResultsDestination }}
     egress:
       - source:
           uri: file://results.tar.gz
         destination:
           uri: {{.ResultsDestination}}
+          {{- if .S3Secret }}
           secret: {{.S3Secret}}
+          {{- end }}
+    {{- end }}
     reference: volume://user/ephemeral
 jobs:
   fetch-project:
     cwd: /mnt
     image:
-      uri: {{.GitContainer}}
+      uri: {{.FetchProjectContainer}}
     mounts:
       scratch:
         location: /mnt
@@ -28,7 +32,7 @@ jobs:
         git clone {{.ProjectRepo}}
         echo "Complete"
   mesh-generation:
-    cwd: /mnt/{{.ProjectDir}}
+    cwd: /mnt/{{.ProjectRepo | base | trimSuffix ".git"}}
     image:
       uri: {{.SpecfemContainer}}
     mounts:
@@ -41,20 +45,15 @@ jobs:
       - /bin/bash
       - '-c'
       - >
-        NPROC=`grep ^NPROC DATA/Par_file | grep -v -E '^[[:space:]]*#' | cut -d
-        = -f 2`
-
         BASEMPIDIR=`grep ^LOCAL_PATH DATA/Par_file | cut -d = -f 2 `
 
         mkdir -p $BASEMPIDIR
-
-
 
         echo "decomposing mesh..."
 
         echo
 
-        xdecompose_mesh $NPROC ./MESH-default $BASEMPIDIR
+        xdecompose_mesh {{.MeshCores}} ./MESH-default $BASEMPIDIR
 
         echo "Complete"
     requires:
@@ -65,7 +64,7 @@ jobs:
       memory:
         size: {{.MeshMemory}}
   db-generation:
-    cwd: /mnt/{{.ProjectDir}}
+    cwd: /mnt/{{.ProjectRepo | base | trimSuffix ".git"}}
     image:
       uri: {{.SpecfemContainer}}
     mounts:
@@ -78,12 +77,9 @@ jobs:
       - /bin/bash
       - '-c'
       - >
-        NPROC=`grep ^NPROC DATA/Par_file | grep -v -E '^[[:space:]]*#' | cut -d
-        = -f 2`
+        echo "Running database generation..."
 
-        echo "Running database generation on $NPROC processors..."
-
-        mpirun -np $NPROC xgenerate_databases
+        mpirun -np {{.DbCores}} xgenerate_databases
 
         echo "Database generation complete."
     requires:
@@ -94,7 +90,7 @@ jobs:
       memory:
         size: {{.DbMemory}}
   forward-simulation:
-    cwd: /mnt/{{.ProjectDir}}
+    cwd: /mnt/{{.ProjectRepo | base | trimSuffix ".git"}}
     image:
       uri: {{.SpecfemContainer}}
     mounts:
@@ -107,15 +103,11 @@ jobs:
       - /bin/bash
       - '-c'
       - >
-        NPROC=`grep ^NPROC DATA/Par_file | grep -v -E '^[[:space:]]*#' | cut -d
-        = -f 2`
-
-
-        echo "Running forward simulation on $NPROC processors..."
+        echo "Running forward simulation..."
 
         echo "This may take several minutes..."
 
-        mpirun -np $NPROC xspecfem3D
+        mpirun -np {{.SimCores}} xspecfem3D
 
         if [[ $? -ne 0 ]]; then exit 1; fi
 
