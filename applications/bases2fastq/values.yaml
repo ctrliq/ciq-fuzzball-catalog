@@ -71,3 +71,7 @@ values:
     display_name: Amount of memory to allocate for bases2fastq.
     string_value: 30GiB
     display_category: Resources
+  - name: Timeout
+    display_name: Maximum runtime of the bases2fastq job.
+    string_value: 6h
+    display_category: Resources
