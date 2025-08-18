@@ -55,6 +55,9 @@ jobs:
         threads: true
       memory:
         size: {{ .Memory }}
+    policy:
+      timeout:
+        execute: {{ .Timeout }}
     mounts:
       scratch:
         location: {{ $scratch_mount }}
