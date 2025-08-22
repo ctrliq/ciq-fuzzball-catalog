@@ -1,0 +1,78 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+{{- $root := "/fuzzball" }}
+{{- $volumes := splitList "," .Volumes }}
+{{- if eq (len $volumes) 0 }}
+  {{-  fail "At least one volume has to be specified in the Volumes field." }}
+{{- end }}
+{{- $username := trim .Username }}
+{{- $password := trim .Password }}
+{{- $protocol := trim .Protocol }}
+
+version: v1
+volumes:
+{{- range $i, $v := $volumes }}
+  vol-{{ $i }}:
+  {{- $parts := (splitList ":" $v) }}
+  {{- if eq (len $parts) 2 }}
+    reference: {{ $v }}
+  {{- else if eq (len $parts) 3 }}
+    reference: {{ index $parts 0 }}:{{ index $parts 1 }}
+  {{- else }}
+    {{- fail (printf "Invalid volume reference: %s" $v) }}
+  {{- end }}
+{{- end }}
+jobs:
+  {{ $protocol }}:
+    image:
+      uri: {{ .Container }}
+    mounts:
+{{- range $i, $v := $volumes }}
+  {{- $parts := splitList ":" $v }}
+  {{- if eq (len $parts) 2 }}
+      vol-{{ $i }}:
+        location: {{ $root }}/{{ trimPrefix "volume://" $v }}
+  {{- else }}
+      vol-{{ $i }}:
+        location: {{ $root }}/{{ index $parts 2 | trimPrefix "/" }}
+  {{- end}}
+{{- end }}
+
+    cwd: {{ $root }}
+{{- if (and $username $password) }}
+    env:
+      - RCLONE_USER={{ $username }}
+      - RCLONE_PASS={{ $password }}
+{{- else }}
+  {{- fail "Username and password are required" }}
+{{- end }}
+    script: |
+      #!/bin/sh
+      cat <<__EOF__
+      Access to the {{ .Protocol }} server requires port-forwarding via the CLI:
+        # fuzzball workflow port-forward ${FB_WORKFLOW_ID} {{ .Protocol }} {{ .Port }}:{{ .Port }}
+      In your client program of choice use 'localhost' as the host and {{ .Port }} as the port
+      --------------------------------------------------------------------------------------------
+      __EOF__
+{{- if eq $protocol "sftp" }}
+      rclone serve sftp \
+        --addr localhost:{{ .Port }} \
+        --cache-dir "$(mktemp -d)" \
+        --log-level INFO \
+        {{ $root }}
+{{- else if eq $protocol "webdav" }}
+      rclone serve webdav \
+        --addr localhost:{{ .Port }} \
+        --cache-dir "$(mktemp -d)" \
+        --log-level INFO \
+        {{ $root }}
+{{- else }}
+  {{- fail "only sftp and webdav protocols are supported" }}
+{{- end }}
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 6GiB
+    policy:
+      timeout:
+        execute: {{ .Timeout }}
