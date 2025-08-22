@@ -24,17 +24,17 @@ volumes:
 jobs:
   {{ $protocol }}:
     image:
-      uri: docker://rclone/rclone:latest
+      uri: {{ .Container }}
     mounts:
 {{- range $i, $v := $volumes }}
   {{- $parts := splitList ":" $v }}
   {{- if eq (len $parts) 2 }}
       vol-{{ $i }}:
         location: {{ $root }}/{{ trimPrefix "volume://" $v }}
-   {{- else }}
+  {{- else }}
       vol-{{ $i }}:
         location: {{ $root }}/{{ index $parts 2 | trimPrefix "/" }}
-   {{- end}}
+  {{- end}}
 {{- end }}
 
     cwd: {{ $root }}
@@ -75,4 +75,4 @@ jobs:
         size: 6GiB
     policy:
       timeout:
-        execute: {{.Timeout}}
+        execute: {{ .Timeout }}
