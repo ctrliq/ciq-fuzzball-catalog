@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This repository defines application for use with Fuzzball (see the [Fuzzball
+This repository defines applications for use with Fuzzball (see the [Fuzzball
 documentation](https://ui.stable.fuzzball.ciq.dev/docs/). Applications are
 defined in the `applications` directory. Each application is housed in a subdirectory
 of `applications`. The required files for each application are
