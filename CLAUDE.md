@@ -13,7 +13,7 @@ of `applications`. The required files for each application are
   otherwise a free form description of the application.
 - `template.yaml`: Fuzzball workflow files as described in
   https://ui.stable.fuzzball.ciq.dev/docs/appendices/workflow-syntax/ and contain
-  golang template strings augmented with function from the
+  golang template strings augmented with functions from the
   [slim-sprig](https://github.com/go-task/slim-sprig) library.
 - `values.yaml`: Describe values used to template the `template.yaml` files.
 
