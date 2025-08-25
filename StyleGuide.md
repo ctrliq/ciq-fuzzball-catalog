@@ -12,3 +12,5 @@ Workflows should follow these suggestions.
 - The heavy analytical jobs in a workflow should have configurable runtime limits.
 - Use strings with explicit units for memory and runtime specifications (e.g. "8GiB", "30m")
 - Interactive services listening on a port should listen on localhost for security.
+- Use consistent template variable formatting without spaces: `{{.Variable}}`
+  rather than `{{ .Variable }}`
