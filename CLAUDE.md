@@ -9,7 +9,7 @@ documentation](https://ui.stable.fuzzball.ciq.dev/docs/). Applications are
 defined in the `applications` directory. Each application is housed in a subdirectory
 of `applications`. The required files for each application are
 
-- `metadata.md`: Contain structured information in the front matter and are
+- `metadata.md`: Contains structured information in the front matter and are
   otherwise a free form description of the application.
 - `template.yaml`: Fuzzball workflow files as described in
   https://ui.stable.fuzzball.ciq.dev/docs/appendices/workflow-syntax/ and contain
