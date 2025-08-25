@@ -1,0 +1,131 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+volumes:
+  scratch:
+    {{- if .ResultsDestination }}
+    egress:
+      - source:
+          uri: file://results.tar.gz
+        destination:
+          uri: {{.ResultsDestination}}
+          {{- if .S3Secret }}
+          secret: {{.S3Secret}}
+          {{- end }}
+    {{- end }}
+    reference: volume://user/ephemeral
+jobs:
+  fetch-project:
+    cwd: /mnt
+    image:
+      uri: {{.FetchProjectContainer}}
+    mounts:
+      scratch:
+        location: /mnt
+    policy:
+      timeout:
+        execute: {{.FetchTimeout}}
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        echo "Cloning example project from remote repo.."
+        git clone {{.ProjectRepo}}
+        echo "Complete"
+  mesh-generation:
+    cwd: /mnt/{{.ProjectRepo | base | trimSuffix ".git"}}
+    image:
+      uri: {{.SpecfemContainer}}
+    mounts:
+      scratch:
+        location: /mnt
+    policy:
+      timeout:
+        execute: {{.MeshTimeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - >
+        BASEMPIDIR=`grep ^LOCAL_PATH DATA/Par_file | cut -d = -f 2 `
+
+        mkdir -p $BASEMPIDIR
+
+        echo "decomposing mesh..."
+
+        echo
+
+        xdecompose_mesh {{.MeshCores}} ./MESH-default $BASEMPIDIR
+
+        echo "Complete"
+    requires:
+      - fetch-project
+    resource:
+      cpu:
+        cores: {{.MeshCores}}
+      memory:
+        size: {{.MeshMemory}}
+  db-generation:
+    cwd: /mnt/{{.ProjectRepo | base | trimSuffix ".git"}}
+    image:
+      uri: {{.SpecfemContainer}}
+    mounts:
+      scratch:
+        location: /mnt
+    policy:
+      timeout:
+        execute: {{.DbTimeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - >
+        echo "Running database generation..."
+
+        mpirun -np {{.DbCores}} xgenerate_databases
+
+        echo "Database generation complete."
+    requires:
+      - mesh-generation
+    resource:
+      cpu:
+        cores: {{.DbCores}}
+      memory:
+        size: {{.DbMemory}}
+  forward-simulation:
+    cwd: /mnt/{{.ProjectRepo | base | trimSuffix ".git"}}
+    image:
+      uri: {{.SpecfemContainer}}
+    mounts:
+      scratch:
+        location: /mnt
+    policy:
+      timeout:
+        execute: {{.SimTimeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - >
+        echo "Running forward simulation..."
+
+        echo "This may take several minutes..."
+
+        mpirun -np {{.SimCores}} xspecfem3D
+
+        if [[ $? -ne 0 ]]; then exit 1; fi
+
+        echo "Simulation completed!" 
+
+        echo  
+
+        echo "see results in directory: $(pwd)/OUTPUT_FILES/"
+
+        tar -czvf /mnt/results.tar.gz ./OUTPUT_FILES/
+
+        echo 
+
+        echo "Results have also been archived at /mnt/results.tar.gz"
+    requires:
+      - db-generation
+    resource:
+      cpu:
+        cores: {{.SimCores}}
+      memory:
+        size: {{.SimMemory}}
