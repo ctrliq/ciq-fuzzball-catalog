@@ -10,5 +10,5 @@ Workflows should follow these suggestions.
   from running on systems that do not enable hardware threads.
 - Use explicit tags in container URIs for reproducibility.
 - The heavy analytical jobs in a workflow should have configurable runtime limits.
-- Use strings with explicity units for memory and runtime specifications (e.g. "8GiB", "30m")
+- Use strings with explicit units for memory and runtime specifications (e.g. "8GiB", "30m")
 - Interactive services listening on a port should listen on localhost for security.
