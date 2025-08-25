@@ -26,7 +26,7 @@ Running
 fuzzball application render-template <INPUT_FILE> <VALUES_FILE>
 ```
 
-with a `temlate.yaml` and a `values.yaml` file should yield a valid Fuzzfile workflow.
+with a `template.yaml` and a `values.yaml` file should yield a valid Fuzzfile workflow.
 
 
 ## Style guide
