@@ -1,0 +1,38 @@
+values:
+  - name: Container
+    display_name: RClone container to use
+    string_value: docker://rclone/rclone:1.70.3
+    display_category: Container
+
+  - name: Volumes
+    display_name: |
+      Comma separated list of volumes to mount. These are Fuzzball volume references
+      such as `volume://user/persistent`. By default the example volume would be available
+      as `fuzzball/persistent` in WebDAV. If you would like to use a custom path for
+      a particular volume, you can specify it like this:
+      `volume://user/persistent:/custom/path`. The leading slash is optional.
+    string_value: volume://user/persistent:data
+    display_category: Storage
+
+  - name: Protocol
+    display_name: |
+      Protocol to serve data with. Currently webdav and sftp are supported
+    string_value: sftp
+    display_category: Protocol
+  - name: Port
+    display_name: Server Port to serve the selected protocol on
+    uint_value: 8080
+    display_category: Network
+  - name: Username
+    display_name: Login username (environment secret)
+    string_value: secret://user/RCLONE_USER
+    display_category: Authentication
+  - name: Password
+    display_name: Login password (environment secret)
+    string_value: secret://user/RCLONE_PASS
+    display_category: Authentication
+
+  - name: Timeout
+    display_name: Execution timeout
+    string_value: 2h
+    display_category: General
