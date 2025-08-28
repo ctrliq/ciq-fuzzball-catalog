@@ -17,7 +17,7 @@ of `applications`. The required files for each application are as follows:
   [slim-sprig](https://github.com/go-task/slim-sprig) library.
 - `values.yaml`: Describe values used to template the `template.yaml` files.
 
-located at the top level of the directory. Other (arbitrary, optional) files may
+These files must be located at the top level of the directory. Other (arbitrary, optional) files may
 be included as well.
 
 Running
