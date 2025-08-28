@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This repository defines applications for use with Fuzzball (see the [Fuzzball
 documentation](https://ui.stable.fuzzball.ciq.dev/docs/)). Applications are
 defined in the `applications` directory. Each application is housed in a subdirectory
-of `applications`. The required files for each application are
+of `applications`. The required files for each application are as follows:
 
 - `metadata.md`: Contains structured information in the front matter and are
   otherwise a free form description of the application.
