@@ -20,13 +20,10 @@ of `applications`. The required files for each application are as follows:
 These files must be located at the top level of the directory. Other (arbitrary, optional) files may
 be included as well.
 
-Running
+Running the following command with a `template.yaml` and a `values.yaml` file should yield a valid workflow template.
 
 ```sh
 fuzzball application render-template <INPUT_FILE> <VALUES_FILE>
-```
-
-with a `template.yaml` and a `values.yaml` file should yield a valid Fuzzfile workflow.
 
 
 ## Style guide
