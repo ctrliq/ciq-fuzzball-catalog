@@ -17,10 +17,11 @@ of `applications`. The required files for each application are as follows:
   [slim-sprig](https://github.com/go-task/slim-sprig) library.
 - `values.yaml`: Describe values used to template the `template.yaml` files.
 
-These files must be located at the top level of the directory. Other (arbitrary, optional) files may
-be included as well.
+These files must be located at the top level of the directory. Other (arbitrary,
+optional) files may be included as well.
 
-Running the following command with a `template.yaml` and a `values.yaml` file should yield a valid workflow template.
+Running the following command with a `template.yaml` and a `values.yaml` file
+should yield a valid workflow template.
 
 ```sh
 fuzzball application render-template <INPUT_FILE> <VALUES_FILE>
@@ -28,6 +29,12 @@ fuzzball application render-template <INPUT_FILE> <VALUES_FILE>
 
 ## Style guide
 - Application templates should follow a style consistent with existing templates
+  - bwa_alignment
+  - specfrm3d
+  - blast
+  - gromacs_gpu
+  - openfoam_motorbike
+  and the [style guide](StyleGuide.md).
 
 ## Branches
 See the [README.md](README.md) file for details on how branches are structured.
