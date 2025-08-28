@@ -1,5 +1,9 @@
 # macos hidden files
 .DS_Store
 
-# local python environments
+# python
 .venv
+.pytest_cache
+
+# other
+.claude
