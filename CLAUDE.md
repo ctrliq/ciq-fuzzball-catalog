@@ -28,13 +28,14 @@ fuzzball application render-template <INPUT_FILE> <VALUES_FILE>
 
 
 ## Style guide
-- Application templates should follow a style consistent with existing templates
+- Application templates should follow a style consistent with the existing
+  templates listed below and the [style guide](StyleGuide.md).
   - bwa_alignment
   - specfrm3d
   - blast
   - gromacs_gpu
   - openfoam_motorbike
-  and the [style guide](StyleGuide.md).
+
 
 ## Branches
 See the [README.md](README.md) file for details on how branches are structured.
