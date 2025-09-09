@@ -1,0 +1,168 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+volumes:
+  scratch:
+    {{- if .ResultsDestination }}
+    egress:
+      - source:
+          uri: file://{{.OutputArchiveName}}
+        destination:
+          uri: {{.ResultsDestination}}
+          {{- if .S3Secret }}
+          secret: {{.S3Secret}}
+          {{- end }}
+    {{- end }}
+    ingress:
+      - source:
+          uri: {{.GeogDataArchive}}
+        destination:
+          uri: file://{{.GeogDataFilename}}
+      - source:
+          uri: {{.WeatherDataArchive}}
+        destination:
+          uri: file://{{.WeatherDataFilename}}
+      - source:
+          uri: {{.NamelistInput}}
+        destination:
+          uri: file://namelist.input
+      - source:
+          uri: {{.NamelistWPS}}
+        destination:
+          uri: file://namelist.wps
+    reference: volume://user/ephemeral
+jobs:
+  geogrid:
+    cwd: /project
+    image:
+      uri: {{.WRFContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.GeogridTimeout}}
+    script: |
+      #! /bin/bash
+      echo "Unpacking the geography data {{.GeogDataFilename}} ..."
+      tar --use-compress-program="pigz" -xf {{.GeogDataFilename}}
+      /wrf/WPS/geogrid.exe
+
+    resource:
+      cpu:
+        cores: {{.GeogridCores}}
+        threads: true
+        affinity: SOCKET
+      memory:
+        size: {{.GeogridMemory}}
+  ungrib:
+    cwd: /project
+    image:
+      uri: {{.WRFContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.UngribTimeout}}
+    script: |
+      #! /bin/bash
+      echo "Unpacking the weather data {{.WeatherDataFilename}} ..."
+      tar -xzf {{.WeatherDataFilename}}
+      echo "Linking the GRIB data and GFS Vtable.."
+      ln -s /wrf/WPS/ungrib/Variable_Tables/Vtable.GFS Vtable
+      /wrf/WPS/link_grib.csh ./matthew/fnl*
+      /wrf/WPS/ungrib.exe
+      echo "Linking all required run-time files for WRF"
+      cp -ns /wrf/WRF/run/* .
+      echo "Done"
+    resource:
+      cpu:
+        cores: {{.UngribCores}}
+      memory:
+        size: {{.UngribMemory}}
+  metgrid:
+    cwd: /project
+    image:
+      uri: {{.WRFContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.MetgridTimeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - /wrf/WPS/metgrid.exe
+    requires:
+      - ungrib
+      - geogrid
+    resource:
+      cpu:
+        cores: {{.MetgridCores}}
+      memory:
+        size: {{.MetgridMemory}}
+  real:
+    cwd: /project
+    image:
+      uri: {{.WRFContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.RealTimeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - /wrf/WRF/run/real.exe
+    requires:
+      - metgrid
+    resource:
+      cpu:
+        cores: {{.RealCores}}
+      memory:
+        size: {{.RealMemory}}
+    multinode:
+      nodes: {{.RealNodes}}
+      implementation: openmpi
+  wrf:
+    cwd: /project
+    image:
+      uri: {{.WRFContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.WRFTimeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - /wrf/WRF/run/wrf.exe
+    requires:
+      - real
+    resource:
+      cpu:
+        cores: {{.WRFCores}}
+      memory:
+        size: {{.WRFMemory}}
+    multinode:
+      nodes: {{.WRFNodes}}
+      implementation: openmpi
+  zip:
+    cwd: /project
+    image:
+      uri: {{.WRFContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.ZipTimeout}}
+    command:
+      - /bin/sh
+      - '-c'
+      - tar -cvzf {{.OutputArchiveName}} wrfout*
+    requires:
+      - wrf
