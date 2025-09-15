@@ -2,8 +2,9 @@
 version: v1
 volumes:
   scratch:
-    {{- if .ResultsDestination }}
+    {{- if or .ResultsDestination .VideoDestination }}
     egress:
+      {{- if .ResultsDestination }}
       - source:
           uri: file://{{.OutputArchiveName}}
         destination:
@@ -11,6 +12,16 @@ volumes:
           {{- if .S3Secret }}
           secret: {{.S3Secret}}
           {{- end }}
+      {{- end }}
+      {{- if .VideoDestination }}
+      - source:
+          uri: file://{{.VideoOutputName}}
+        destination:
+          uri: {{.VideoDestination}}
+          {{- if .S3Secret }}
+          secret: {{.S3Secret}}
+          {{- end }}
+      {{- end }}
     {{- end }}
     ingress:
       - source:
@@ -29,6 +40,10 @@ volumes:
           uri: {{.NamelistWPS}}
         destination:
           uri: file://namelist.wps
+      - source:
+          uri: {{.AnimationScript}}
+        destination:
+          uri: file://{{.AnimationScriptFilename}}
     reference: volume://user/ephemeral
 jobs:
   geogrid:
@@ -50,8 +65,6 @@ jobs:
     resource:
       cpu:
         cores: {{.GeogridCores}}
-        threads: true
-        affinity: SOCKET
       memory:
         size: {{.GeogridMemory}}
   ungrib:
@@ -150,6 +163,33 @@ jobs:
     multinode:
       nodes: {{.WRFNodes}}
       implementation: openmpi
+  animate:
+    cwd: /project
+    image:
+      uri: {{.AnimationContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.AnimationTimeout}}
+    script: |
+      #! /bin/bash
+      source /opt/conda/etc/profile.d/conda.sh
+      conda activate wrf-anim
+      echo "Starting Python script to generate frames..."
+      python /project/{{.AnimationScriptFilename}}
+      echo "Starting ffmpeg to create video..."
+      ffmpeg -framerate 2 -pattern_type glob -i 'animation_frames/frame_*.png' -vf "scale=2302:-2" -c:v libx264 -pix_fmt yuv420p {{.VideoOutputName}}
+      echo "Script finished successfully."
+      ls
+    resource:
+      cpu:
+        cores: {{.AnimationCores}}
+      memory:
+        size: {{.AnimationMemory}}
+    requires:
+      - wrf
   zip:
     cwd: /project
     image:
