@@ -79,11 +79,21 @@ jobs:
         execute: {{.UngribTimeout}}
     script: |
       #! /bin/bash
+      set -euo pipefail
       echo "Unpacking the weather data {{.WeatherDataFilename}} ..."
       tar -xzf {{.WeatherDataFilename}}
-      echo "Linking the GRIB data and GFS Vtable.."
-      ln -s /wrf/WPS/ungrib/Variable_Tables/Vtable.GFS Vtable
-      /wrf/WPS/link_grib.csh ./matthew/fnl*
+      echo "Selecting appropriate Vtable (GFS default)."
+      ln -sf /wrf/WPS/ungrib/Variable_Tables/Vtable.GFS Vtable
+      echo "Auto-detecting GRIB input files..."
+      # Find a representative GRIB / fnl file (supports various naming conventions)
+      first_file=$(find . -maxdepth 3 -type f \( -name 'fnl*' -o -name 'GFS*' -o -name '*.grib2' -o -name '*.grib' -o -name '*.grb2' \) | head -n 1 || true)
+      if [[ -z "$first_file" ]]; then
+        echo "ERROR: No GRIB files found after extracting {{.WeatherDataFilename}}" >&2
+        exit 1
+      fi
+      grib_dir=$(dirname "$first_file")
+      echo "Detected GRIB directory: $grib_dir"
+      /wrf/WPS/link_grib.csh $grib_dir/*
       /wrf/WPS/ungrib.exe
       echo "Linking all required run-time files for WRF"
       cp -ns /wrf/WRF/run/* .
@@ -163,6 +173,7 @@ jobs:
     multinode:
       nodes: {{.WRFNodes}}
       implementation: openmpi
+  {{- if .VideoDestination }}
   animate:
     cwd: /project
     image:
@@ -190,6 +201,8 @@ jobs:
         size: {{.AnimationMemory}}
     requires:
       - wrf
+  {{- end }}
+  {{- if .ResultsDestination }}
   zip:
     cwd: /project
     image:
@@ -206,3 +219,4 @@ jobs:
       - tar -cvzf {{.OutputArchiveName}} wrfout*
     requires:
       - wrf
+  {{- end }}
