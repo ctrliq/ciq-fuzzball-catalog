@@ -175,6 +175,10 @@ jobs:
         nvidia.com/gpu: 1
       memory:
         size: 18GiB
+{{- if .GPUModel }}
+      annotations:
+        nvidia.com/gpu.model: {{ .GPUModel }}
+{{- end }}
 {{- if (gt $nconcurrent 1 ) }}
     task-array:
       start: 1

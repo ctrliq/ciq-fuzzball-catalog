@@ -127,3 +127,7 @@ values:
     display_name: Amount of memory to allocate.
     string_value: 30GiB
     display_category: Resources
+  - name: GPUModel
+    display_name: NVIDIA GPU model to use.
+    string_value: "NVIDIA L4"
+    display_category: Resources
