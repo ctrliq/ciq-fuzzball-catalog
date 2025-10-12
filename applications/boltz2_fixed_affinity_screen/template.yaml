@@ -171,7 +171,6 @@ jobs:
     resource:
       cpu:
         cores: 4
-        threads: true
       devices:
         nvidia.com/gpu: 1
       memory:
@@ -193,6 +192,7 @@ jobs:
     env:
       - HOME=/data/home/wresch
       - BOLTZ_CACHE={{ $boltz_cache }}
+      - PYTHONWARNINGS="ignore::FutureWarning"
     command:
       - /bin/bash
       - "-c"

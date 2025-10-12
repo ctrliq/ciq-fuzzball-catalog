@@ -15,7 +15,7 @@ values:
 
   - name: Boltz2Container
     display_name: Container used for boltz2.
-    string_value: docker://community.wave.seqera.io/library/gcc_pip_python_boltz:7d8711f18a588aad
+    string_value: docker://wave.seqera.io/wt/48ac82a02f35/wave/build:boltz2--f00f1273528f0305
     display_category: Container
 
   - name: ProteinSequence
