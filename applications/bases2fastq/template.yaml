@@ -52,7 +52,6 @@ jobs:
       cpu:
         affinity: NUMA
         cores: {{ .Cores }}
-        threads: true
       memory:
         size: {{ .Memory }}
     policy:
@@ -99,4 +98,4 @@ jobs:
             fail "'$FASTQ' already exists; This should not happen. Processing skipped, no files deleted. Resolve manually"
         fi
 
-        bases2fastq --num-threads $(( {{ .Cores }} * 2 )) "$BASES" "$FASTQ"
+        bases2fastq --num-threads {{ .Cores }} "$BASES" "$FASTQ"

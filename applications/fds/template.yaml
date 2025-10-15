@@ -28,7 +28,6 @@ jobs:
     resource:
       cpu:
         cores: {{.Cores}}
-        threads: true
         affinity: SOCKET
       memory:
         size: {{.Memory}}
