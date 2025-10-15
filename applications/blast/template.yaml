@@ -60,7 +60,6 @@ jobs:
     resource:
       cpu:
         cores: 1
-        threads: true
       memory:
         size: 4GiB
     policy:

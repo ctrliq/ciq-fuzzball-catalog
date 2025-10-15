@@ -44,14 +44,14 @@ jobs:
       - |
         #!/bin/sh
         echo "Starting AlphaFold params download"
-        
+
         sync
         sleep 1
         if [ -f "params_model_1.npz" ] && [ -f "params_model_5.npz" ]; then
           echo "Params files already exist, skipping download"
           exit 0
         fi
-        
+
         echo "Downloading params with aria2c"
         aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 "${PARAMS_URL}" --dir=.
         echo "Extracting params with tar"
@@ -83,7 +83,7 @@ jobs:
       - |
         #!/bin/sh
         echo "Starting BFD database download"
-        
+
         sync
         sleep 1
         if [ -f "${BFD_BASE_NAME}_a3m.ffdata" ] && \
@@ -95,12 +95,12 @@ jobs:
           echo "BFD files already exist, skipping download"
           exit 0
         fi
-        
+
         echo "Downloading BFD with aria2c"
         aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
           "$BFD_URL" \
           --dir=.
-        
+
         echo "Extracting BFD with tar"
         tar --extract --file="$BFD_FILENAME"
         rm "$BFD_FILENAME"
@@ -129,7 +129,7 @@ jobs:
       - |
         #!/bin/sh
         echo "Starting UniRef30 database download"
-        
+
         sync
         sleep 1
         if [ -f "UniRef30_2021_03_a3m.ffdata" ] && [ -f "UniRef30_2021_03_a3m.ffindex" ] && \
@@ -139,12 +139,12 @@ jobs:
           echo "UniRef30 files already exist, skipping download"
           exit 0
         fi
-        
+
         echo "Downloading UniRef30 with aria2c"
         aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
           "$UNIREF30_URL" \
           --dir=.
-        
+
         echo "Extracting UniRef30 with tar"
         tar --extract --verbose --file="$UNIREF30_FILENAME"
         rm "$UNIREF30_FILENAME"
@@ -174,14 +174,14 @@ jobs:
       - |
         #!/bin/sh
         echo "Starting UniRef90 database download"
-        
+
         sync
         sleep 1
         if [ -f "${UNIREF90_FASTA_FILE}" ]; then
           echo "UniRef90 file already exists, skipping download"
           exit 0
         fi
-        
+
         echo "Downloading UniRef90 with aria2c"
         aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 "${UNIREF90_URL}" --dir=.
         echo "Extracting UniRef90 with gunzip"
@@ -212,24 +212,24 @@ jobs:
       - |
         #!/bin/sh
         echo "Starting UniProt TrEMBL download"
-        
+
         sync
         sleep 1
         if [ -f "uniprot.fasta" ]; then
           echo "Final uniprot.fasta already exists, skipping download"
           exit 0
         fi
-        
+
         if [ -f "uniprot_trembl.fasta" ]; then
           echo "uniprot_trembl.fasta already exists, skipping download"
           exit 0
         fi
-        
+
         echo "Downloading UniProt TrEMBL with aria2c"
         aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
           "$TREMBL_URL" \
           --dir=.
-        
+
         echo "Extracting UniProt TrEMBL with gunzip"
         gunzip "$TREMBL_FILENAME"
     resource:
@@ -257,24 +257,24 @@ jobs:
       - |
         #!/bin/sh
         echo "Starting UniProt SwissProt download"
-        
+
         sync
         sleep 1
         if [ -f "uniprot.fasta" ]; then
           echo "Final uniprot.fasta already exists, skipping download"
           exit 0
         fi
-        
+
         if [ -f "uniprot_sprot.fasta" ]; then
           echo "uniprot_sprot.fasta already exists, skipping download"
           exit 0
         fi
-        
+
         echo "Downloading UniProt SwissProt with aria2c"
         aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
           "$SPROT_URL" \
           --dir=.
-        
+
         echo "Extracting UniProt SwissProt with gunzip"
         gunzip "$SPROT_FILENAME"
     resource:
@@ -302,14 +302,14 @@ jobs:
       - |
         #!/bin/sh
         echo "Starting UniProt concatenation"
-        
+
         sync
         sleep 1
         if [ -f "uniprot.fasta" ]; then
           echo "Final uniprot.fasta already exists, skipping concatenation"
           exit 0
         fi
-        
+
         cat uniprot_sprot.fasta >> uniprot_trembl.fasta
         mv uniprot_trembl.fasta uniprot.fasta
         rm uniprot_sprot.fasta
@@ -342,19 +342,19 @@ jobs:
       - |
         #!/bin/sh
         echo "Starting MGnify database download"
-        
+
         sync
         sleep 1
         if [ -f "$MGNIFY_EXTRACTED" ]; then
           echo "MGnify file already exists, skipping download"
           exit 0
         fi
-        
+
         echo "Downloading MGnify with aria2c"
         aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
           "$MGNIFY_URL" \
           --dir=.
-        
+
         echo "Extracting MGnify with gunzip"
         gunzip "$MGNIFY_FILENAME"
     resource:
@@ -386,19 +386,19 @@ jobs:
       - |
         #!/bin/sh
         echo "Starting PDB70 database download"
-        
+
         sync
         sleep 1
         if [ -f "pdb70_a3m.ffdata" ] && [ -f "pdb70_a3m.ffindex" ] && [ -f "pdb70_hhm.ffdata" ] && [ -f "pdb70_hhm.ffindex" ]; then
           echo "PDB70 files already exist, skipping download"
           exit 0
         fi
-        
+
         echo "Downloading PDB70 with aria2c"
         aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
           "$PDB70_URL" \
           --dir=.
-        
+
         echo "Extracting PDB70 with tar"
         tar --extract --verbose --file="$PDB70_FILENAME"
         rm "$PDB70_FILENAME"
@@ -431,22 +431,22 @@ jobs:
       - |
         #!/bin/sh
         echo "Starting PDB seqres download"
-        
+
         sync
         sleep 1
         if [ -f "$SEQRES_FILE" ] && grep -q 'mol:protein' "$SEQRES_FILE"; then
           echo "Valid PDB seqres file already exists, skipping download"
           exit 0
         fi
-        
+
         echo "Downloading PDB seqres with aria2c"
         aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
           "$SEQRES_URL" \
           --dir=.
-        
+
         echo "Extracting PDB seqres with gunzip"
         gunzip pdb_seqres.txt.gz
-        
+
         grep -A 1 '>.* mol:protein' "$SEQRES_FILE" | grep -v '^--$' > "${SEQRES_FILE}_filtered"
         mv "${SEQRES_FILE}_filtered" "$SEQRES_FILE"
     resource:
@@ -478,7 +478,7 @@ jobs:
       - |
         #!/bin/sh
         echo "Starting PDB mmCIF download"
-        
+
         sync
         sleep 1
         if [ -d "$MMCIF_DIR" ]; then
@@ -487,14 +487,14 @@ jobs:
             exit 0
           fi
         fi
-        
+
         mkdir -p "$RAW_DIR" "$MMCIF_DIR"
-        
+
         echo "Syncing PDB mmCIF with rsync"
         rsync --recursive --links --perms --times --ignore-existing \
           --compress --info=progress2 --delete --port=33444 \
           "$RSYNC_URL" "$RAW_DIR"
-        
+
         echo "Extracting CIF files with gunzip"
         find "$RAW_DIR" -type f -name "*.gz" -exec gunzip {} +
         find "$RAW_DIR" -name "*.cif" -exec mv {} "$MMCIF_DIR/" \;
@@ -526,14 +526,14 @@ jobs:
       - |
         #!/bin/sh
         echo "Starting PDB obsolete file download"
-        
+
         sync
         sleep 1
         if [ -f "$OBSOLETE_FILE" ] && [ -s "$OBSOLETE_FILE" ]; then
           echo "Obsolete file already exists and is not empty, skipping download"
           exit 0
         fi
-        
+
         echo "Downloading obsolete file with aria2c"
         aria2c --auto-file-renaming=false --conditional-get=true --max-connection-per-server=4 --split=4 \
           "$OBSOLETE_URL" \
@@ -607,7 +607,6 @@ jobs:
     resource:
       cpu:
         cores: 4
-        threads: true
         affinity: NUMA
       memory:
         size: 35GB
