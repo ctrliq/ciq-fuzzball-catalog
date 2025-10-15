@@ -1,0 +1,222 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+volumes:
+  scratch:
+    {{- if or .ResultsDestination .VideoDestination }}
+    egress:
+      {{- if .ResultsDestination }}
+      - source:
+          uri: file://{{.OutputArchiveName}}
+        destination:
+          uri: {{.ResultsDestination}}
+          {{- if .S3Secret }}
+          secret: {{.S3Secret}}
+          {{- end }}
+      {{- end }}
+      {{- if .VideoDestination }}
+      - source:
+          uri: file://{{.VideoOutputName}}
+        destination:
+          uri: {{.VideoDestination}}
+          {{- if .S3Secret }}
+          secret: {{.S3Secret}}
+          {{- end }}
+      {{- end }}
+    {{- end }}
+    ingress:
+      - source:
+          uri: {{.GeogDataArchive}}
+        destination:
+          uri: file://{{.GeogDataFilename}}
+      - source:
+          uri: {{.WeatherDataArchive}}
+        destination:
+          uri: file://{{.WeatherDataFilename}}
+      - source:
+          uri: {{.NamelistInput}}
+        destination:
+          uri: file://namelist.input
+      - source:
+          uri: {{.NamelistWPS}}
+        destination:
+          uri: file://namelist.wps
+      - source:
+          uri: {{.AnimationScript}}
+        destination:
+          uri: file://{{.AnimationScriptFilename}}
+    reference: volume://user/ephemeral
+jobs:
+  geogrid:
+    cwd: /project
+    image:
+      uri: {{.WRFContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.GeogridTimeout}}
+    script: |
+      #! /bin/bash
+      echo "Unpacking the geography data {{.GeogDataFilename}} ..."
+      tar --use-compress-program="pigz" -xf {{.GeogDataFilename}}
+      /wrf/WPS/geogrid.exe
+
+    resource:
+      cpu:
+        cores: {{.GeogridCores}}
+      memory:
+        size: {{.GeogridMemory}}
+  ungrib:
+    cwd: /project
+    image:
+      uri: {{.WRFContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.UngribTimeout}}
+    script: |
+      #! /bin/bash
+      set -euo pipefail
+      echo "Unpacking the weather data {{.WeatherDataFilename}} ..."
+      tar -xzf {{.WeatherDataFilename}}
+      echo "Selecting appropriate Vtable (GFS default)."
+      ln -sf /wrf/WPS/ungrib/Variable_Tables/Vtable.GFS Vtable
+      echo "Auto-detecting GRIB input files..."
+      # Find a representative GRIB / fnl file (supports various naming conventions)
+      first_file=$(find . -maxdepth 3 -type f \( -name 'fnl*' -o -name 'GFS*' -o -name '*.grib2' -o -name '*.grib' -o -name '*.grb2' \) | head -n 1 || true)
+      if [[ -z "$first_file" ]]; then
+        echo "ERROR: No GRIB files found after extracting {{.WeatherDataFilename}}" >&2
+        exit 1
+      fi
+      grib_dir=$(dirname "$first_file")
+      echo "Detected GRIB directory: $grib_dir"
+      /wrf/WPS/link_grib.csh $grib_dir/*
+      /wrf/WPS/ungrib.exe
+      echo "Linking all required run-time files for WRF"
+      cp -ns /wrf/WRF/run/* .
+      echo "Done"
+    resource:
+      cpu:
+        cores: {{.UngribCores}}
+      memory:
+        size: {{.UngribMemory}}
+  metgrid:
+    cwd: /project
+    image:
+      uri: {{.WRFContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.MetgridTimeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - /wrf/WPS/metgrid.exe
+    requires:
+      - ungrib
+      - geogrid
+    resource:
+      cpu:
+        cores: {{.MetgridCores}}
+      memory:
+        size: {{.MetgridMemory}}
+  real:
+    cwd: /project
+    image:
+      uri: {{.WRFContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.RealTimeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - /wrf/WRF/run/real.exe
+    requires:
+      - metgrid
+    resource:
+      cpu:
+        cores: {{.RealCores}}
+      memory:
+        size: {{.RealMemory}}
+    multinode:
+      nodes: {{.RealNodes}}
+      implementation: openmpi
+  wrf:
+    cwd: /project
+    image:
+      uri: {{.WRFContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.WRFTimeout}}
+    command:
+      - /bin/bash
+      - '-c'
+      - /wrf/WRF/run/wrf.exe
+    requires:
+      - real
+    resource:
+      cpu:
+        cores: {{.WRFCores}}
+      memory:
+        size: {{.WRFMemory}}
+    multinode:
+      nodes: {{.WRFNodes}}
+      implementation: openmpi
+  {{- if .VideoDestination }}
+  animate:
+    cwd: /project
+    image:
+      uri: {{.AnimationContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.AnimationTimeout}}
+    script: |
+      #! /bin/bash
+      source /opt/conda/etc/profile.d/conda.sh
+      conda activate wrf-anim
+      echo "Starting Python script to generate frames..."
+      python /project/{{.AnimationScriptFilename}}
+      echo "Starting ffmpeg to create video..."
+      ffmpeg -framerate 2 -pattern_type glob -i 'animation_frames/frame_*.png' -vf "scale=2302:-2" -c:v libx264 -pix_fmt yuv420p {{.VideoOutputName}}
+      echo "Script finished successfully."
+      ls
+    resource:
+      cpu:
+        cores: {{.AnimationCores}}
+      memory:
+        size: {{.AnimationMemory}}
+    requires:
+      - wrf
+  {{- end }}
+  {{- if .ResultsDestination }}
+  zip:
+    cwd: /project
+    image:
+      uri: {{.WRFContainer}}
+    mounts:
+      scratch:
+        location: /project
+    policy:
+      timeout:
+        execute: {{.ZipTimeout}}
+    command:
+      - /bin/sh
+      - '-c'
+      - tar -cvzf {{.OutputArchiveName}} wrfout*
+    requires:
+      - wrf
+  {{- end }}
