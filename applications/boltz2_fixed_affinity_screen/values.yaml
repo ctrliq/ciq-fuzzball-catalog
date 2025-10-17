@@ -128,6 +128,6 @@ values:
     string_value: 30GiB
     display_category: Resources
   - name: GPUModel
-    display_name: NVIDIA GPU model to use.
-    string_value: "NVIDIA L4"
+    display_name: NVIDIA GPU model to use. For example "NVIDIA L4"
+    string_value: ""
     display_category: Resources
