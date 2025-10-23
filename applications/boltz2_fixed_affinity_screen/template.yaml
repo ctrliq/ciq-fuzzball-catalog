@@ -175,6 +175,10 @@ jobs:
         nvidia.com/gpu: 1
       memory:
         size: 18GiB
+{{- if (trim .GPUModel) }}
+      annotations:
+        nvidia.com/gpu.model: {{ .GPUModel }}
+{{- end }}
 {{- if (gt $nconcurrent 1 ) }}
     task-array:
       start: 1
@@ -192,6 +196,7 @@ jobs:
     env:
       - HOME=/data/home/wresch
       - BOLTZ_CACHE={{ $boltz_cache }}
+      - PYTHONWARNINGS="ignore::FutureWarning"
     command:
       - /bin/bash
       - "-c"
