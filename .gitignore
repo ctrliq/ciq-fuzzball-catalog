@@ -3,3 +3,8 @@
 
 # local python environments
 .venv
+.pytest_cache
+
+# other
+.claude
+.vscode
