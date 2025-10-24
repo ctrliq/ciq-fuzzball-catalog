@@ -21,7 +21,7 @@ volumes:
 jobs:
   cloud-commander:
     image:
-      uri: docker://coderaiser/cloudcmd:latest-alpine
+      uri: {{ .Container }}
     mounts:
 {{- range $i, $v := $volumes }}
   {{- $parts := splitList ":" $v }}
@@ -42,8 +42,8 @@ jobs:
       - '-c'
       - |
         port=$(( (RANDOM % 1000) + 8000 ))
-        mkdir -p ${HOME}
-        cat <<__EOF__ > ${HOME}/.cloudcmd.menu.js
+        mkdir -p "${HOME}"
+        cat <<__EOF__ > "${HOME}/.cloudcmd.menu.js"
         export default {
             'R - cd /': async ({CloudCmd}) => {
                 await CloudCmd.changeDir('/');
@@ -54,11 +54,20 @@ jobs:
                 if (cancel) {
                     return;
                 }
-                CloudCmd.TerminalRun.show({command: 'bash -c "kill \$(cat ${HOME}/.cloudcmd.pid)"', autoClose: true});
-                setTimeout(() => {
+                CloudCmd.TerminalRun.show({
+                  command: 'bash -c "p=\$(cat ${HOME}/.cloudcmd.pid); kill \$p; while kill -0 \$p &> /dev/null; do sleep 1 ; done"',
+                  autoClose: true,
+                  cwd: "/tmp"
+                });
+                window.setTimeout(() => {
+                  try {
+                    document.querySelectorAll('.terminal').forEach(el => el.remove());
+                    CloudCmd.View.hide();
                     document.body.innerHTML = '<h1>Cloud Commander has exited</h1><p>You can close this tab. The Fuzzball job will end automatically</p>';
                     document.title = 'Session Ended';
-                    }, 1000);
+                  } catch (e) {}
+                }, 2000);
+
             },
         }
         __EOF__
