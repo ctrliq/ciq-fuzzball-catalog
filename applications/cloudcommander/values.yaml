@@ -12,3 +12,7 @@ values:
     display_name: "Execution timeout"
     string_value: "2h"
     display_category: "General"
+  - name: "Container"
+    display_name: "CloudCommander container"
+    string_value: "docker://coderaiser/cloudcmd:19.0.13-alpine"
+    display_category: "Container"
