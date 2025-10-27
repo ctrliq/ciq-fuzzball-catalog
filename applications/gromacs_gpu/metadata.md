@@ -3,5 +3,6 @@
 id: "gromacs_application" # needs to be **unique** per application, changing results in a new application
 name: "GROMACS (GPU)"
 category: "OTHER"
+featured: true
 ---
 Run GROMACS benchmarks from [https://zenodo.org/records/3893789](https://zenodo.org/records/3893789) on GPU
