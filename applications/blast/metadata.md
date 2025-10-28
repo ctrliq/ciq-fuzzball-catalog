@@ -3,6 +3,7 @@
 id: "blast_application" # needs to be **unique** per application, changing results in a new application
 name: "BLAST"
 category: "OTHER"
+featured: true
 ---
 The BLAST example workflow provides a Fuzzball template to retrieve query sequences and either:
 
