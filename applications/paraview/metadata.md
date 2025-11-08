@@ -4,5 +4,8 @@ id: "paraview_application" # needs to be **unique** per application, changing re
 name: "ParaView"
 category: "VISUALIZATION"
 featured: true
+tags:
+- desktop
+- interactive
 ---
 An open-source application for interactive scientific visualization. Runs in a web-accessible Xfce Virtual Desktop Environment.

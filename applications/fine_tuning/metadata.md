@@ -3,6 +3,9 @@
 id: "transformer_fine_tuning" # needs to be **unique** per application, changing results in a new application
 name: "Transformer Fine Tuning Example"
 category: "ML_AND_AI"
+tags:
+- LLM
+- ML-training
 ---
 This workflow demonstrates an example usage pattern to fine tune an existing language model on a new data set. It contains jobs that carry out the following tasks.
 - Downloading and preparing a dataset

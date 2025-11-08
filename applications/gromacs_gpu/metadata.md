@@ -4,5 +4,9 @@ id: "gromacs_application" # needs to be **unique** per application, changing res
 name: "GROMACS (GPU)"
 category: "OTHER"
 featured: true
+tags:
+- MD
+- chemistry
+- GPU
 ---
 Run GROMACS benchmarks from [https://zenodo.org/records/3893789](https://zenodo.org/records/3893789) on GPU

@@ -3,6 +3,9 @@
 id: "rclone-server"
 name: "Rclone server for data management"
 category: "UTILITIES"
+tags:
+- file-management
+- interactive
 ---
 This application will start an [Rclone](https://rclone.org/) WebDAV or SFTP server that serves data from the mounted Fuzzball volumes and allows you to access, browse, upload, and download files from our Fuzzball persistent storage volumes using any compatible client.
 

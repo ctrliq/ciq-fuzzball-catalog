@@ -4,6 +4,10 @@ id: "blast_application" # needs to be **unique** per application, changing resul
 name: "BLAST"
 category: "OTHER"
 featured: true
+tags:
+- bioscience
+- sequence-analysis
+- genomics
 ---
 The BLAST example workflow provides a Fuzzball template to retrieve query sequences and either:
 
