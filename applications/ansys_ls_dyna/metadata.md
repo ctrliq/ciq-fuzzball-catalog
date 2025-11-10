@@ -4,5 +4,8 @@ id: "ansys_ls_dyna_application" # needs to be **unique** per application, changi
 name: "Ansys LS-DYNA Example"
 category: "OTHER"
 featured: true
+tags:
+- Ansys
+- FEA
 ---
 An example application template executing a simple internal 3D flow simulation using ANSYS LS-DYNA.

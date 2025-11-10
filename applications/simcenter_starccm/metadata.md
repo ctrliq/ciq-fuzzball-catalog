@@ -4,5 +4,9 @@ id: "simcenter_starccm_application" # needs to be **unique** per application, ch
 name: "Simcenter STAR-CCM+"
 category: "SIMULATION"
 featured: true
+tags:
+- Siemens
+- CFD
+- acoustics
 ---
 An application template providing access to the Simcenter STAR-CCM+ simulation software running an example acoustic wave simulation.
