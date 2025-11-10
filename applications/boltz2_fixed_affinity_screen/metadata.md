@@ -3,6 +3,9 @@
 id: "boltz2-affinity-fixed" # needs to be **unique** per application, changing results in a new application
 name: "Boltz-2 virtual affinity screen of a fixed-size compound library"
 category: "OTHER"
+tags:
+- bioscience
+- MIT
 ---
 Boltz-2 ([GitHub](https://github.com/jwohlwend/boltz/tree/main), [preprint](https://www.biorxiv.org/content/10.1101/2025.06.14.659707v1.full)) is a biomolecular foundation model that combines the prediction of molecular structures with binding affinity estimates with accuracy comparable to physics-based free-energy perturbation (FEP) methods.
 

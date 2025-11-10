@@ -3,5 +3,8 @@
 id: "openfoam_motorbike_application" # needs to be **unique** per application, changing results in a new application
 name: "OpenFOAM Motorbike Flow Example"
 category: "SIMULATION"
+tags:
+- CFD
+- OpenFOAM
 ---
 OpenFOAM CFD simulation workflow template for a simulation of flow around a motorbike.
