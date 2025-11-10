@@ -3,6 +3,9 @@
 id: "cloudcommander"
 name: "Fuzzball Cloud Commander File Browser"
 category: "UTILITIES"
+tags:
+- file-management
+- interactive
 ---
 This application will start an instance of [Cloud
 Commander](https://cloudcmd.io/), a file browser which allows you to manage,

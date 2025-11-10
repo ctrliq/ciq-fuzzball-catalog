@@ -3,5 +3,9 @@
 id: "ansys_fluent_vdi_application" # needs to be **unique** per application, changing results in a new application
 name: "Ansys Fluent (VDI)"
 category: "SIMULATION"
+tags:
+- Ansys
+- CFD
+- desktop
 ---
 An application template providing access to the Ansys Fluent simulation software in a VDI environment.

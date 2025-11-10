@@ -4,5 +4,8 @@ id: "virtual_desktop_application" # needs to be **unique** per application, chan
 name: "Virtual Desktop (VDI)"
 category: "EXAMPLES"
 featured: true
+tags:
+- desktop
+- interactive
 ---
 Virtual Desktop Interface (VDI) based on the Xfce desktop environment.
