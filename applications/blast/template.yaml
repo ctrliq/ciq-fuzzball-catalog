@@ -7,11 +7,18 @@
 {{- $dbname := .BlastDbName }}
 
 version: v1
+
 volumes:
   data:
     reference: {{.DataVolume}}
   scratch:
     reference: {{.ScratchVolume}}
+
+defaults:
+  job:
+    env:
+      - CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+
 jobs:
 {{- if .BlastDbName }}
   fetch-db:
@@ -22,41 +29,39 @@ jobs:
         location: /data
       scratch:
         location: /scratch
-    command:
-      - /bin/bash
-      - "-c"
-      - |
-        mkdir -p "{{$dbpath}}" && cd "{{$dbpath}}" || exit 1
-        # fix update_blastdb.pl if it's from a conda container
-        ubdb="$(type -p update_blastdb.pl)"
-        curl="$(type -p curl)"
-        [[ -z "$ubdb" || -z "$curl" ]] && exit 1
-        if [[ "$ubdb" =~ conda ]]; then
-          sed "s:^my \\\$curl.*$:my \$curl = '$curl';:" "${ubdb}" > update_blastdb.pl
-        else
-          cp "${ubdb}"  update_blastdb.pl
-        fi
-        chmod 750 update_blastdb.pl
+    script: |
+      #!/bin/bash
+      mkdir -p "{{$dbpath}}" && cd "{{$dbpath}}" || exit 1
+      # fix update_blastdb.pl if it's from a conda container
+      ubdb="$(type -p update_blastdb.pl)"
+      curl="$(type -p curl)"
+      [[ -z "$ubdb" || -z "$curl" ]] && exit 1
+      if [[ "$ubdb" =~ conda ]]; then
+        sed "s:^my \\\$curl.*$:my \$curl = '$curl';:" "${ubdb}" > update_blastdb.pl
+      else
+        cp "${ubdb}"  update_blastdb.pl
+      fi
+      chmod 750 update_blastdb.pl
 
-        if  ./update_blastdb.pl --showall | grep -q {{$dbname}} ; then
-          echo "{{$dbname}} is a public database available from NCBI"
-          now=$(date +%s)
-          if [[ -e {{$dbname}}__ ]]; then
-            last=$(cat {{$dbname}}__)
-            if (( (now - last) < 86400 )) ; then
-              echo "  {{$dbname}} is current - update skipped."
-              exit
-            fi
+      if  ./update_blastdb.pl --showall | grep -q {{$dbname}} ; then
+        echo "{{$dbname}} is a public database available from NCBI"
+        now=$(date +%s)
+        if [[ -e {{$dbname}}__ ]]; then
+          last=$(cat {{$dbname}}__)
+          if (( (now - last) < 86400 )) ; then
+            echo "  {{$dbname}} is current - update skipped."
+            exit
           fi
-          echo $now > {{$dbname}}__
-          echo "  updating/downloading {{$dbname}}"
-          ./update_blastdb.pl --num_threads=2 --decompress {{$dbname}} && exit 0 || exit 1
-        else
-          echo "{{$dbname}} is a custom database created previously"
-          [[ -e {{$dbname}}__ ]] && exit 0
-          echo "  {{$dbname}} does not exist in {{$dbpath}}"
-          exit 1
         fi
+        echo $now > {{$dbname}}__
+        echo "  updating/downloading {{$dbname}}"
+        ./update_blastdb.pl --num_threads=2 --decompress {{$dbname}} && exit 0 || exit 1
+      else
+        echo "{{$dbname}} is a custom database created previously"
+        [[ -e {{$dbname}}__ ]] && exit 0
+        echo "  {{$dbname}} does not exist in {{$dbpath}}"
+        exit 1
+      fi
     resource:
       cpu:
         cores: 1
@@ -76,10 +81,9 @@ jobs:
         location: /data
       scratch:
         location: /scratch
-    command:
-      - /bin/bash
-      - "-c"
-      - {{.CustomBlastDbFetchCmd}} > {{$dbname}}.fa
+    script: |
+      #!/bin/bash
+      {{.CustomBlastDbFetchCmd}} > {{$dbname}}.fa
     resource:
       cpu:
         cores: 1
@@ -96,16 +100,14 @@ jobs:
         location: /data
       scratch:
         location: /scratch
-    command:
-      - /bin/bash
-      - "-c"
-      - |
-        mkdir -p "{{$dbpath}}" && cd "{{$dbpath}}" || exit 1
-        makeblastdb {{.CustomBlastDbOptions}} -in {{$dbname}}.fa -out {{$dbname}}
-        if [[ -n "{{.CustomBlastDbName}}" && -n "{{.BlastDbPath}}" ]] ; then
-          chown $(id -un) {{$dbname}}*
-          cp -a {{$dbname}}* "{{$permdbpath}}"
-          touch "{{$permdbpath}}/{{$dbname}}__"
+    script: |
+      #!/bin/bash
+      mkdir -p "{{$dbpath}}" && cd "{{$dbpath}}" || exit 1
+      makeblastdb {{.CustomBlastDbOptions}} -in {{$dbname}}.fa -out {{$dbname}}
+      if [[ -n "{{.CustomBlastDbName}}" && -n "{{.BlastDbPath}}" ]] ; then
+        chown $(id -un) {{$dbname}}*
+        cp -a {{$dbname}}* "{{$permdbpath}}"
+        touch "{{$permdbpath}}/{{$dbname}}__"
         fi
     resource:
       cpu:
@@ -129,12 +131,10 @@ jobs:
         location: /data
       scratch:
         location: /scratch
-    command:
-      - /bin/bash
-      - "-c"
-      - |
-        mkdir -p "{{$outdir}}" && cd "{{$outdir}}" || exit 1
-        {{.RetrieveQuerySequencesCmd}} > "{{$name}}.fa"
+    script: |
+      #!/bin/bash
+      mkdir -p "{{$outdir}}" && cd "{{$outdir}}" || exit 1
+      {{.RetrieveQuerySequencesCmd}} > "{{$name}}.fa"
     resource:
       cpu:
         cores: 1
@@ -151,13 +151,11 @@ jobs:
         location: /data
       scratch:
         location: /scratch
-    command:
-      - /bin/sh
-      - "-c"
-      - |
-        cd "{{$outdir}}"
-        {{.BlastCmd}} -num_threads {{.BlastCores}} -query "{{$name}}.fa" -db {{$dbpath}}/{{$dbname}} -out {{$name}}.blast.out {{.BlastOpts}} || exit 1
-        cat {{$name}}.blast.out
+    script: |
+      #!/bin/bash
+      cd "{{$outdir}}"
+      {{.BlastCmd}} -num_threads {{.BlastCores}} -query "{{$name}}.fa" -db {{$dbpath}}/{{$dbname}} -out {{$name}}.blast.out {{.BlastOpts}} || exit 1
+      cat {{$name}}.blast.out
     resource:
       cpu:
         cores: {{.BlastCores}}
