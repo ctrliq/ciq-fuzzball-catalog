@@ -8,6 +8,7 @@ tags:
 - bioscience
 - sequence-analysis
 - genomics
+keyart: keyart.jpg
 ---
 The BLAST example workflow provides a Fuzzball template to retrieve query sequences and either:
 

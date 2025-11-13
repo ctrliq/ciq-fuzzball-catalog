@@ -7,5 +7,6 @@ featured: true
 tags:
 - Ansys
 - CFD
+keyart: keyart.jpg
 ---
 An example application template executing a simulation using the Ansys Fluent simulation software.
