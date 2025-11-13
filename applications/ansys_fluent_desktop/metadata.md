@@ -7,5 +7,6 @@ tags:
 - Ansys
 - CFD
 - desktop
+keyart: keyart.jpg
 ---
 An application template providing access to the Ansys Fluent simulation software in a VDI environment.

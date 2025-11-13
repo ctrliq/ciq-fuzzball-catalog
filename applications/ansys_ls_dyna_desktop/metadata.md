@@ -7,5 +7,6 @@ tags:
 - Ansys
 - FEA
 - desktop
+keyart: keyart.jpg
 ---
 An application template providing access to the Ansys LS-DYNA simulation software in a VDI environment.
