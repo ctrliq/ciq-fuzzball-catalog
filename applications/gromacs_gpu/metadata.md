@@ -8,5 +8,6 @@ tags:
 - MD
 - chemistry
 - GPU
+keyart: keyart.jpg
 ---
 Run GROMACS benchmarks from [https://zenodo.org/records/3893789](https://zenodo.org/records/3893789) on GPU
