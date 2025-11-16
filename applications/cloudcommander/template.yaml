@@ -1,11 +1,19 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+
 {{- $root := "/fuzzball" }}
+{{- $port := 10626 }}
+
 {{- $volumes := splitList "," .Volumes }}
 {{- if eq (len $volumes) 0 }}
   {{-  fail "At least one volume has to be specified in the Volumes field." }}
 {{- end }}
 
-{{- $port := 10626 }}
+{{- if (not (trim .Username)) }}
+  {{- fail "Username is required" }}
+{{- end }}
+{{- if (not (trim .PasswordSecret)) }}
+  {{- fail "PasswordSecret is required" }}
+{{- end }}
 
 version: v1
 volumes:
@@ -33,6 +41,8 @@ services:
     cwd: /fuzzball
     env:
       - HOME=/tmp/cloudcommander
+      - PASSWORD={{- trim .PasswordSecret }}
+      - USERNAME={{- trim .Username }}
     export: workflow
     persist: true
     network:
@@ -89,15 +99,15 @@ services:
       }
       __EOF__
 
-      pw="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 32)"
-      un="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 8)"
-      echo "Username: ${un}"
-      echo "Password: ${pw}"
+      #pw="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 32)"
+      #un="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 8)"
+      #echo "Username: ${un}"
+      #echo "Password: ${pw}"
       /usr/src/app/bin/cloudcmd.mjs \
         --port {{ $port }} \
         --auth \
-        --username "${un}" \
-        --password "${pw}" \
+        --username "${USERNAME}" \
+        --password "${PASSWORD}" \
         --name "Fuzzball Cloud Commander" \
         --keys-panel \
         --config-dialog \
