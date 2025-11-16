@@ -99,10 +99,6 @@ services:
       }
       __EOF__
 
-      #pw="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 32)"
-      #un="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 8)"
-      #echo "Username: ${un}"
-      #echo "Password: ${pw}"
       /usr/src/app/bin/cloudcmd.mjs \
         --port {{ $port }} \
         --auth \
@@ -113,6 +109,7 @@ services:
         --config-dialog \
         --root {{ $root }} \
         --prefix "${FB_ENDPOINT_PATH}" \
+        --menu supemenu \
         --terminal &
       echo $! > ${HOME}/.cloudcmd.pid
       wait
