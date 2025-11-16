@@ -1,43 +1,74 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $mount := "/data" }}
+{{- $port := 10816 }}
+
 version: v1
 volumes:
-  home:
-    name: home
-    reference: {{.Volume}}
-jobs:
+  data:
+    reference: {{ .Volume }}
+
+services:
   jupyter:
+    export: workflow
+    persist: true
+    network:
+      ports:
+        - name: web
+          port: {{ $port }}
+          protocol: tcp
+      endpoints:
+        - name: jupyter
+          type: path
+          port: web
+          scheme: https
+    readinessProbe:
+      exec:
+        command:
+          - /bin/sh
+          - '-c'
+          - "ps -e | grep -q jupyter"
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 2
     image:
-      uri: docker://quay.io/jupyter/{{.Type}}-notebook:latest
-    mounts:
-      home:
-        location: /home/jovyan
-    env:
-      - HOME=/home/jovyan
-    command:
-      - /bin/sh
-      - '-c'
-      - |
-        export NB_USER=$(whoami)
-        test -d $HOME || mkdir $HOME
-        echo
-        echo "Accessing Jupyter requires port-forwarding via the CLI:"
-        echo
-        echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} jupyter 8888:8888"
-        echo
-        echo "Then navigate to http://localhost:8888"
-        echo
-        /opt/conda/bin/jupyter notebook --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token="${JUPYTER_TOKEN}" --notebook-dir="${HOME}"
+      uri: docker://quay.io/jupyter/{{ trim .Type }}-notebook:latest
     resource:
       cpu:
-        cores: {{.Cores}}
-        affinity: NUMA
+        cores: {{ .Cores }}
       memory:
-        size: {{.Memory}}
-      exclusive: {{.Exclusive}}
-{{- if gt .GPUs 0 }}
+        size: {{ .Memory }}
+      {{- if gt (.GPUs | int) 0 }}
       devices:
-        nvidia.com/gpu: {{.GPUs}}
-{{- end }}
-    policy:
-      timeout:
-        execute: {{.Timeout}}
+        nvidia.com/gpu: {{ .GPUs }}
+      {{- end }}
+      exclusive: {{ .Exclusive }}
+    mounts:
+      data:
+        location: {{ $mount }}
+    env:
+      - PASSWORD={{- trim .PasswordSecret }}
+      - USERNAME={{- trim .Username }}
+    script: |
+      #!/bin/bash
+      set -e
+      tmp="$(mktemp -d "{{ $mount }}/.XXXX")"
+      trap 'rm -rf $tmp' EXIT
+      HOME="${tmp}/home"
+      XDG_RUNTIME_DIR="${tmp}/run"
+      USER=$(whoami)
+      export HOME XDG_RUNTIME_DIR USER
+      mkdir -p "${HOME}" "${XDG_RUNTIME_DIR}"
+
+      hashed_pw="$(python3 -c "from jupyter_server.auth import passwd; print(passwd('${PASSWORD}'))")"
+
+      /opt/conda/bin/jupyter server \
+        --ServerApp.ip="0.0.0.0" \
+        --ServerApp.port={{ $port }} \
+        --ServerApp.open_browser=False \
+        --IdentityProvider.token="" \
+        --PasswordIdentityProvider.password_required=true \
+        --PasswordIdentityProvider.hashed_password="$hashed_pw" \
+        --ServerApp.root_dir="{{ $mount }}" \
+        --ServerApp.base_url="${FB_ENDPOINT_PATH_JUPYTER}"
+        #/opt/conda/bin/jupyter notebook --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.base_url=${FB_ENDPOINT_PATH_JUPYTER}
