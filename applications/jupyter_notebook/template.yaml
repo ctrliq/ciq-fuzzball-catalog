@@ -19,7 +19,7 @@ services:
           protocol: tcp
       endpoints:
         - name: jupyter
-          type: path
+          type: subdomain
           port: web
           scheme: https
     readinessProbe:
@@ -69,6 +69,4 @@ services:
         --IdentityProvider.token="" \
         --PasswordIdentityProvider.password_required=true \
         --PasswordIdentityProvider.hashed_password="$hashed_pw" \
-        --ServerApp.root_dir="{{ $mount }}" \
-        --ServerApp.base_url="${FB_ENDPOINT_PATH_JUPYTER}"
-        #/opt/conda/bin/jupyter notebook --ip=0.0.0.0 --allow-root --no-browser --NotebookApp.token='' --NotebookApp.password='' --NotebookApp.base_url=${FB_ENDPOINT_PATH_JUPYTER}
+        --ServerApp.root_dir="{{ $mount }}"
