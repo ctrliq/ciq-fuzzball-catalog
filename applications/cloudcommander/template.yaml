@@ -4,7 +4,7 @@
 {{- $port := 10626 }}
 
 {{- $volumes := splitList "," .Volumes }}
-{{- if eq (len $volumes) 0 }}
+{{- if not hasPrefix "volume://" }}
   {{-  fail "At least one volume has to be specified in the Volumes field." }}
 {{- end }}
 
