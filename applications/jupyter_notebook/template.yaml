@@ -6,7 +6,7 @@
 {{- if not (hasPrefix "volume://" $volume) }}
   {{- fail "A Volume has to be specified" }}
 {{- end }}
-{{- if not (hasPrefix "secret://" .PasswordSecret }}
+{{- if not (hasPrefix "secret://" .PasswordSecret) }}
   {{- fail "A PasswordSecret has to be specified and has to start with secret://" }}
 {{- end }}
 
