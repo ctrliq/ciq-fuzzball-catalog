@@ -11,8 +11,8 @@
 {{- if (not (trim .Username)) }}
   {{- fail "Username is required" }}
 {{- end }}
-{{- if (not (trim .PasswordSecret)) }}
-  {{- fail "PasswordSecret is required" }}
+{{- if (not (trim .PasswordSecret | hasPrefix "secret://")) }}
+  {{- fail "PasswordSecret is required and has to start with secret://" }}
 {{- end }}
 
 version: v1

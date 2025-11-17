@@ -3,8 +3,11 @@
 {{- $mount := "/data" }}
 {{- $port := 10816 }}
 {{- $volume := trim .Volume }}
-{{- if not $volume }}
+{{- if not (hasPrefix "volume://" $volume }}
   {{- fail "A Volume has to be specified" }}
+{{- end }}
+{{- if not (hasPrefix "secret://" .PasswordSecret }}
+  {{- fail "A PasswordSecret has to be specified and has to start with secret://" }}
 {{- end }}
 
 version: v1

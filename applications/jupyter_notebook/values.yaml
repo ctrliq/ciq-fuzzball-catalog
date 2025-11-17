@@ -34,6 +34,6 @@ values:
     string_value: cc
     display_category: Credentials
   - name: PasswordSecret
-    display_name: "[required] Password secret for logging into the cloudcommander instance"
+    display_name: "[required] Password secret for logging into the cloudcommander instance. NOT A LITERAL PASSWORD"
     string_value: "secret://user/app_pw"
     display_category: Credentials
