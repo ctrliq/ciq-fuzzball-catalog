@@ -25,7 +25,7 @@ values:
     display_category: "Scheduling"
   - name: "Volume"
     display_name: |
-      Where to store notebook data. Will be mounted at /data.
+      [required] Where to store notebook data. Will be mounted at /data.
     string_value: "volume://user/persistent"
     display_category: "Storage"
 

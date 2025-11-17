@@ -1,7 +1,7 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
 id: "jupyter-server-2" # needs to be **unique** per application, changing results in a new application
-name: "Jupyter Server [Service]"
+name: "[Service] Jupyter Server"
 category: "UTILITIES"
 featured: true
 tags:

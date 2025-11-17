@@ -54,7 +54,7 @@ services:
         - name: a
           port: http
           type: subdomain
-          scheme: http
+          protocol: https
     mounts:
 {{- range $i, $v := $volumes }}
   {{- $parts := splitList ":" $v }}

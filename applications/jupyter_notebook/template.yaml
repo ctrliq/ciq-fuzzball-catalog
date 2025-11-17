@@ -2,12 +2,16 @@
 
 {{- $mount := "/data" }}
 {{- $port := 10816 }}
+{{- $volume := trim .Volume }}
+{{- if not $volume }}
+  {{- fail "A Volume has to be specified" }}
+{{- end }}
 
 version: v1
 
 volumes:
   data:
-    reference: {{ .Volume }}
+    reference: {{ $volume }}
 
 services:
   jupyter:
@@ -20,9 +24,9 @@ services:
           protocol: tcp
       endpoints:
         - name: jupyter
-          type: subdomain
+          type: path
           port: web
-          scheme: https
+          protocol: https
     readinessProbe:
       exec:
         command:
@@ -75,7 +79,9 @@ services:
       c.ServerApp.allow_credentials = True
       c.ServerApp.trust_xheaders = True
       c.ServerApp.allow_remote_access = True
-      c.PasswordIdentityProvider.hashed_password="$hashed_pw"
+      c.PasswordIdentityProvider.hashed_password = "$hashed_pw"
+      c.ServerApp.base_url = "${FB_ENDPOINT_PATH_JUPYTER}"
+      c.Application.log_level = "DEBUG"
       __EOF__
 
 
