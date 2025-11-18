@@ -57,16 +57,12 @@ services:
     env:
       - PASSWORD={{- trim .PasswordSecret }}
       - USERNAME={{- trim .Username }}
+      - NB_USER=jovyan
+      - HOME=/home/jovyan
     script: |
       #!/bin/bash
       set -e
-      tmp="$(mktemp -d "{{ $mount }}/.XXXX")"
-      trap 'rm -rf $tmp' EXIT
-      HOME="${tmp}/home"
-      XDG_RUNTIME_DIR="${tmp}/run"
       USER=$(whoami)
-      export HOME XDG_RUNTIME_DIR USER
-      mkdir -p "${HOME}/.jupyter" "${XDG_RUNTIME_DIR}"
 
       hashed_pw="$(python3 -c "from jupyter_server.auth import passwd; print(passwd('${PASSWORD}'))")"
 
@@ -89,4 +85,4 @@ services:
 
 
 
-      /opt/conda/bin/jupyter server
+      /opt/conda/bin/jupyter lab
