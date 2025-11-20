@@ -1,0 +1,51 @@
+---
+version: v1
+jobs:
+  pre:
+    env:
+      - SECONDS={{.PreSeconds}}
+    name: pre
+    image:
+      uri: docker://alpine:latest
+    command:
+      - /bin/sh
+      - '-c'
+      - echo "Pre-job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 0.5GiB
+  job:
+    id: job-12
+    env:
+      - SECONDS={{.JobSeconds}}
+    image:
+      uri: docker://alpine:latest
+    command:
+      - /bin/sh
+      - '-c'
+      - echo "Job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
+    requires:
+      - pre
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 0.5GiB
+  post:
+    env:
+      - SECONDS={{.PostSeconds}}
+    image:
+      uri: docker://alpine:latest
+    command:
+      - /bin/sh
+      - '-c'
+      - echo "Post-job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
+    requires:
+      - job
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 0.5GiB

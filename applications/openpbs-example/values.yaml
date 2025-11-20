@@ -1,0 +1,19 @@
+{
+  "values": [
+    {
+      "name": "PreSeconds",
+      "displayName": "Pre-job Duration (seconds)",
+      "uintValue": 5
+    },
+    {
+      "name": "JobSeconds",
+      "displayName": "Main Job Duration (seconds)",
+      "uintValue": 10
+    },
+    {
+      "name": "PostSeconds",
+      "displayName": "Post-job Duration (seconds)",
+      "uintValue": 5
+    }
+  ]
+}
