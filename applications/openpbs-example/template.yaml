@@ -7,25 +7,26 @@ jobs:
     name: pre
     image:
       uri: docker://alpine:latest
-    command:
-      - /bin/sh
-      - '-c'
-      - echo "Pre-job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
+    script: |
+      #! /bin/sh
+      echo "Pre-job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
     resource:
       cpu:
         cores: 1
       memory:
         size: 0.5GiB
+    policy:
+      timeout:
+        execute: "{{- add .PreSeconds 30 | max 120 }}s"
   job:
     id: job-12
     env:
       - SECONDS={{.JobSeconds}}
     image:
       uri: docker://alpine:latest
-    command:
-      - /bin/sh
-      - '-c'
-      - echo "Job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
+    script: |
+      #! /bin/sh
+      echo "Job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
     requires:
       - pre
     resource:
@@ -33,15 +34,17 @@ jobs:
         cores: 1
       memory:
         size: 0.5GiB
+    policy:
+      timeout:
+        execute: "{{- add .JobSeconds 30 | max 120 }}s"
   post:
     env:
       - SECONDS={{.PostSeconds}}
     image:
       uri: docker://alpine:latest
-    command:
-      - /bin/sh
-      - '-c'
-      - echo "Post-job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
+    script: |
+      #! /bin/sh
+      echo "Post-job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
     requires:
       - job
     resource:
@@ -49,3 +52,6 @@ jobs:
         cores: 1
       memory:
         size: 0.5GiB
+    policy:
+      timeout:
+        execute: "{{- add .PostSeconds 30 | max 120 }}s"

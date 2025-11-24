@@ -1,47 +1,49 @@
 ---
-id: openpbs-example
-name: OpenPBS Toyota Example
-description: Example workflow for Toyota 
+id: dependency-example
+name: Dependent Jobs Example
+description: Example workflow for demonstrating dependent jobs in Fuzzball
 category: EXAMPLES
 featured: false
 tags:
-  - pbs
-  - openpbs
-  - provisioner
+  - dependencies
+  - example
+  - workflow
 ---
 
-# OpenPBS Example Workflow
+# Job Dependency Example Workflow
 
-This example workflow demonstrates how to use the OpenPBS provisioner in Fuzzball. OpenPBS (Portable Batch System) is an open-source workload manager and job scheduler that is commonly used in high-performance computing (HPC) environments.
+This example workflow demonstrates how to create dependent jobs in Fuzzball. It shows how to chain multiple jobs together so they execute in a specific order, with each job waiting for its dependencies to complete before starting.
 
 ## Overview
 
-This workflow runs a simple three-stage pipeline that will automatically use OpenPBS provisioning when available:
+This workflow runs a simple three-stage pipeline that demonstrates job dependency chaining:
 
 1. **Pre-job**: Initial setup stage that runs for a configurable duration
 2. **Main Job**: Primary computational workload (depends on pre-job completion)
 3. **Post-job**: Cleanup/finalization stage (depends on main job completion)
 
-Each stage demonstrates job dependencies and sequential execution in a PBS-managed environment.
+Each stage demonstrates how to properly configure job dependencies to ensure sequential execution.
 
 ## How It Works
 
-This workflow uses **automatic provisioner selection**. When you run this workflow, Fuzzball's scheduler will:
+This workflow uses Fuzzball's `requires` field to establish dependencies between jobs:
 
-1. Examine the resource requirements for each job (1 CPU core, 0.5GiB memory per job)
-2. Evaluate all available provisioners in the cluster
-3. Automatically select the best matching provisioner (including OpenPBS if configured)
-4. Provision resources and execute the three-stage pipeline sequentially
+1. The **pre** job runs first (no dependencies)
+2. The **job** stage waits for **pre** to complete (requires: pre)
+3. The **post** stage waits for **job** to complete (requires: job)
 
-No manual provisioner selection is needed - if OpenPBS is configured and can satisfy the resource requirements, it will be used automatically.
+When you submit this workflow, Fuzzball's scheduler will:
+
+1. Examine the dependency chain
+2. Execute jobs in the correct order
+3. Ensure each job only starts after its dependencies have successfully completed
 
 ## Prerequisites
 
 Before using this workflow, ensure that:
 
-- At least one OpenPBS provisioner definition is configured in your Fuzzball cluster
-- The PBS queue has sufficient resources to satisfy the job requirements
-- Your account has permissions to submit jobs through Fuzzball
+- Your Fuzzball cluster has available compute resources
+- Your account has permissions to submit workflows through Fuzzball
 
 ## Configuration
 
@@ -61,13 +63,13 @@ Each job:
 - Uses the Alpine Linux container image
 - Runs a simple shell script that displays its stage name and sleeps for the configured duration
 - Allocates minimal resources (1 CPU core, 0.5GiB memory)
-- Demonstrates proper job dependency chaining
+- Demonstrates proper job dependency chaining using the `requires` field
 
 ## Use Case
 
 This workflow is ideal for:
 
-- Demonstrating OpenPBS integration in Fuzzball with zero configuration
-- Testing PBS provisioner functionality with a multi-stage pipeline
-- Showcasing job dependencies and sequential execution on PBS-managed nodes
-- Validating that PBS queues are properly configured and accessible
+- Learning how to create dependent jobs in Fuzzball workflows
+- Understanding the `requires` field and dependency syntax
+- Testing multi-stage pipeline execution with sequential dependencies
+- Serving as a template for more complex workflows with dependency chains
