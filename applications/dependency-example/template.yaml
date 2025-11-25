@@ -1,0 +1,55 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+jobs:
+  pre:
+    env:
+      - SECONDS={{.PreSeconds}}
+    image:
+      uri: docker://alpine:latest
+    script: |
+      #! /bin/sh
+      echo "Pre-job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 0.5GiB
+    policy:
+      timeout:
+        execute: "{{- add .PreSeconds 30 | max 120 }}s"
+  main-job:
+    env:
+      - SECONDS={{.JobSeconds}}
+    image:
+      uri: docker://alpine:latest
+    script: |
+      #! /bin/sh
+      echo "Job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
+    requires:
+      - pre
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 0.5GiB
+    policy:
+      timeout:
+        execute: "{{- add .JobSeconds 30 | max 120 }}s"
+  post:
+    env:
+      - SECONDS={{.PostSeconds}}
+    image:
+      uri: docker://alpine:latest
+    script: |
+      #! /bin/sh
+      echo "Post-job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
+    requires:
+      - main-job
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 0.5GiB
+    policy:
+      timeout:
+        execute: "{{- add .PostSeconds 30 | max 120 }}s"

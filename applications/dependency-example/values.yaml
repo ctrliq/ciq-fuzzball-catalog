@@ -1,0 +1,10 @@
+values:
+  - name: PreSeconds
+    display_name: Pre-job Duration (seconds)
+    uint_value: 5
+  - name: JobSeconds
+    display_name: Main Job Duration (seconds)
+    uint_value: 10
+  - name: PostSeconds
+    display_name: Post-job Duration (seconds)
+    uint_value: 5
