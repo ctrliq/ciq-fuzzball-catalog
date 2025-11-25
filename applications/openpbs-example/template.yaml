@@ -46,7 +46,7 @@ jobs:
       #! /bin/sh
       echo "Post-job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
     requires:
-      - job
+      - main-job
     resource:
       cpu:
         cores: 1
