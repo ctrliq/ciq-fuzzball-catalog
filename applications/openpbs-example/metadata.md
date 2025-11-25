@@ -31,8 +31,8 @@ Each stage demonstrates how to properly configure job dependencies to ensure seq
 This workflow uses Fuzzball's `requires` field to establish dependencies between jobs:
 
 1. The **pre** job runs first (no dependencies)
-2. The **job** stage waits for **pre** to complete (requires: pre)
-3. The **post** stage waits for **job** to complete (requires: job)
+2. The **main-job** stage waits for **pre** to complete (requires: pre)
+3. The **post** stage waits for **main-job** to complete (requires: job)
 
 When you submit this workflow, Fuzzball's scheduler will:
 
@@ -58,7 +58,7 @@ You can customize the duration of each stage:
 ## Workflow Structure
 
 ```
-pre (5s) → job (10s) → post (5s)
+pre (5s) → main-job (10s) → post (5s)
 ```
 
 Each job:
