@@ -4,7 +4,6 @@ jobs:
   pre:
     env:
       - SECONDS={{.PreSeconds}}
-    name: pre
     image:
       uri: docker://alpine:latest
     script: |
