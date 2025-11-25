@@ -1,7 +1,7 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
 ---
 id: dependency-example
 name: Dependent Jobs Example
-description: Example workflow for demonstrating dependent jobs in Fuzzball
 category: EXAMPLES
 featured: false
 tags:
@@ -9,6 +9,8 @@ tags:
   - example
   - workflow
 ---
+Example workflow for demonstrating dependent jobs in Fuzzball
+
 
 # Job Dependency Example Workflow
 

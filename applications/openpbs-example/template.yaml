@@ -1,3 +1,4 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
 ---
 version: v1
 jobs:
@@ -18,8 +19,7 @@ jobs:
     policy:
       timeout:
         execute: "{{- add .PreSeconds 30 | max 120 }}s"
-  job:
-    id: job-12
+  main-job:
     env:
       - SECONDS={{.JobSeconds}}
     image:
