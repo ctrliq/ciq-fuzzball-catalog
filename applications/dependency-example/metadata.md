@@ -32,7 +32,7 @@ This workflow uses Fuzzball's `requires` field to establish dependencies between
 
 1. The **pre** job runs first (no dependencies)
 2. The **main-job** stage waits for **pre** to complete (requires: pre)
-3. The **post** stage waits for **main-job** to complete (requires: job)
+3. The **post** stage waits for **main-job** to complete (requires: main-job)
 
 When you submit this workflow, Fuzzball's scheduler will:
 
