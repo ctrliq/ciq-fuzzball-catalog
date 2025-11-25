@@ -8,4 +8,3 @@ values:
   - name: PostSeconds
     display_name: Post-job Duration (seconds)
     uint_value: 5
-    
