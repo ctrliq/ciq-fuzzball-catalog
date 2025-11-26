@@ -197,17 +197,26 @@ jobs:
     script: |
       #!/bin/bash
       PATH=/app/env/bin:${PATH}
+      if [[ ! -x /app/env/bin/python ]]; then
+        echo "Error: Python not found at /app/env/bin/python"
+        exit 1
+      fi
       lock="${BOLTZ_CACHE}.lock"
       mkdir -p "$(dirname "${lock}")"
-      n=0
+      mkdir -p "$(dirname "${lock}")"
+      cleanup_lock() {
+        rmdir "${lock}" 2>/dev/null || true
+      }
       while :; do
         if mkdir "${lock}" 2>/dev/null; then
+          trap cleanup_lock EXIT
           # We got the lock
           if [[ ! -d "${BOLTZ_CACHE}" ]]; then
             printf "Downloading model to %s\n" "${BOLTZ_CACHE}"
             mkdir -p "${BOLTZ_CACHE}"
             python -c "from pathlib import Path; from boltz.main import download_boltz2; download_boltz2(Path('${BOLTZ_CACHE}'))" || exit 1
           fi
+          trap - EXIT
           rmdir "${lock}"
           break
         else
