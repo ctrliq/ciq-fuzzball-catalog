@@ -201,12 +201,15 @@ jobs:
         echo "Error: Python not found at /app/env/bin/python"
         exit 1
       fi
+
       lock="${BOLTZ_CACHE}.lock"
       mkdir -p "$(dirname "${lock}")"
-      mkdir -p "$(dirname "${lock}")"
+
       cleanup_lock() {
         rmdir "${lock}" 2>/dev/null || true
       }
+
+      n=0
       while :; do
         if mkdir "${lock}" 2>/dev/null; then
           trap cleanup_lock EXIT
@@ -216,12 +219,12 @@ jobs:
             mkdir -p "${BOLTZ_CACHE}"
             python -c "from pathlib import Path; from boltz.main import download_boltz2; download_boltz2(Path('${BOLTZ_CACHE}'))" || exit 1
           fi
-          trap - EXIT
           rmdir "${lock}"
+          trap - EXIT
           break
         else
           # Wait for the lock to be released
-          (( ++n % 15 == 0 )) && printf "%s - Waiting for model cache download to complete...\n" "$(date +%FT%T)"
+          (( ++n % 15 == 0 )) && printf "%s - Waiting for model cache download to complete...\n" "$(date +%FT%T)" || true
           sleep 1
         fi
       done
