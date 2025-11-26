@@ -77,91 +77,88 @@ jobs:
       - AWS_SECRET_ACCESS_KEY={{ trim .AWSSecretAccessKeySecret }}
       - AWS_DEFAULT_REGION={{ trim .AWSRegion }}
 {{- end }}
-    command:
-      - /usr/bin/env
-      - python
-      - "-c"
-      - |
-        import csv
-        import os
-        import sys
-        from urllib.parse import urlparse
-        from smart_open import open
-        import yaml
-        from yaml.representer import SafeRepresenter
+    script: |
+      #!/usr/bin/env python
+      import csv
+      import os
+      import sys
+      from urllib.parse import urlparse
+      from smart_open import open
+      import yaml
+      from yaml.representer import SafeRepresenter
 
-        class IndentListDumper(yaml.SafeDumper):
-            def increase_indent(self, flow=False, indentless=False):
-                return super().increase_indent(flow, False)
+      class IndentListDumper(yaml.SafeDumper):
+          def increase_indent(self, flow=False, indentless=False):
+              return super().increase_indent(flow, False)
 
-        def die(message: str):
-            print(f"Error: {message}")
-            sys.exit(1)
+      def die(message: str):
+          print(f"Error: {message}")
+          sys.exit(1)
 
-        def fetch_file(source: str, dest_dir: str) -> str:
-            if not source:
-                return None
-            parsed = urlparse(source)
-            if parsed.scheme == "":
-                # Local file path
-                if not os.path.exists(source):
-                    die(f"Local file {source} does not exist")
-                return source
-            os.makedirs(dest_dir, exist_ok=True)
-            filename = os.path.basename(parsed.path)
-            dest_path = os.path.abspath(os.path.join(dest_dir, filename))
+      def fetch_file(source: str, dest_dir: str) -> str:
+          if not source:
+              return None
+          parsed = urlparse(source)
+          if parsed.scheme == "":
+              # Local file path
+              if not os.path.exists(source):
+                  die(f"Local file {source} does not exist")
+              return source
+          os.makedirs(dest_dir, exist_ok=True)
+          filename = os.path.basename(parsed.path)
+          dest_path = os.path.abspath(os.path.join(dest_dir, filename))
 
-            # Fetch the file
-            try:
-                with open(source, 'rb') as remote_file, open(dest_path, 'wb') as local_file:
-                    local_file.write(remote_file.read())
-            except Exception as e:
-                die(f"Failed to fetch file {source}: {e}")
+          # Fetch the file
+          try:
+              with open(source, 'rb') as remote_file, open(dest_path, 'wb') as local_file:
+                  local_file.write(remote_file.read())
+          except Exception as e:
+              die(f"Failed to fetch file {source}: {e}")
 
-            return dest_path
+          return dest_path
 
-        downloads_dir = "{{ $scratch_mount }}/downloads"
-        template_file = fetch_file("{{ trim .Template }}", downloads_dir)
-        msa_file = fetch_file("{{ trim .MSAFile }}", downloads_dir)
-        compounds_file = fetch_file("{{ trim .CompoundLibrary }}", downloads_dir)
-        nsplit = {{ $nsplit }}
+      downloads_dir = "{{ $scratch_mount }}/downloads"
+      template_file = fetch_file("{{ trim .Template }}", downloads_dir)
+      msa_file = fetch_file("{{ trim .MSAFile }}", downloads_dir)
+      compounds_file = fetch_file("{{ trim .CompoundLibrary }}", downloads_dir)
+      nsplit = {{ $nsplit }}
 
-        boltz_input = {
-            "sequences": [
-                  {"protein": {"id": "A", "sequence": "{{ trim .ProteinSequence }}", "msa": msa_file}},
-                  {"ligand": {"id": "B", "smiles": None}},
-            ],
-            "properties": [
-                {"affinity": {"binder": "B"}},
-            ],
-        }
-        if template_file:
-            boltz_input["templates"] = [
-                {"cif": template_file, "chain_id": "A"}
-            ]
-        pocket = "{{ trim .Pocket }}"
-        if pocket:
-            boltz_input["constraints"] = [
-                {"pocket": {"binder": "B", "contacts": [["A", res.strip()] for res in pocket.split(",") if res.strip()]}},
-            ]
-        os.makedirs("inputs", exist_ok=True)
+      boltz_input = {
+          "sequences": [
+                {"protein": {"id": "A", "sequence": "{{ trim .ProteinSequence }}", "msa": msa_file}},
+                {"ligand": {"id": "B", "smiles": None}},
+          ],
+          "properties": [
+              {"affinity": {"binder": "B"}},
+          ],
+      }
+      if template_file:
+          boltz_input["templates"] = [
+              {"cif": template_file, "chain_id": "A"}
+          ]
+      pocket = "{{ trim .Pocket }}"
+      if pocket:
+          boltz_input["constraints"] = [
+              {"pocket": {"binder": "B", "contacts": [["A", res.strip()] for res in pocket.split(",") if res.strip()]}},
+          ]
+      os.makedirs("inputs", exist_ok=True)
 
-        with open(compounds_file, 'r', encoding='utf-8') as csvfile:
-            reader = csv.DictReader(csvfile)
-            if not ("id" in reader.fieldnames and "smiles" in reader.fieldnames):
-                die("Compound library must contain 'id' and 'smiles' columns")
-            n = 0
-            for row in reader:
-                n += 1
-                boltz_input["sequences"][1]["ligand"]["smiles"] = row["smiles"]
-                if nsplit > 1:
-                    out_filename = f"inputs/split_{(n % nsplit) + 1}/{row['id']}.yaml"
-                    os.makedirs(os.path.dirname(out_filename), exist_ok=True)
-                else:
-                    out_filename = f"inputs/{row['id']}.yaml"
-                with open(out_filename, 'w', encoding='utf-8') as outfile:
-                    yaml.dump(boltz_input, outfile, Dumper=IndentListDumper, default_flow_style=False, sort_keys=False)
-                print(f"Generated Boltz input for compound {row['id']} in {out_filename}")
+      with open(compounds_file, 'r', encoding='utf-8') as csvfile:
+          reader = csv.DictReader(csvfile)
+          if not ("id" in reader.fieldnames and "smiles" in reader.fieldnames):
+              die("Compound library must contain 'id' and 'smiles' columns")
+          n = 0
+          for row in reader:
+              n += 1
+              boltz_input["sequences"][1]["ligand"]["smiles"] = row["smiles"]
+              if nsplit > 1:
+                  out_filename = f"inputs/split_{(n % nsplit) + 1}/{row['id']}.yaml"
+                  os.makedirs(os.path.dirname(out_filename), exist_ok=True)
+              else:
+                  out_filename = f"inputs/{row['id']}.yaml"
+              with open(out_filename, 'w', encoding='utf-8') as outfile:
+                  yaml.dump(boltz_input, outfile, Dumper=IndentListDumper, default_flow_style=False, sort_keys=False)
+              print(f"Generated Boltz input for compound {row['id']} in {out_filename}")
   boltz-predict:
     requires:
       - setup
@@ -197,32 +194,32 @@ jobs:
       - HOME=/data/home/wresch
       - BOLTZ_CACHE={{ $boltz_cache }}
       - PYTHONWARNINGS="ignore::FutureWarning"
-    command:
-      - /bin/bash
-      - "-c"
-      - |
-        lockfile="${BOLTZ_CACHE}.lock"
-        while :; do
-          if mkdir "${lockfile}" 2>/dev/null; then
-            # We got the lock
-            if [[ ! -d "${BOLTZ_CACHE}" ]]; then
-              printf "Downloading model to %s\n" "${BOLTZ_CACHE}"
-              mkdir -p "${BOLTZ_CACHE}"
-              python -c "from pathlib import Path; from boltz.main import download_boltz2; download_boltz2(Path('${BOLTZ_CACHE}'))" || exit 1
-            fi
-            rmdir "${lockfile}"
-            break
-          else
-            # Wait for the lock to be released
-            printf "Waiting for model cache download to complete...\n"
-            sleep 1
+    script: |
+      #!/bin/bash
+      lock="${BOLTZ_CACHE}.lock"
+      mkdir -p "$(dirname "${lock}")"
+      while :; do
+        if mkdir "${lock}" 2>/dev/null; then
+          # We got the lock
+          if [[ ! -d "${BOLTZ_CACHE}" ]]; then
+            printf "Downloading model to %s\n" "${BOLTZ_CACHE}"
+            mkdir -p "${BOLTZ_CACHE}"
+            python -c "from pathlib import Path; from boltz.main import download_boltz2; download_boltz2(Path('${BOLTZ_CACHE}'))" || exit 1
           fi
-        done
-        mkdir -p outputs
+          rmdir "${lock}"
+          break
+        else
+          # Wait for the lock to be released
+          t=$(date +%s)
+          (( t % 15 == 0 )) && printf "%s - Waiting for model cache download to complete...\n" "$(date +%FT%T)"
+          sleep 1
+        fi
+      done
+      mkdir -p outputs
 {{- if (gt $nsplit 1) }}
-        boltz predict --out_dir ./outputs inputs/split_${FB_TASK_ID}
+      boltz predict --out_dir ./outputs inputs/split_${FB_TASK_ID}
 {{- else }}
-        boltz predict --out_dir ./outputs inputs
+      boltz predict --out_dir ./outputs inputs
 {{- end }}
 {{- if $abs_output_path }}
   teardown:
@@ -247,42 +244,39 @@ jobs:
       - AWS_SECRET_ACCESS_KEY={{ trim .AWSSecretAccessKeySecret }}
       - AWS_DEFAULT_REGION={{ trim .AWSRegion }}
 {{- end }}
-    command:
-      - /usr/bin/env
-      - python
-      - "-c"
-      - |
-        import os
-        import sys
-        from urllib.parse import urlparse
-        from smart_open import open
+    script: |
+      #!/usr/bin/env python
+      import os
+      import sys
+      from urllib.parse import urlparse
+      from smart_open import open
 
-        def die(message: str) -> None:
-            print(f"Error: {message}")
-            sys.exit(1)
+      def die(message: str) -> None:
+          print(f"Error: {message}")
+          sys.exit(1)
 
-        def save_file(source: str, dest: str) -> None:
-            if not source:
-                return
-            parsed = urlparse(dest)
-            if parsed.scheme == "":
-                os.makedirs(os.path.dirname(dest), exist_ok=True)
-            try:
-                with open(source, 'rb') as temp_file, open(dest, 'wb') as persistent_file:
-                    persistent_file.write(temp_file.read())
-            except Exception as e:
-                die(f"Failed to persist file {source}: {e}")
+      def save_file(source: str, dest: str) -> None:
+          if not source:
+              return
+          parsed = urlparse(dest)
+          if parsed.scheme == "":
+              os.makedirs(os.path.dirname(dest), exist_ok=True)
+          try:
+              with open(source, 'rb') as temp_file, open(dest, 'wb') as persistent_file:
+                  persistent_file.write(temp_file.read())
+          except Exception as e:
+              die(f"Failed to persist file {source}: {e}")
 
-        boltz_output_dir = "outputs"
-        dest_dir = f"{{ $abs_output_path }}/{{ $run_name }}"
+      boltz_output_dir = "outputs"
+      dest_dir = f"{{ $abs_output_path }}/{{ $run_name }}"
 
-        for root, dirs, files in os.walk(boltz_output_dir):
-            for file in files:
-                source_path = os.path.join(root, file)
-                if not os.path.isfile(source_path):
-                    continue
-                rel_path = os.path.relpath(source_path, boltz_output_dir)
-                dest_path = os.path.join(dest_dir, rel_path)
-                save_file(source_path, dest_path)
-                print(f"Saved {source_path} to {dest_path}")
+      for root, dirs, files in os.walk(boltz_output_dir):
+          for file in files:
+              source_path = os.path.join(root, file)
+              if not os.path.isfile(source_path):
+                  continue
+              rel_path = os.path.relpath(source_path, boltz_output_dir)
+              dest_path = os.path.join(dest_dir, rel_path)
+              save_file(source_path, dest_path)
+              print(f"Saved {source_path} to {dest_path}")
 {{- end }}

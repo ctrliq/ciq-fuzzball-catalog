@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "boltz2-affinity-fixed" # needs to be **unique** per application, changing results in a new application
+id: "boltz2-affinity-fixed-testing" # needs to be **unique** per application, changing results in a new application
 name: "Boltz-2 virtual affinity screen of a fixed-size compound library"
 category: "OTHER"
 tags:
