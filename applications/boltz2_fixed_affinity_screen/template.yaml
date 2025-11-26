@@ -199,6 +199,7 @@ jobs:
       PATH=/app/env/bin:${PATH}
       lock="${BOLTZ_CACHE}.lock"
       mkdir -p "$(dirname "${lock}")"
+      n=0
       while :; do
         if mkdir "${lock}" 2>/dev/null; then
           # We got the lock
@@ -211,8 +212,7 @@ jobs:
           break
         else
           # Wait for the lock to be released
-          t=$(date +%s)
-          (( t % 15 == 0 )) && printf "%s - Waiting for model cache download to complete...\n" "$(date +%FT%T)"
+          (( ++n % 15 == 0 )) && printf "%s - Waiting for model cache download to complete...\n" "$(date +%FT%T)"
           sleep 1
         fi
       done
