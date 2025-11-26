@@ -193,9 +193,10 @@ jobs:
     env:
       - HOME=/data/home/wresch
       - BOLTZ_CACHE={{ $boltz_cache }}
-      - PYTHONWARNINGS="ignore::FutureWarning"
+      - PYTHONWARNINGS=ignore::FutureWarning
     script: |
       #!/bin/bash
+      PATH=/app/env/bin:${PATH}
       lock="${BOLTZ_CACHE}.lock"
       mkdir -p "$(dirname "${lock}")"
       while :; do
