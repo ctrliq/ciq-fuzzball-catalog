@@ -7,5 +7,6 @@ featured: true
 tags:
 - desktop
 - interactive
+keyart: keyart.jpg
 ---
 An open-source application for interactive scientific visualization. Runs in a web-accessible Xfce Virtual Desktop Environment.

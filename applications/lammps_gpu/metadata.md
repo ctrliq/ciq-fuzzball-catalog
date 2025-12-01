@@ -8,5 +8,6 @@ tags:
 - MD
 - Sandia
 - GPU
+keyart: keyart.jpg
 ---
 The LAMMPS GPU example job provides a basic skeleton Fuzzball workflow to execute a LAMMPS simulation on a single node with one or more GPUs.

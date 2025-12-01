@@ -7,5 +7,6 @@ featured: true
 tags:
 - Ansys
 - FEA
+keyart: keyart.jpg
 ---
 An example application template executing a simple internal 3D flow simulation using ANSYS LS-DYNA.

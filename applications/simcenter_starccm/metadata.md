@@ -8,5 +8,6 @@ tags:
 - Siemens
 - CFD
 - acoustics
+keyart: keyart.jpg
 ---
 An application template providing access to the Simcenter STAR-CCM+ simulation software running an example acoustic wave simulation.

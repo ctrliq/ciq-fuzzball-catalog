@@ -7,5 +7,6 @@ featured: true
 tags:
 - desktop
 - interactive
+keyart: keyart.jpg
 ---
 Virtual Desktop Interface (VDI) based on the Xfce desktop environment.
