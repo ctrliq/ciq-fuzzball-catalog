@@ -1,7 +1,7 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "cloudcommander"
-name: "Fuzzball Cloud Commander File Browser"
+id: "cloudcommander-2"
+name: "[Service] Fuzzball Cloud Commander File Browser"
 category: "UTILITIES"
 tags:
 - file-management
