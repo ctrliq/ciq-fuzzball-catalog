@@ -7,18 +7,8 @@ values:
       a particular volume in the file browser, you can specify it like this:
       `volume://user/persistent:/custom/path`. The leading slash is optional.
     string_value: "volume://user/persistent:data"
-    display_category: Storage
 
   - name: Container
     display_name: CloudCommander container
     string_value: "docker://coderaiser/cloudcmd:19.0.13-alpine"
     display_category: Container
-
-  - name: Username
-    display_name: "[required] Username for logging into the cloudcommander instance"
-    string_value: cc
-    display_category: Credentials
-  - name: PasswordSecret
-    display_name: "[required] Password secret for logging into the cloudcommander instance"
-    string_value: "secret://user/app_pw"
-    display_category: Credentials

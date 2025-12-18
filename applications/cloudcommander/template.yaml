@@ -8,14 +8,6 @@
 {{- end }}
 {{- $volumes := splitList "," .Volumes }}
 
-
-{{- if (not (trim .Username)) }}
-  {{- fail "Username is required" }}
-{{- end }}
-{{- if (not (trim .PasswordSecret | hasPrefix "secret://")) }}
-  {{- fail "PasswordSecret is required and has to start with secret://" }}
-{{- end }}
-
 version: v1
 volumes:
 {{- range $i, $v := $volumes }}
@@ -42,8 +34,6 @@ services:
     cwd: /fuzzball
     env:
       - HOME=/tmp/cloudcommander
-      - PASSWORD={{- trim .PasswordSecret }}
-      - USERNAME={{- trim .Username }}
     export: workflow
     persist: true
     network:
@@ -55,7 +45,7 @@ services:
         - name: a
           port: http
           type: path
-          protocol: https
+          protocol: http
     mounts:
 {{- range $i, $v := $volumes }}
   {{- $parts := splitList ":" $v }}
@@ -102,9 +92,6 @@ services:
 
       /usr/src/app/bin/cloudcmd.mjs \
         --port {{ $port }} \
-        --auth \
-        --username "${USERNAME}" \
-        --password "${PASSWORD}" \
         --prefix "${FB_ENDPOINT_PATH}" \
         --name "Fuzzball Cloud Commander" \
         --keys-panel \
