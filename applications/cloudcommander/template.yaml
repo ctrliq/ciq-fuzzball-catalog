@@ -42,7 +42,7 @@ services:
           port: {{ $port }}
           protocol: tcp
       endpoints:
-        - name: a
+        - name: file-browser
           port: http
           type: path
           protocol: http
