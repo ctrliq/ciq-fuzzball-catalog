@@ -81,7 +81,7 @@ services:
                 try {
                   document.querySelectorAll('.terminal').forEach(el => el.remove());
                   CloudCmd.View.hide();
-                  document.body.innerHTML = '<h1>Cloud Commander has exited</h1><p>You can close this tab. The Fuzzball job will end automatically</p>';
+                  document.body.innerHTML = '<h1>Cloud Commander has exited</h1><p>You can close this tab. The Fuzzball service will end automatically</p>';
                   document.title = 'Session Ended';
                 } catch (e) {}
               }, 2000);
