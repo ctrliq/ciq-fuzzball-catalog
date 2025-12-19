@@ -1,0 +1,82 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $mount := "/data" }}
+{{- $port := (randInt 10000 15000) }}
+{{- $volume := trim .Volume }}
+{{- if not (hasPrefix "volume://" $volume) }}
+  {{- fail "A Volume has to be specified" }}
+{{- end }}
+{{- $container_type := default "r" (trim .Type) }}
+
+version: v1
+
+volumes:
+  data:
+    reference: {{ $volume }}
+
+services:
+  jupyter:
+    export: workflow
+    persist: true
+    network:
+      ports:
+        - name: web
+          port: {{ $port }}
+          protocol: tcp
+      endpoints:
+        - name: jupyter
+          type: path
+          port: web
+          protocol: http
+    readinessProbe:
+      exec:
+        command:
+          - /bin/sh
+          - '-c'
+          - "ps -e | grep -q jupyter"
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 2
+    image:
+      uri: docker://quay.io/jupyter/{{ $container_type }}-notebook:latest
+    resource:
+      cpu:
+        cores: {{ .Cores }}
+      memory:
+        size: {{ .Memory }}
+      {{- if gt (.GPUs | int) 0 }}
+      devices:
+        nvidia.com/gpu: {{ .GPUs }}
+      {{- end }}
+      exclusive: {{ .Exclusive }}
+    mounts:
+      data:
+        location: {{ $mount }}
+    env:
+      - NB_USER=jovyan
+      - HOME=/home/jovyan
+    script: |
+      #!/bin/bash
+      set -e
+
+      #hashed_pw="$(python3 -c "from jupyter_server.auth import passwd; print(passwd('${PASSWORD}'))")"
+
+      cat <<__EOF__ > "${HOME}/.jupyter/jupyter_server_config.py"
+      c = get_config()
+      c.ServerApp.ip = "0.0.0.0"
+      c.ServerApp.port = {{ $port }}
+      c.ServerApp.open_browser = False
+      c.IdentityProvider.token = ""
+      c.PasswordIdentityProvider.password_required = False
+      c.ServerApp.root_dir = "{{ $mount }}"
+      c.ServerApp.allow_origin = "*"
+      c.ServerApp.allow_credentials = True
+      c.ServerApp.trust_xheaders = True
+      c.ServerApp.allow_remote_access = True
+      c.ServerApp.default_url = '/lab'
+      #c.PasswordIdentityProvider.hashed_password = "$hashed_pw"
+      c.ServerApp.base_url = "${FB_ENDPOINT_PATH_JUPYTER}"
+      c.Application.log_level = "DEBUG"
+      __EOF__
+
+      /opt/conda/bin/jupyter server
