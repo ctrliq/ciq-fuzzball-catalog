@@ -1,9 +1,12 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+
 {{- $root := "/fuzzball" }}
-{{- $volumes := splitList "," .Volumes }}
-{{- if eq (len $volumes) 0 }}
+{{- $port := (randInt 10000 30000) }}
+
+{{- if not (trim .Volumes | hasPrefix "volume://") }}
   {{-  fail "At least one volume has to be specified in the Volumes field." }}
 {{- end }}
+{{- $volumes := splitList "," .Volumes }}
 
 version: v1
 volumes:
@@ -18,10 +21,32 @@ volumes:
     {{- fail (printf "Invalid volume reference: %s" $v) }}
   {{- end }}
 {{- end }}
-jobs:
-  cloud-commander:
+
+services:
+  cloudcmdr:
     image:
       uri: {{ .Container }}
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 6GiB
+    cwd: /fuzzball
+    env:
+      - HOME=/tmp/cloudcommander
+    export: workflow
+    persist: true
+    network:
+      ports:
+        - name: web
+          port: {{ $port }}
+          protocol: tcp
+      endpoints:
+        - name: file-browser
+          port-name: web
+          type: path
+          protocol: http
+          scope: {{ .ServiceScope }}
     mounts:
 {{- range $i, $v := $volumes }}
   {{- $parts := splitList ":" $v }}
@@ -34,66 +59,46 @@ jobs:
    {{- end}}
 {{- end }}
 
-    cwd: /fuzzball
-    env:
-      - HOME=/tmp/cloudcommander
-    command:
-      - /bin/sh
-      - '-c'
-      - |
-        port=$(( (RANDOM % 1000) + 8000 ))
-        mkdir -p "${HOME}"
-        cat <<__EOF__ > "${HOME}/.cloudcmd.menu.js"
-        export default {
-            'R - cd /': async ({CloudCmd}) => {
-                await CloudCmd.changeDir('/');
-            },
-            'X - Exit the File Browser': async ({CloudCmd}) => {
-                const {Dialog, CurrentInfo, TerminalRun} = DOM;
-                const [cancel] = await Dialog.confirm("Exit Cloud Commander?");
-                if (cancel) {
-                    return;
-                }
-                CloudCmd.TerminalRun.show({
-                  command: 'bash -c "p=\$(cat ${HOME}/.cloudcmd.pid); kill \$p; while kill -0 \$p &> /dev/null; do sleep 1 ; done"',
-                  autoClose: true,
-                  cwd: "/tmp"
-                });
-                window.setTimeout(() => {
-                  try {
-                    document.querySelectorAll('.terminal').forEach(el => el.remove());
-                    CloudCmd.View.hide();
-                    document.body.innerHTML = '<h1>Cloud Commander has exited</h1><p>You can close this tab. The Fuzzball job will end automatically</p>';
-                    document.title = 'Session Ended';
-                  } catch (e) {}
-                }, 2000);
+    script: |
+      #!/bin/sh
+      mkdir -p "${HOME}"
+      cat <<__EOF__ > "${HOME}/.cloudcmd.menu.js"
+      export default {
+          'R - cd /': async ({CloudCmd}) => {
+              await CloudCmd.changeDir('/');
+          },
+          'X - Exit the File Browser': async ({CloudCmd}) => {
+              const {Dialog, CurrentInfo, TerminalRun} = DOM;
+              const [cancel] = await Dialog.confirm("Exit Cloud Commander?");
+              if (cancel) {
+                  return;
+              }
+              CloudCmd.TerminalRun.show({
+                command: 'bash -c "p=\$(cat ${HOME}/.cloudcmd.pid); kill \$p; while kill -0 \$p &> /dev/null; do sleep 1 ; done"',
+                autoClose: true,
+                cwd: "/tmp"
+              });
+              window.setTimeout(() => {
+                try {
+                  document.querySelectorAll('.terminal').forEach(el => el.remove());
+                  CloudCmd.View.hide();
+                  document.body.innerHTML = '<h1>Cloud Commander has exited</h1><p>You can close this tab. The Fuzzball service will end automatically</p>';
+                  document.title = 'Session Ended';
+                } catch (e) {}
+              }, 2000);
 
-            },
-        }
-        __EOF__
-        echo
-        echo "Access to cloud commander requires port-forwarding via the CLI:"
-        echo
-        echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} cloud-commander $port:$port"
-        echo
-        echo "Then navigate to http://localhost:$port"
-        echo
-        /usr/src/app/bin/cloudcmd.mjs \
-          --port $port \
-          --name "Fuzzball Cloud Commander" \
-          --keys-panel \
-          --config-dialog \
-          --root {{ $root }} \
-          --terminal &
-        echo $! > ${HOME}/.cloudcmd.pid
-        wait
-        exit 0
+          },
+      }
+      __EOF__
 
-    resource:
-      cpu:
-        cores: 1
-      memory:
-        size: 6GiB
-    policy:
-      timeout:
-        execute: {{.Timeout}}
+      /usr/src/app/bin/cloudcmd.mjs \
+        --port {{ $port }} \
+        --prefix "${FB_ENDPOINT_PATH}" \
+        --name "Fuzzball Cloud Commander" \
+        --keys-panel \
+        --config-dialog \
+        --root {{ $root }} \
+        --terminal &
+      echo $! > ${HOME}/.cloudcmd.pid
+      wait
+      exit 0
