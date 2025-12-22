@@ -14,7 +14,7 @@ values:
     display_category: Container
   - name: "ServiceScope"
     display_name: |
-      [required] Who can access the jupyter service. Defaults to 'group'
+      [required] Who can access the CloudCommander service. Defaults to 'group'
     string_value: group
     options_input:
       options: [user, group, organization, public]
