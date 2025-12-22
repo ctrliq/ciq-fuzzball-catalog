@@ -1,0 +1,39 @@
+values:
+  - name: "Type"
+    display_name: |
+      Notebook type. Options: base, minimal, r, julia, scipy, tensorflow, datascience, pyspark, all-spark,
+      pytorch (https://quay.io/organization/jupyter)
+    string_value: "r"
+    options_input:
+      options: [base, minimal, r, julia, scipy, tensorflow, datascience, pyspark, all-spark, pytorch]
+    display_category: "Container"
+  - name: "Cores"
+    display_name: "How many CPU cores to allocate"
+    uint_value: 1
+    display_category: "Resources"
+  - name: "Memory"
+    display_name: "How much memory to allocate"
+    string_value: "4GiB"
+    display_category: "Resources"
+  - name: "GPUs"
+    display_name: "How many GPUs to allocate"
+    uint_value: 0
+    display_category: "Resources"
+  - name: "Exclusive"
+    display_name: "Disallow other jobs from using the same node/instance"
+    bool_value: false
+    display_category: "Scheduling"
+  - name: "Volume"
+    display_name: |
+      [required] Where to store notebook data. Will be mounted at /data. Defaults to 'volume://user/persistent',
+      the default name for user-scoped persistent storage. Adapt to match one of your persistent or ephemeral
+      storage classes.
+    string_value: "volume://user/persistent"
+    display_category: "Storage"
+  - name: "ServiceScope"
+    display_name: |
+      [required] Who can access the jupyter service. Defaults to 'group'
+    string_value: group
+    options_input:
+      options: [user, group, organization, public]
+    display_category: "Access"

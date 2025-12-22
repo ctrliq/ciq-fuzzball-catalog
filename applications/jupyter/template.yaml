@@ -1,0 +1,77 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $mount := "/data" }}
+{{- $port := (randInt 10000 30000) }}
+{{- $volume := trim .Volume }}
+{{- if not (hasPrefix "volume://" $volume) }}
+  {{- fail "A Volume has to be specified" }}
+{{- end }}
+{{- $container_type := default "r" (trim .Type) }}
+
+version: v1
+
+volumes:
+  data:
+    reference: {{ $volume }}
+
+services:
+  jupyter:
+    export: workflow
+    persist: true
+    network:
+      ports:
+        - name: web
+          port: {{ $port }}
+          protocol: tcp
+      endpoints:
+        - name: jupyter
+          type: path
+          port-name: web
+          protocol: http
+          scope: {{ .ServiceScope }}
+    readiness-probe:
+      exec:
+        command:
+          - /bin/sh
+          - '-c'
+          - jupyter server list &> /dev/null
+      period-seconds: 5
+      timeout-seconds: 5
+      initial-delay-seconds: 10
+    image:
+      uri: docker://quay.io/jupyter/{{ $container_type }}-notebook:latest
+    resource:
+      cpu:
+        cores: {{ .Cores }}
+      memory:
+        size: {{ .Memory }}
+      {{- if gt (.GPUs | int) 0 }}
+      devices:
+        nvidia.com/gpu: {{ .GPUs }}
+      {{- end }}
+      exclusive: {{ .Exclusive }}
+    mounts:
+      data:
+        location: {{ $mount }}
+    env:
+      - NB_USER=jovyan
+      - HOME=/home/jovyan
+    script: |
+      #!/bin/bash
+      set -e
+      mkdir -p "${HOME}/.jupyter"
+      cat <<__EOF__ > "${HOME}/.jupyter/jupyter_server_config.py"
+      c = get_config()
+      c.ServerApp.ip = "0.0.0.0"
+      c.ServerApp.port = {{ $port }}
+      c.ServerApp.open_browser = False
+      c.IdentityProvider.token = ""
+      c.PasswordIdentityProvider.password_required = False
+      c.ServerApp.root_dir = "{{ $mount }}"
+      c.ServerApp.allow_credentials = False
+      c.ServerApp.default_url = '/lab'
+      c.ServerApp.base_url = "${FB_ENDPOINT_PATH_JUPYTER}"
+      c.Application.log_level = "INFO"
+      __EOF__
+
+      /opt/conda/bin/jupyter server
