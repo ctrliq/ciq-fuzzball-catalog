@@ -1,7 +1,7 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 
 {{- $mount := "/data" }}
-{{- $port := (randInt 10000 15000) }}
+{{- $port := (randInt 10000 30000) }}
 {{- $volume := trim .Volume }}
 {{- if not (hasPrefix "volume://" $volume) }}
   {{- fail "A Volume has to be specified" }}
