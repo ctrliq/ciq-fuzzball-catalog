@@ -29,15 +29,15 @@ services:
           port-name: web
           protocol: http
           scope: {{ .ServiceScope }}
-    readinessProbe:
+    readiness-probe:
       exec:
         command:
           - /bin/sh
           - '-c'
-          - "ps -e | grep -q jupyter"
-      initialDelaySeconds: 10
-      periodSeconds: 5
-      timeoutSeconds: 2
+          - jupyter server list &> /dev/null
+      period-seconds: 5
+      timeout-seconds: 5
+      initial-delay-seconds: 10
     image:
       uri: docker://quay.io/jupyter/{{ $container_type }}-notebook:latest
     resource:
@@ -59,7 +59,7 @@ services:
     script: |
       #!/bin/bash
       set -e
-
+      mkdir -p "${HOME}/.jupyter"
       cat <<__EOF__ > "${HOME}/.jupyter/jupyter_server_config.py"
       c = get_config()
       c.ServerApp.ip = "0.0.0.0"
@@ -68,13 +68,10 @@ services:
       c.IdentityProvider.token = ""
       c.PasswordIdentityProvider.password_required = False
       c.ServerApp.root_dir = "{{ $mount }}"
-      c.ServerApp.allow_origin = "*"
-      c.ServerApp.allow_credentials = True
-      c.ServerApp.trust_xheaders = True
-      c.ServerApp.allow_remote_access = True
+      c.ServerApp.allow_credentials = False
       c.ServerApp.default_url = '/lab'
       c.ServerApp.base_url = "${FB_ENDPOINT_PATH_JUPYTER}"
-      c.Application.log_level = "DEBUG"
+      c.Application.log_level = "INFO"
       __EOF__
 
       /opt/conda/bin/jupyter server

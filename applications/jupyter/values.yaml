@@ -25,7 +25,9 @@ values:
     display_category: "Scheduling"
   - name: "Volume"
     display_name: |
-      [required] Where to store notebook data. Will be mounted at /data.
+      [required] Where to store notebook data. Will be mounted at /data. Defaults to 'volume://user/persistent',
+      the default name for user-scoped persistent storage. Adapt to match one of your persistent or ephemeral
+      storage classes.
     string_value: "volume://user/persistent"
     display_category: "Storage"
   - name: "ServiceScope"
