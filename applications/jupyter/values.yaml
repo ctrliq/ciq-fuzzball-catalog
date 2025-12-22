@@ -28,3 +28,10 @@ values:
       [required] Where to store notebook data. Will be mounted at /data.
     string_value: "volume://user/persistent"
     display_category: "Storage"
+  - name: "ServiceScope"
+    display_name: |
+      [required] Who can access the jupyter service. Defaults to 'group'
+    string_value: group
+    options_input:
+      options: [user, group, organization, public]
+    display_category: "Access"

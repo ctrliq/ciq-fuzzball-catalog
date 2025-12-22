@@ -26,8 +26,9 @@ services:
       endpoints:
         - name: jupyter
           type: path
-          port: web
+          port-name: web
           protocol: http
+          scope: {{ .ServiceScope }}
     readinessProbe:
       exec:
         command:
@@ -59,8 +60,6 @@ services:
       #!/bin/bash
       set -e
 
-      #hashed_pw="$(python3 -c "from jupyter_server.auth import passwd; print(passwd('${PASSWORD}'))")"
-
       cat <<__EOF__ > "${HOME}/.jupyter/jupyter_server_config.py"
       c = get_config()
       c.ServerApp.ip = "0.0.0.0"
@@ -74,7 +73,6 @@ services:
       c.ServerApp.trust_xheaders = True
       c.ServerApp.allow_remote_access = True
       c.ServerApp.default_url = '/lab'
-      #c.PasswordIdentityProvider.hashed_password = "$hashed_pw"
       c.ServerApp.base_url = "${FB_ENDPOINT_PATH_JUPYTER}"
       c.Application.log_level = "DEBUG"
       __EOF__
