@@ -12,3 +12,10 @@ values:
     display_name: CloudCommander container
     string_value: "docker://coderaiser/cloudcmd:19.0.13-alpine"
     display_category: Container
+  - name: "ServiceScope"
+    display_name: |
+      [required] Who can access the jupyter service. Defaults to 'group'
+    string_value: group
+    options_input:
+      options: [user, group, organization, public]
+    display_category: "Access"

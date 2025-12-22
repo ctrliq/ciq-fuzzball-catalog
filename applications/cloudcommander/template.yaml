@@ -38,14 +38,15 @@ services:
     persist: true
     network:
       ports:
-        - name: http
+        - name: web
           port: {{ $port }}
           protocol: tcp
       endpoints:
         - name: file-browser
-          port: http
+          port-name: web
           type: path
           protocol: http
+          scope: {{ .ServiceScope }}
     mounts:
 {{- range $i, $v := $volumes }}
   {{- $parts := splitList ":" $v }}
