@@ -1,28 +1,100 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 version: v1
+
+{{- $stagein := trim .StageinScript }}
+{{- if not $stagein }}
+  {{- fail "StageinScript is required" }}
+{{- end }}
+{{- $stageout := trim .StageoutScript }}
+{{- $expurl := trim .ExperimentUrl }}
+{{- if not $expurl }}
+  {{- fail "ExperimentUrl is required" }}
+{{- end }}
+
+{{- $scratch_vol := trim .ScratchVolume | default "volume://user/ephemeral" }}
+{{- $scratch_mount := "/scratch" }}
+
+{{- $data_vol := trim .DataVolume }}
+{{- if (and $stageout (not $data_vol)) }}
+  {{- fail "If a stageout script to save data to a data volume is provided a data volume must be specified" }}
+{{- end }}
+{{- $data_mount := "/data" }}
+
+{{- $run := trim .RunName }}
+{{- $run_dir := printf "%s/%s" $scratch_mount $run }}
+
+defaults:
+  mounts:
+    scratch:
+      location: "{{ $scratch_mount }}"
+
 volumes:
-  lammps-data-volume:
-    name: lammps-data-volume
-    reference: {{.Volume}}
+  scratch:
+    reference: {{ $scratch_vol }}
     ingress:
-      - source:
-          uri: {{.LammpsInputUrl}}
-        destination:
-          uri: file://{{.LammpsInputFile}}
+      - destination:
+          uri: file://stagein.sh
+        source:
+          uri: {{ $expurl }}/{{ $stagein }}
+{{- if .StageoutScript }}
+      - destination:
+          uri: file://stageout.sh
+        source:
+          uri: {{ $expurl }}/{{ $stageout }}
+  data:
+    reference: {{ $data_vol }}
+{{- end }}
+
 jobs:
+  stagein:
+    command:
+      - /bin/sh
+      - stagein.sh
+      - "{{ $run_dir }}"
+    cwd: /scratch
+    image:
+      uri: docker://alpine:latest
+    mounts:
+      scratch:
+        location: /scratch
+    name: stagein
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 512MIB
+
   run-lammps:
     image:
       uri: {{.LammpsContainerUri}}
-      secret: {{.DepotSecret}}
-    env:
-      - LAMMPS_INPUT_FILE_PATH=/data/{{.LammpsInputFile}}
-    command:
-      - /bin/sh
-      - '-c'
-      - >-
-        lmp -k on g {{.GPUs}} -sf kk -pk kokkos cuda/aware on neigh full comm device binsize 2.8 -var x 8 -var y 4 -var z 8
-        -in ${LAMMPS_INPUT_FILE_PATH}
-    cwd: /data
+    script: |
+      #! /bin/sh
+
+      # GPU capability - this assumes that we are using the nvcr container
+      gpu_cap=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | tr -d '.')
+      lammps_caps=( $(ls /usr/local/lammps | sed 's/^sm//') )
+      use_cap=""
+      for c in ${lammps_caps[@]} ; do
+        if [[ $c -gt $gpu_cap ]]; then
+          break
+        fi
+        use_cap=${c}
+      done
+      printf "GPU capability:    sm%s\n" "${gpu_cap}"
+      printf "LAMMPS capability: sm%s\n" "${use_cap}"
+      prefix="/usr/local/lammps/sm${use_cap}"
+      PATH="${prefix}/bin"
+      LD_LIBRARY_PATH="${prefix}/lib:${LD_LIBRARY_PATH}"
+      LAMMPS_POTENTIALS=${prefix}/share/lammps/potentials"
+      MSI2LMP_LIBRARY=${prefix}/share/lammps/frc_files"
+
+      export PATH LD_LIBRARY_PATH LAMMPS_POTENTIALS MSI2LMP_LIBRARY
+
+      lmp -k on g 1 -sf kk -pk kokkos cuda/aware \
+        on neigh full comm device binsize 2.8 -var x 8 -var y 4 -var z 8 \
+        -in input.lammps
+
+    cwd: /scratch/{{ .RunName }}
     resource:
       cpu:
         cores: {{.Cores}}
@@ -31,9 +103,37 @@ jobs:
         size: {{.Memory}}
       devices:
         nvidia.com/gpu: {{.GPUs}}
+    multinode:
+      implementation: {{.MpiFlavor}}
+      nodes: {{.Nodes}}
+      procs-per-node: {{ .GPUs }}
     policy:
       timeout:
         execute: {{.Timeout}}
     mounts:
       lammps-data-volume:
         location: /data
+{{- if .StageoutScript }}
+  stageout:
+    command:
+      - /bin/sh
+      - stageout.sh
+      - {{.RunName}}
+      - /data/{{.OutputPath}}
+    cwd: /scratch
+    image:
+      uri: docker://alpine:latest
+    mounts:
+      scratch:
+        location: /scratch
+      data:
+        location: /data
+    name: stageout
+    requires:
+    - run-lammps
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 512MIB
+{{- end }}

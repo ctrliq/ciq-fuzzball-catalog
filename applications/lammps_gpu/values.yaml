@@ -1,37 +1,80 @@
 values:
-  - name: "LammpsInputUrl"
-    display_name: "URL to LAMMPS input file"
-    string_value: "https://www.lammps.org/inputs/in.lj.txt"
-    display_category: "Input Data"
-  - name: "LammpsInputFile"
-    display_name: "Name of the file LammpsInputUrl is saved as."
-    string_value: "in.lj.txt"
-    display_category: "I/O"
+  - name: "ScratchVolume"
+    display_name: "Used during LAMMPS run"
+    string_value: "volume://user/ephemeral"
+    display_category: "Storage"
+  - name: "DataVolume"
+    display_name: "Persistent volume to store data (if PersistResults is true)"
+    string_value: "volume://user/persistent"
+    display_category: "Storage"
+
+  - name: "ExperimentUrl"
+    display_name: >-
+      Base URL where workflow scripts can be found. The stagein script is required. The stageout is optional.
+    string_value: "https://raw.githubusercontent.com/wresch/lammps_examples/refs/heads/main/level1/lenard-jones-fluid/my-first-input"
+  - name: "StageinScript"
+    display_name: >
+      Path of a script relative to the ExperimentUrl that sets up a lammps run including a lammps input file. It takes the
+      name of the lammps run used to name the output as argument and assumes that it creates a main lammps input file called
+      'input.lammps'.
+    string_value: "stagein.sh"
+  - name: "StageoutScript"
+    display_name: >-
+      Path of a script relative to the ExperimentUrl that copies output data to S3 or some other location. It takes the
+      name of the run (RunName) and an output destination (OutputPath) as arguments. If no script is provided results
+      will not be persisted.
+    string_value: "stageout.sh"
+  - name: "RunName"
+    display_name: "Name of the run directory passed to the stagein and stageout scripts."
+    string_value: "lj-my-first-input"
+  - name: "OutputPath"
+    display_name: >-
+      Path relative to the root of the data volume where results should be written to. Ignored if no stageout script is
+      provided.
+    string_value: "results/lammps_cpu"
+
   - name: "LammpsContainerUri"
-    display_name: "URI of LAMMPS container that will be used for computation."
-    string_value: "oras://depot.ciq.com/fuzzball/fuzzball-applications/lammps.sif:29Sep2021"
+    display_name: |
+      URI of LAMMPS container that will be used for computation. This workflow assumes that
+      LAMMPS is installed in /usr/local/lammps/<GPU capability> as is the case for the NVCR
+      based containers.
+    string_value: "docker://nvcr.io/nvidia/lammps:10Sep25_pytorch"
     display_category: "Container"
-  - name: "DepotSecret"
-    display_name: "An OCI authentication credential for CIQ Depot."
-    string_value: "secret://user/depot"
-    display_category: "Container"
+
+  - name: "LammpsOptions"
+    display_name: "Lammps options for run (-in is added automatically)."
+    string_value: "LammpsOptions"
+
   - name: "Cores"
-    display_name: "How many CPU cores to allocate."
+    display_name: "How many CPU cores to allocate per node."
     uint_value: 2
     display_category: "Resources"
+
   - name: "Memory"
-    display_name: "How much memory to allocate."
+    display_name: "How much memory to allocate per node."
     string_value: "16384MiB"
     display_category: "Resources"
+
   - name: "GPUs"
-    display_name: "How many GPUs to allocate."
+    display_name: "How many GPUs to allocate per node."
     uint_value: 1
     display_category: "Resources"
+
+  - name: GPU type
+    display_name: "What type of GPU to allocate."
+    display_category: "Resources"
+    string_value: "T4"
+
+  - name: Nodes
+    display_name: How many Nodes to allocate."
+    uint_value: 1
+    display_category: Resources
+
+  - name: MpiFlavor
+    display_name: "MPI flavor. Options: openmpi, mpich. The NVRC container uses OpenMPI."
+    string_value: "openmpi"
+
   - name: "Timeout"
     display_name: "Maximum runtime."
     string_value: "30m"
     display_category: "Execution"
-  - name: "Volume"
-    display_name: "Where to store LAMMPS input/output data."
-    string_value: "volume://user/ephemeral"
-    display_category: "Storage"
