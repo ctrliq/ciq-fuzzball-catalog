@@ -126,6 +126,10 @@ services:
         #!/bin/bash
         # re-exporting the environment
         $(env | grep -v '^_' | sed 's/^/export /')
+{{- if not $homevol }}
+        # copy, don't symlink if the home dir with the cache is ephemeral
+        export RENV_CONFIG_CACHE_SYMLINKS=FALSE
+{{- end }}
         /usr/lib/rstudio-server/bin/rsession "\$@"
         EOF
         chmod +x "${rstudio_dir}/config/rsession.sh"
