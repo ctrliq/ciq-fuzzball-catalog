@@ -150,6 +150,8 @@ services:
         python3 -c "
         import os, shlex
         for key, value in os.environ.items():
+            if key == '_':
+              continue
             print(f'export {key}={shlex.quote(value)}')
         " >> "${rstudio_dir}/config/rsession.sh"
         cat >> "${rstudio_dir}/config/rsession.sh" <<EOF
