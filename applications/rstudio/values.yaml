@@ -9,7 +9,7 @@ values:
     display_category: "Resources"
 
   - name: "HomeVolume"
-    display_name: |
+    display_name: >
       [optional] Storage volume used as your home directory. Will be mounted at /home/user.
       Use to house a persistent R library, settings, etc. If not set (the default), an
       ephemeral home directory will be created and any changes made in the home directory
@@ -26,15 +26,15 @@ values:
     display_category: "Storage"
 
   - name: "ContainerImage"
-    display_name: |
+    display_name: >
       Container image to use. This workflow assumes that an image from
-      the Rocker project is used
+      the Rocker project is used.
     string_value: "docker://rocker/tidyverse:4.5.2"
     display_category: "Container"
 
   - name: "ServiceScope"
-    display_name: |
-      [required] Who can access this RStudio Server instance. Defaults to 'user'
+    display_name: >
+      [required] Who can access this RStudio Server instance. Defaults to 'user'.
     string_value: user
     options_input:
       options: [user, group, organization]
