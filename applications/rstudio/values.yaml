@@ -1,10 +1,10 @@
 values:
   - name: "Cores"
-    display_name: "How many CPU cores to allocate."
+    display_name: "How many CPU cores to allocate"
     uint_value: 4
     display_category: "Resources"
   - name: "Memory"
-    display_name: "How much memory to allocate."
+    display_name: "How much memory to allocate"
     string_value: "8gb"
     display_category: "Resources"
 
@@ -27,14 +27,14 @@ values:
 
   - name: "ContainerImage"
     display_name: |
-      Container image to use. This workflow assumes that a image from
+      Container image to use. This workflow assumes that an image from
       the Rocker project is used
     string_value: "docker://rocker/tidyverse:4.5.2"
     display_category: "Container"
 
   - name: "ServiceScope"
     display_name: |
-      [required] Who can access this Rstudio server instance. Defaults to 'user'
+      [required] Who can access this RStudio Server instance. Defaults to 'user'
     string_value: user
     options_input:
       options: [user, group, organization]

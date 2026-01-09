@@ -4,7 +4,7 @@
 {{- $scratchvol := trim .ScratchVolume }}
 {{- $homevol := trim .HomeVolume }}
 {{- if not $scratchvol }}
-  {{- fail "DataVolume and ScratchVolume are required" }}
+  {{- fail "ScratchVolume is required" }}
 {{- end }}
 {{- $datamount := "/data" }}
 {{- $scratchmount := "/scratch" }}
@@ -54,7 +54,7 @@ services:
 {{- end }}
       scratch:
         location: {{ $scratchmount }}
-    # cwd becomes the home dir in /etc/passwd which makes rstudio server *much* happier
+    # cwd becomes the home dir in /etc/passwd which makes RStudio Server *much* happier
     cwd: {{ $home }}
     persist: true
     script: |
@@ -72,7 +72,7 @@ services:
         export USER USERNAME DEFAULT_USER TMPDIR HOME
 
         # configuration
-        rstudio_dir="$(mktemp -d /tmp/XXXX)"  # still want this in /tmp
+        rstudio_dir="$(mktemp -d /tmp/XXXXXX)"  # still want this in /tmp
         mkdir -p "${rstudio_dir}"/{config,logs,server-data,server-working-dir,db}
 
         # make sure the user library comes before the standard lib
@@ -103,13 +103,12 @@ services:
         session-default-working-dir=$HOME
         session-default-new-project-dir=$HOME
         restrict-directory-view=1
-        directory-view-allow-list={{- $datamount }}
-        #r-libs-user=$lib_expanded
         EOF
 
         env > "${rstudio_dir}/config/env-vars"
 
         cat > "${rstudio_dir}/config/rserver.conf" << EOF
+        # access is controlled via service end point scope
         auth-none=1
         www-address=0.0.0.0
         www-frame-origin=same
@@ -125,9 +124,6 @@ services:
 
         cat > "${rstudio_dir}/config/rsession.sh" << EOF
         #!/bin/bash
-        logfile="\$(mktemp ${rstudio_dir}/logs/rsession-XXXX)"
-        exec 1>"\${logfile}"
-        exec 2>&1
         # re-exporting the environment
         $(env | grep -v '^_' | sed 's/^/export /')
         /usr/lib/rstudio-server/bin/rsession "\$@"
@@ -139,6 +135,6 @@ services:
         rserver
     resource:
       cpu:
-        cores: 4
+        cores: {{ .Cores }}
       memory:
-        size: 8GB
+        size: {{ .Memory }}
