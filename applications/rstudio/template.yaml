@@ -115,7 +115,6 @@ services:
         cat > "${rstudio_dir}/config/rsession.conf" << EOF
         session-rprofile-on-resume-default=true
         session-timeout-minutes=0
-        copilot-enabled=1
         session-default-working-dir=$HOME
         session-default-new-project-dir=$HOME
         restrict-directory-view=1
