@@ -68,6 +68,7 @@ services:
         # check prerequisites
         command -v R >/dev/null 2>&1 || die "R is not installed"
         command -v rserver >/dev/null 2>&1 || die "rserver is not installed"
+        command -v python3 >/dev/null 2>&1 || die "python3 is not installed"
         [[ -e /usr/lib/rstudio-server/bin/rsession ]] || die "/usr/lib/rstudio-server/bin/rsession not found"
 
         # tmpdir is small enough that R package installations will fail. Need scratch
@@ -120,8 +121,6 @@ services:
         restrict-directory-view=1
         EOF
 
-        env > "${rstudio_dir}/config/env-vars"
-
         cat > "${rstudio_dir}/config/rserver.conf" << EOF
         # access is controlled via service end point scope
         auth-none=1
@@ -139,13 +138,21 @@ services:
 
         cat > "${rstudio_dir}/config/rsession.sh" << EOF
         #!/bin/bash
-        # re-exporting the environment
-        $(env)
-        export $(env | awk -F= '/^[a-zA-Z_][a-zA-Z0-9_]*=/ {printf(" %s", $1)}')
 {{- if not $homevol }}
         # copy, don't symlink if the home dir with the cache is ephemeral
         export RENV_CONFIG_CACHE_SYMLINKS=FALSE
 {{- end }}
+        # re-exporting the environment
+        EOF
+
+        # savely add the current environment to the r session's environment
+        # by wrapping it a shell wrapper
+        python3 -c "
+        import os, shlex
+        for key, value in os.environ.items():
+            print(f'export {key}={shlex.quote(value)}')
+        " >> "${rstudio_dir}/config/rsession.sh"
+        cat >> "${rstudio_dir}/config/rsession.sh" <<EOF
         /usr/lib/rstudio-server/bin/rsession "\$@"
         EOF
         chmod +x "${rstudio_dir}/config/rsession.sh"
