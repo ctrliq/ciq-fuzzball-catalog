@@ -73,7 +73,7 @@ services:
 
         # tmpdir is small enough that R package installations will fail. Need scratch
         TMPDIR="{{- $scratchmount }}/tmp"
-        mkdir "$TMPDIR"
+        mkdir -p "$TMPDIR" || die "Failed to create temporary directory: $TMPDIR"
 
         # some setup
         USER=$(id -un)
