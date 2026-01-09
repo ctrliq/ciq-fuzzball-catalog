@@ -145,7 +145,7 @@ services:
         # re-exporting the environment
         EOF
 
-        # savely add the current environment to the r session's environment
+        # safely add the current environment to the r session's environment
         # by wrapping it a shell wrapper
         python3 -c "
         import os, shlex
