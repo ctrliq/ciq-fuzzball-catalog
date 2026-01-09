@@ -76,12 +76,18 @@ services:
         mkdir -p "${rstudio_dir}"/{config,logs,server-data,server-working-dir,db}
 
         # make sure the user library comes before the standard lib
-        cat $R_HOME/etc/Rprofile.site > "${rstudio_dir}/config/Rprofile.site"
-        cat >> "${rstudio_dir}/config/Rprofile.site" <<EOF
+        rstudio_rprofile="${rstudio_dir}/config/Rprofile.site"
+        if [ -n "${R_HOME:-}" ] && [ -f "$R_HOME/etc/Rprofile.site" ]; then
+            cat "$R_HOME/etc/Rprofile.site" > "$rstudio_rprofile"
+        else
+            # Create an empty Rprofile.site if the system-wide one is unavailable
+            : > "$rstudio_rprofile"
+        fi
+        cat >> "$rstudio_rprofile" <<EOF
 
         .libPaths(.expand_R_libs_env_var('$HOME/R/%a/%V'))
         EOF
-        export R_PROFILE="${rstudio_dir}/config/Rprofile.site"
+        export R_PROFILE="$rstudio_rprofile"
         mkdir -p "$(R -s -e "cat(.expand_R_libs_env_var('$HOME/R/%a/%V'))")"
 
         # https://docs.posit.co/ide/server-pro/admin/server_management/core_administrative_tasks.html
