@@ -11,7 +11,6 @@ Workflows should follow these suggestions.
 - Use explicit tags in container URIs for reproducibility.
 - The heavy analytical jobs in a workflow should have configurable runtime limits.
 - Use strings with explicit units for memory and runtime specifications (e.g. "8GiB", "30m")
-- Interactive services listening on a port should listen on localhost for security.
 - Use consistent template variable formatting without spaces: `{{.Variable}}`
   rather than `{{ .Variable }}`.
 - If you need a value derived from an input parameter (e.g. with whitespace
