@@ -134,9 +134,19 @@ services:
         EOF
         chmod +x "${rstudio_dir}/config/rsession.sh"
 
+        # Ensure rserver is available before attempting to start it
+        if ! command -v rserver >/dev/null 2>&1; then
+            echo "Error: 'rserver' binary not found in PATH. Cannot start RStudio Server." >&2
+            exit 1
+        fi
+
         RSTUDIO_DATA_HOME="$rstudio_dir/server-data" \
         RSTUDIO_CONFIG_DIR="$rstudio_dir/config" \
-        rserver
+        rserver || {
+            status=$?
+            echo "Error: 'rserver' failed to start with exit code ${status}." >&2
+            exit "$status"
+        }
     resource:
       cpu:
         cores: {{ .Cores }}
