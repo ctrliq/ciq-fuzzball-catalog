@@ -12,10 +12,11 @@ values:
     display_name: CloudCommander container
     string_value: "docker://coderaiser/cloudcmd:19.0.13-alpine"
     display_category: Container
+
   - name: "ServiceScope"
     display_name: |
-      [required] Who can access the CloudCommander service. Defaults to 'group'
-    string_value: group
+      [required] Who can access this CloudCommander instance. Defaults to 'user'
+    string_value: user
     options_input:
-      options: [user, group, organization, public]
+      options: [user, group, organization]
     display_category: "Access"
