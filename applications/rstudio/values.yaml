@@ -34,7 +34,7 @@ values:
 
   - name: "ServiceScope"
     display_name: >
-      [required] Who can access this RStudio Server instance. Defaults to 'user'.
+      Who can access this RStudio Server instance. Defaults to 'user'.
     string_value: user
     options_input:
       options: [user, group, organization]
