@@ -20,7 +20,7 @@ values:
 
 
   - name: ServerGPUModel
-    display_name: GPU model to request
+    display_name: GPU model to request.
     string_value: NVIDIA L4
     display_category: Resources
   - name: ServerCores
