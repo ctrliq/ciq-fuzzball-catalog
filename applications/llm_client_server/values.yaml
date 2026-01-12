@@ -18,7 +18,6 @@ values:
     string_value: ".cache/huggingface/hub"
     display_category: Storage
 
-
   - name: ServerGPUModel
     display_name: GPU model to request.
     string_value: NVIDIA L4

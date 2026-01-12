@@ -1,8 +1,8 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 
 {{- $vllm_api_key := (randInt 0 10000000 | printf "%8d" | b64enc ) }}
-{{- $vllm_api_port := randInt 10000 32000 }}
-{{- $ui_port := randInt 10000 32000 }}
+{{- $vllm_api_port := randInt 10000 24000 }}
+{{- $ui_port := randInt 24001 32000 }}
 
 {{- $data_mount := "/data" }}
 
@@ -10,11 +10,6 @@ version: v1
 volumes:
   data:
     reference: {{ .ModelVolume }}
-defaults:
-  job:
-    mounts:
-      data:
-        location: {{ $data_mount }}
 
 services:
   vllm:
@@ -25,6 +20,9 @@ services:
           protocol: tcp
     image:
       uri: docker://vllm/vllm-openai:{{ .VllmVersion }}
+    mounts:
+      data:
+        location: {{ $data_mount }}
     resource:
       cpu:
         cores: {{ .ServerCores }}
@@ -36,10 +34,10 @@ services:
         nvidia.com/gpu.model: "{{ .ServerGPUModel }}"
     script: |
       #!/bin/sh
-      HF_HUB_CACHE={{ $data_mount }}/{{ .HuggingfaceCache }}
+      HF_HUB_CACHE="{{ $data_mount }}/{{ .HuggingfaceCache }}"
       export HF_HUB_CACHE
       mkdir -p "$HF_HUB_CACHE" || exit 1
-      vllm serve --port={{ $vllm_api_port }} --api-key={{ $vllm_api_key }} --max-model-len {{ .MaxContextSize }} {{ .ModelName }}
+      vllm serve --port={{ $vllm_api_port }} --api-key="{{ $vllm_api_key }}" --max-model-len {{ .MaxContextSize }} "{{ .ModelName }}"
     readiness-probe:
       http-get:
         path: /v1/models
@@ -52,7 +50,6 @@ services:
       period-seconds: 30
       failure-threshold: 10
       success-threshold: 1
-
 
   chat-interface:
     depends-on:
@@ -72,14 +69,17 @@ services:
           scope: {{ .ServiceScope }}
     image:
       uri: docker://ghcr.io/yoziru/nextjs-vllm-ui:latest
+    mounts:
+      data:
+        location: {{ $data_mount }}
     resource:
       cpu:
         cores: 2
       memory:
-        size: 4GB
+        size: 4GiB
     script: |
       #!/bin/sh
-      VLLM_URL=http://vllm.svc:{{ $vllm_api_port }}
+      VLLM_URL="http://vllm.svc:{{ $vllm_api_port }}"
       VLLM_API_KEY="{{ $vllm_api_key }}"
       VLLM_TOKEN_LIMIT={{ .MaxContextSize }}
       PORT={{ $ui_port }}
