@@ -69,9 +69,6 @@ services:
           scope: {{ .ServiceScope }}
     image:
       uri: docker://ghcr.io/yoziru/nextjs-vllm-ui:latest
-    mounts:
-      data:
-        location: {{ $data_mount }}
     resource:
       cpu:
         cores: 2
