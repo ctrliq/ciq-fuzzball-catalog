@@ -1,7 +1,6 @@
 values:
   - name: ModelName
     display_name: Name of the HuggingFace model to use.
-    #string_value: HuggingFaceTB/SmolLM2-360M-Instruct
     string_value: HuggingFaceTB/SmolLM3-3B
     display_category: Model Configuration
   - name: MaxContextSize
