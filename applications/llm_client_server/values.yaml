@@ -1,6 +1,6 @@
 values:
   - name: ModelName
-    display_name: Name of the HuggingFace model to use.
+    display_name: Name of the HuggingFace model to use.g
     string_value: HuggingFaceTB/SmolLM3-3B
     display_category: Model Configuration
   - name: MaxContextSize
@@ -22,11 +22,11 @@ values:
     string_value: NVIDIA L4
     display_category: Resources
   - name: ServerCores
-    display_name: Cores to allocate for the LLM server job.
+    display_name: Cores to allocate for the LLM server service.
     uint_value: 4
     display_category: Resources
   - name: ServerMemory
-    display_name: Amount of memory to allocate for the LLM server job.
+    display_name: Amount of memory to allocate for the LLM server service.
     string_value: 12GiB
     display_category: Resources
 
