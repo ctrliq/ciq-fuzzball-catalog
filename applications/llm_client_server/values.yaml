@@ -14,7 +14,7 @@ values:
     string_value: volume://user/ephemeral
     display_category: Storage
   - name: HuggingfaceCache
-    display_name: Path relative to the root of the storage volume used as the HuggingFace cache
+    display_name: Path relative to the root of the storage volume used as the HuggingFace cache.
     string_value: ".cache/huggingface/hub"
     display_category: Storage
 
