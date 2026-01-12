@@ -41,6 +41,6 @@ values:
     display_category: "Access"
 
   - name: VllmVersion
-    display_name: Version of vLLM to use as the API server
+    display_name: Version of vLLM to use as the API server.
     string_value: v0.13.0
     display_category: Versions
