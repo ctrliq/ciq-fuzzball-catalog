@@ -1,29 +1,173 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $datavol := trim .DataVolume }}
+{{- $scratchvol := trim .ScratchVolume }}
+{{- $homevol := trim .HomeVolume }}
+{{- if not $scratchvol }}
+  {{- fail "ScratchVolume is required" }}
+{{- end }}
+{{- $datamount := "/data" }}
+{{- $scratchmount := "/scratch" }}
+{{- $home := "/home/user" }}
+{{- if not $homevol }}
+  {{ $home = $scratchmount }}
+{{- end }}
+{{- $port := randInt 10000 32000 }}
+
 version: v1
+
 volumes:
+{{- if $datavol }}
+  data:
+    reference: {{ $datavol }}
+{{- end }}
+{{- if $homevol }}
+  home:
+    reference: {{ $homevol }}
+{{- end }}
   scratch:
-    name: scratch
-    reference: {{.Volume}}
-jobs:
+    reference: {{ $scratchvol }}
+
+services:
   rstudio:
-    env:
-      - HOME=/scratch
-      - PORT={{.Port}}
-    name: rstudio
+    network:
+      ports:
+        - name: rstudio-port
+          protocol: tcp
+          port: {{ $port }}
+      endpoints:
+        - name: rstudio
+          port-name: rstudio-port
+          protocol: http
+          type: subdomain
+          scope: {{ .ServiceScope }}
     image:
-      uri: docker://adere2/rstudio-fb
+      uri: {{ .ContainerImage }}
     mounts:
+{{- if $datavol }}
+      data:
+        location: {{ $datamount }}
+{{- end }}
+{{- if $homevol }}
+      home:
+        location: {{ $home }}
+{{- end }}
       scratch:
-        location: /scratch
-    policy:
-      timeout:
-        execute: {{.Timeout}}
-    command:
-      - /bin/bash
-      - '-c'
-      - /usr/local/bin/start-rstudio.sh
+        location: {{ $scratchmount }}
+    # cwd becomes the home dir in /etc/passwd which makes RStudio Server *much* happier
+    cwd: {{ $home }}
+    persist: true
+    script: |
+        #!/bin/bash
+
+        die() {
+          echo "ERROR: $*" >&2
+          exit 1
+        }
+
+        # check prerequisites
+        command -v R >/dev/null 2>&1 || die "R is not installed"
+        command -v rserver >/dev/null 2>&1 || die "rserver is not installed"
+        command -v python3 >/dev/null 2>&1 || die "python3 is not installed"
+        [[ -e /usr/lib/rstudio-server/bin/rsession ]] || die "/usr/lib/rstudio-server/bin/rsession not found"
+
+        # tmpdir is small enough that R package installations will fail. Need scratch
+        TMPDIR="{{- $scratchmount }}/tmp"
+        mkdir -p "$TMPDIR" || die "Failed to create temporary directory: $TMPDIR"
+
+        # some setup
+        USER=$(id -un)
+        USERNAME=$USER
+        DEFAULT_USER=$USER
+        HOME="{{- $home }}"
+        export USER USERNAME DEFAULT_USER TMPDIR HOME
+
+        # configuration
+        rstudio_dir="$(mktemp -d /tmp/XXXXXX)"  # still want this in /tmp
+        mkdir -p "${rstudio_dir}"/{config,logs,server-data,server-working-dir,db}
+
+        # make sure the user library comes before the standard lib
+        rstudio_rprofile="${rstudio_dir}/config/Rprofile.site"
+        if [ -n "${R_HOME:-}" ] && [ -f "$R_HOME/etc/Rprofile.site" ]; then
+            cat "$R_HOME/etc/Rprofile.site" > "$rstudio_rprofile"
+        else
+            # Create an empty Rprofile.site if the system-wide one is unavailable
+            : > "$rstudio_rprofile"
+        fi
+        cat >> "$rstudio_rprofile" <<EOF
+
+        .libPaths(.expand_R_libs_env_var('$HOME/R/%a/%V'))
+        EOF
+        export R_PROFILE="$rstudio_rprofile"
+        mkdir -p "$(R -s -e "cat(.expand_R_libs_env_var('$HOME/R/%a/%V'))")"
+
+        # https://docs.posit.co/ide/server-pro/admin/server_management/core_administrative_tasks.html
+        cat > "${rstudio_dir}/config/logging.conf" << EOF
+        [*]
+        log-level=debug
+        logger-type=file
+        log-dir=${rstudio_dir}/logs
+        EOF
+
+        cat > "${rstudio_dir}/config/database.conf" << EOF
+        directory=$rstudio_dir/db
+        EOF
+
+        cat > "${rstudio_dir}/config/rsession.conf" << EOF
+        session-rprofile-on-resume-default=true
+        session-timeout-minutes=0
+        session-default-working-dir=$HOME
+        session-default-new-project-dir=$HOME
+        restrict-directory-view=1
+        EOF
+
+        cat > "${rstudio_dir}/config/rserver.conf" << EOF
+        # access is controlled via service end point scope
+        auth-none=1
+        www-address=0.0.0.0
+        www-frame-origin=same
+        www-port={{- $port }}
+        www-verify-user-agent=yes
+        server-daemonize=no
+        server-data-dir=$rstudio_dir/server-data
+        server-pid-file=$rstudio_dir/rstudio.pid
+        server-user=$USER
+        server-working-dir=$rstudio_dir/server-working-dir
+        rsession-path=${rstudio_dir}/config/rsession.sh
+        EOF
+
+        cat > "${rstudio_dir}/config/rsession.sh" << EOF
+        #!/bin/bash
+{{- if not $homevol }}
+        # copy, don't symlink if the home dir with the cache is ephemeral
+        export RENV_CONFIG_CACHE_SYMLINKS=FALSE
+{{- end }}
+        # re-exporting the environment
+        EOF
+
+        # safely add the current environment to the r session's environment
+        # by wrapping it a shell wrapper
+        python3 -c "
+        import os, shlex
+        for key, value in os.environ.items():
+            if key == '_':
+              continue
+            print(f'export {key}={shlex.quote(value)}')
+        " >> "${rstudio_dir}/config/rsession.sh"
+        cat >> "${rstudio_dir}/config/rsession.sh" <<EOF
+        /usr/lib/rstudio-server/bin/rsession "\$@"
+        EOF
+        chmod +x "${rstudio_dir}/config/rsession.sh"
+
+        RSTUDIO_DATA_HOME="$rstudio_dir/server-data" \
+        RSTUDIO_CONFIG_DIR="$rstudio_dir/config" \
+        rserver || {
+            status=$?
+            echo "Error: 'rserver' failed to start with exit code ${status}." >&2
+            exit "$status"
+        }
     resource:
       cpu:
-        cores: {{.Cores}}
+        cores: {{ .Cores }}
       memory:
-        size: {{.Memory}}
+        size: {{ .Memory }}

@@ -30,10 +30,11 @@ values:
       storage classes.
     string_value: "volume://user/persistent"
     display_category: "Storage"
+
   - name: "ServiceScope"
     display_name: |
-      [required] Who can access the jupyter service. Defaults to 'group'
-    string_value: group
+      Who can access this Jupyter server instance. Defaults to 'user'.
+    string_value: user
     options_input:
-      options: [user, group, organization, public]
+      options: [user, group, organization]
     display_category: "Access"
