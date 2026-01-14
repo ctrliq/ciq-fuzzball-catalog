@@ -1,99 +1,86 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 
-{{- $vllm_api_key := (randInt 0 100000 | toString) }}
-{{- $vllm_api_port := randInt 10000 12000 }}
-{{- $key := (randInt 0 100000 | toString) }}
-{{- $port := randInt 12001 14000 }}
-{{- $workflow_script_uri := trim .WorkflowScriptUri }}
-{{- $query_data_uri := trim .QueryDataUri }}
-{{- $results_data_uri := trim .ResultsDataUri }}
-{{- $scratch_mount := "/scratch" }}
+{{- $vllm_api_key := (randInt 0 10000000 | printf "%8d" | b64enc ) }}
+{{- $vllm_api_port := randInt 10000 24000 }}
+{{- $ui_port := randInt 24001 32000 }}
+
 {{- $data_mount := "/data" }}
 
 version: v1
 volumes:
   data:
-    reference: {{ .DataVolume }}
-  scratch:
-    reference: {{ .ScratchVolume }}
-    ingress:
-      - source:
-          uri: {{ $workflow_script_uri }}/client.py
-          {{ if (and (hasPrefix "s3://" $workflow_script_uri ) .S3Secret) }}secret: {{ .S3Secret }}{{end}}
-        destination:
-          uri: file://job_scripts/client.py
-      - source:
-          uri: {{ $workflow_script_uri }}/server.py
-          {{ if (and (hasPrefix "s3://" $workflow_script_uri ) .S3Secret) }}secret: {{ .S3Secret }}{{end}}
-        destination:
-          uri: file://job_scripts/server.py
-      - source:
-          uri: {{ $query_data_uri }}
-          {{ if (and (hasPrefix "s3://" $query_data_uri ) .S3Secret) }}secret: {{ .S3Secret }}{{end}}
-        destination:
-          uri: file://queries.yaml
-{{- if (and $results_data_uri (hasPrefix "s3://" $results_data_uri)) }}
-    egress:
-      - source:
-          uri: file://results.yaml
-        destination:
-          uri: {{ $results_data_uri }}
-          secret: {{ .S3Secret }}
-{{- end }}
-jobs:
-  server:
+    reference: {{ .ModelVolume }}
+
+services:
+  vllm:
+    network:
+      ports:
+        - name: openai-api
+          port: {{ $vllm_api_port }}
+          protocol: tcp
     image:
-      uri: docker://vllm/vllm-openai:latest
+      uri: docker://vllm/vllm-openai:{{ .VllmVersion }}
     mounts:
-      scratch:
-        location: {{ $scratch_mount }}
       data:
         location: {{ $data_mount }}
-    env:
-      - HF_HUB_CACHE={{ $data_mount }}/{{ trim .HFHubCache }}
-      - FBS_API_KEY={{ $vllm_api_key }}
-      - FBS_API_PORT={{ $vllm_api_port }}
-      - FBS_API_MODEL={{ trim .ModelName }}
-      - FBS_KEY={{ $key }}
-      - FBS_PORT={{ $port }}
-    command:
-      - /bin/sh
-      - "-c"
-      - python3 {{ $scratch_mount }}/job_scripts/${FB_JOB_NAME}.py
     resource:
       cpu:
         cores: {{ .ServerCores }}
-      devices:
-        nvidia.com/gpu: 1
       memory:
         size: {{ .ServerMemory }}
-    policy:
-      timeout:
-        execute: {{ .ServerTimeout }}
-  client:
+      devices:
+        nvidia.com/gpu: 1
+      annotations:
+        nvidia.com/gpu.model: "{{ .ServerGPUModel }}"
+    script: |
+      #!/bin/sh
+      HF_HUB_CACHE="{{ $data_mount }}/{{ .HuggingfaceCache }}"
+      export HF_HUB_CACHE
+      mkdir -p "$HF_HUB_CACHE" || exit 1
+      vllm serve --port={{ $vllm_api_port }} --api-key="{{ $vllm_api_key }}" --max-model-len {{ .MaxContextSize }} "{{ .ModelName }}"
+    readiness-probe:
+      http-get:
+        path: /v1/models
+        port: {{ $vllm_api_port }}
+        scheme: http
+        http-headers:
+          - name: Authorization
+            value: "{{ printf "Bearer %s" $vllm_api_key }}"
+      initial-delay-seconds: 60
+      period-seconds: 30
+      failure-threshold: 10
+      success-threshold: 1
+
+  chat-interface:
+    depends-on:
+      - name: vllm
+        status: running
+    persist: true
+    network:
+      ports:
+        - name: web-port
+          port: {{ $ui_port }}
+          protocol: tcp
+      endpoints:
+        - name: web
+          type: subdomain
+          port-name: web-port
+          protocol: http
+          scope: {{ .ServiceScope }}
     image:
-      uri: {{ .ClientImage }}
-    mounts:
-      scratch:
-        location: {{ $scratch_mount }}
-      data:
-        location: {{ $data_mount }}
-    env:
-      - FBS_API_KEY={{ $vllm_api_key }}
-      - FBS_API_PORT={{ $vllm_api_port }}
-      - FBS_API_MODEL={{ trim .ModelName }}
-      - FBS_API_JOB=server
-      - FBS_API_QUERIES={{ $scratch_mount }}/queries.yaml
-      - FBS_KEY={{ $key }}
-      - FBS_PORT={{ $port }}
-{{- if $results_data_uri }}
-{{- if (hasPrefix "s3://" $results_data_uri) }}
-      - FBS_API_RESULTS={{ $scratch_mount }}/results.yaml
-{{- else }}
-      - FBS_API_RESULTS={{ $data_mount }}/{{ $results_data_uri }}
-{{- end }}
-{{- end }}
-    command:
-      - /bin/sh
-      - "-c"
-      - python3 {{ $scratch_mount }}/job_scripts/${FB_JOB_NAME}.py
+      uri: docker://ghcr.io/yoziru/nextjs-vllm-ui:latest
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 4GiB
+    script: |
+      #!/bin/sh
+      VLLM_URL="http://vllm.svc:{{ $vllm_api_port }}"
+      VLLM_API_KEY="{{ $vllm_api_key }}"
+      VLLM_TOKEN_LIMIT={{ .MaxContextSize }}
+      PORT={{ $ui_port }}
+      HOSTNAME="0.0.0.0"
+      export VLLM_URL VLLM_API_KEY VLLM_TOKEN_LIMIT PORT HOSTNAME
+      cd /opt/app
+      node server.js
