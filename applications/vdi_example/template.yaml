@@ -1,37 +1,65 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $datavol := trim .DataVolume }}
+{{- $homevol := trim .HomeVolume }}
+{{- $datamount := "/data" }}
+{{- $home := "/home/user" }}
+{{- if not $homevol }}
+  {{ $home = "/tmp/home/user" }}
+{{- end }}
+{{- $port := 6080 }}   ## temporary until i rebuild the container
+
 version: v1
+
+{{- if (or $datavol $homevol) }}
 volumes:
+  {{- if $datavol }}
   data:
-    name: data
-    reference: {{.Volume}}
-jobs:
+    reference: {{ $datavol }}
+  {{- end }}
+  {{- if $homevol }}
+  home:
+    reference: {{ $homevol }}
+  {{- end }}
+{{- end }}
+
+services:
   xfce4:
+{{- if (or $datavol $homevol) }}
     mounts:
+  {{- if $datavol }}
       data:
-        location: /mnt/data
+        location: {{ $datamount }}
+  {{- end }}
+  {{- if $homevol }}
+      home:
+        location: {{ $home }}
+  {{- end }}
+{{- end }}
+    persist: true
+    network:
+      ports:
+        - name: vnc-port
+          protocol: tcp
+          port: {{ $port }}
+      endpoints:
+        - name: vnc
+          port-name: vnc-port
+          protocol: http
+          type: subdomain
+          scope: user ## TODO
     env:
-      - HOME=/tmp/home
+      - HOME={{ $home }}
     image:
       uri: oras://depot.ciq.com/fuzzball/fuzzball-applications/xfce4-desktop.sif
-      secret: {{.DepotSecret}}
-    command:
-      - /bin/sh
-      - '-c'
-      - |
-        echo
-        echo "Accessing the virtual desktop requires port-forwarding via the CLI:"
-        echo
-        echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} xfce4 6080:6080"
-        echo
-        echo Then navigate to http://localhost:6080
-        echo
-        /usr/local/bin/start-vncserver.sh
+      secret: {{ .DepotSecret }}
+    script: |
+      #! /bin/sh
+      mkdir -p "$HOME"
+      /usr/local/bin/start-vncserver.sh
     resource:
       cpu:
-        cores: {{.Cores}}
+        cores: {{ .Cores }}
       memory:
-        size: {{.Memory}}
-      exclusive: {{.Exclusive}}
-    policy:
-      timeout:
-        execute: {{.Timeout}}
+        size: {{ .Memory }}
+      exclusive: {{ .Exclusive }}
