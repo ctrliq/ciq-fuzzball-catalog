@@ -22,6 +22,7 @@ version: v1
 
 {{- $run := trim .RunName }}
 {{- $run_dir := printf "%s/%s" $scratch_mount $run }}
+{{- $out_dir := printf "%s/%s" $data_mount $run }}
 
 defaults:
   mounts:
@@ -47,17 +48,15 @@ volumes:
 
 jobs:
   stagein:
-    command:
-      - /bin/sh
-      - stagein.sh
-      - "{{ $run_dir }}"
-    cwd: /scratch
+    script:
+      #!/bin/sh
+      /bin/sh stagein.sh "{{ $run_dir }}"
+      ls -lh .
     image:
       uri: docker://alpine:latest
     mounts:
       scratch:
         location: /scratch
-    name: stagein
     resource:
       cpu:
         cores: 1
@@ -67,6 +66,8 @@ jobs:
   run-lammps:
     image:
       uri: {{.LammpsContainerUri}}
+    requires:
+    - stagein
     script: |
       #! /bin/sh
 
@@ -90,11 +91,14 @@ jobs:
 
       export PATH LD_LIBRARY_PATH LAMMPS_POTENTIALS MSI2LMP_LIBRARY
 
+      cd "{{ $run_dir }}" || exit 100
+      [[ -e "${prefix}/bin/lmp" ]] || exit 101
       lmp -k on g 1 -sf kk -pk kokkos cuda/aware \
         on neigh full comm device binsize 2.8 -var x 8 -var y 4 -var z 8 \
         -in input.lammps
 
-    cwd: /scratch/{{ .RunName }}
+      ls -lh .
+
     resource:
       cpu:
         cores: {{.Cores}}
@@ -111,16 +115,14 @@ jobs:
       timeout:
         execute: {{.Timeout}}
     mounts:
-      lammps-data-volume:
-        location: /data
+      scratch:
+        location: /scratch
+
 {{- if .StageoutScript }}
   stageout:
-    command:
-      - /bin/sh
-      - stageout.sh
-      - {{.RunName}}
-      - /data/{{.OutputPath}}
-    cwd: /scratch
+    script:
+      #!/bin/sh
+      /bin/sh stageout.sh  "{{ $run_dir }}" "{{ $out_dir }}"
     image:
       uri: docker://alpine:latest
     mounts:
@@ -128,9 +130,8 @@ jobs:
         location: /scratch
       data:
         location: /data
-    name: stageout
     requires:
-    - run-lammps
+      - run-lammps
     resource:
       cpu:
         cores: 1

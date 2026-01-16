@@ -11,7 +11,7 @@ values:
   - name: "ExperimentUrl"
     display_name: >-
       Base URL where workflow scripts can be found. The stagein script is required. The stageout is optional.
-    string_value: "https://raw.githubusercontent.com/wresch/lammps_examples/refs/heads/main/level1/lenard-jones-fluid/my-first-input"
+    string_value: "https://github.com/ctrliq/ciq-fuzzball-catalog/blob/FUZZ-4937-lammps-gpu-fix/applications/lammps_gpu/experiments/level1/lenard-jones-fluid/my-first-input"
   - name: "StageinScript"
     display_name: >
       Path of a script relative to the ExperimentUrl that sets up a lammps run including a lammps input file. It takes the
@@ -44,6 +44,7 @@ values:
   - name: "LammpsOptions"
     display_name: "Lammps options for run (-in is added automatically)."
     string_value: "LammpsOptions"
+    display_category: LammpsOptions
 
   - name: "Cores"
     display_name: "How many CPU cores to allocate per node."
