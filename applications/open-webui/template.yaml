@@ -1,0 +1,594 @@
+# Copyright 2026 CIQ, Inc. All rights reserved.
+version: v1
+
+annotations:
+  description: "Modern GPU-accelerated AI platform with Ollama"
+  stack: "Open WebUI + Ollama"
+
+volumes:
+  # Persistent storage for Ollama models (can be 50-150GiB for large models) and
+  # Open WebUI data (vector DB, documents, configs)
+  data:
+    reference: {{ .DataVolume }}
+
+  # Ephemeral volume for document ingestion (optional)
+  docs-to-ingest:
+    reference: volume://user/ephemeral
+{{ if .DocumentSource }}
+    ingress:
+      - destination:
+          uri: file://{{ .DocumentSource | base }}
+        source:
+          uri: {{ .DocumentSource }}
+{{ end }}
+
+services:
+  ollama:
+    image:
+      uri: docker://ollama/ollama:{{ .OllamaVersion }}
+
+    env:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_MODELS=/root/.ollama/models
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_MAX_LOADED_MODELS=2
+      - OLLAMA_NUM_PARALLEL=2
+
+    mounts:
+      data:
+        location: /root/.ollama/models
+
+    script: |
+      #!/bin/bash
+      set -e
+
+      echo "Starting Ollama Service"
+      echo "CUDA Version: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader || echo 'No GPU detected')"
+      echo ""
+
+      # Start Ollama in background
+      ollama serve &
+      OLLAMA_PID=$!
+
+      # Verify server is accessible
+      for i in {1..10}; do
+        if ollama ps; then
+          echo "SUCCESS: Ollama server is ready"
+          break
+        fi
+        echo "Waiting for server... ($i/10)"
+        sleep 2
+      done
+
+      # List available models (already downloaded by job)
+      echo ""
+      echo "Available Models:"
+      ollama list
+      echo ""
+
+      echo "Ollama Ready"
+      echo "API Endpoint: http://ollama.svc:11434"
+      echo "Keeping models loaded for 24 hours (OLLAMA_KEEP_ALIVE=24h)"
+      echo ""
+
+      # Keep the service running
+      wait $OLLAMA_PID
+
+    network:
+      ports:
+        - name: api
+          port: 11434
+          protocol: tcp
+
+    persist: true
+
+    readiness-probe:
+      http-get:
+        path: /
+        port: 11434
+        scheme: HTTP
+      initial-delay-seconds: 15
+      period-seconds: 10
+      timeout-seconds: 5
+      failure-threshold: 120
+      success-threshold: 1
+
+    resource:
+      exclusive: true
+      cpu:
+        cores: 2
+      memory:
+        size: 12GiB
+      devices:
+        nvidia.com/gpu: 1
+
+    depends-on:
+      - name: download-models
+        status: FINISHED
+        description: "Wait for models to be downloaded"
+
+  open-webui:
+    image:
+      uri: docker://ghcr.io/open-webui/open-webui:{{ .OpenWebUIVersion }}
+
+    env:
+      - WEBUI_AUTH=False
+      - ENABLE_PERSISTENT_CONFIG=False
+
+      - OLLAMA_BASE_URL=http://ollama.svc:11434
+
+      - RAG_EMBEDDING_ENGINE=ollama
+      - RAG_EMBEDDING_MODEL=nomic-embed-text:latest
+
+      - WEBUI_NAME=Fuzzball AI Assistant
+      - DEFAULT_USER_ROLE=user
+      - ENABLE_MESSAGE_RATING=true
+
+      - ENABLE_IMAGE_GENERATION=false
+      - ENABLE_COMMUNITY_SHARING=false
+      - ENABLE_OLLAMA_API=true
+      - ENABLE_OPENAI_API=false
+
+    mounts:
+      data:
+        location: /app/backend/data
+
+    network:
+      ports:
+        - name: web
+          port: 8080
+          protocol: tcp
+      endpoints:
+        - name: web
+          type: subdomain
+          scope: {{ .ServiceScope }}
+          protocol: http
+          port-name: web
+
+    script: |
+      #!/bin/sh
+      set -e
+      export WEBUI_URL=${FB_ENDPOINT_URL_WEB}
+      exec /bin/bash start.sh
+
+    persist: true
+
+    readiness-probe:
+      http-get:
+        path: /health
+        port: 8080
+        scheme: HTTP
+      initial-delay-seconds: 20
+      period-seconds: 10
+      timeout-seconds: 5
+      failure-threshold: 30
+      success-threshold: 1
+
+    resource:
+      exclusive: true
+      cpu:
+        cores: 1
+      memory:
+        size: 3GiB
+
+    depends-on:
+      - name: ollama
+        status: RUNNING
+        description: "Open WebUI requires Ollama for inference and embeddings"
+
+jobs:
+  download-models:
+    image:
+      uri: docker://ollama/ollama:{{ .OllamaVersion }}
+
+    env:
+      - OLLAMA_HOST=0.0.0.0:11434
+      - OLLAMA_MODELS=/root/.ollama/models
+
+    mounts:
+      data:
+        location: /root/.ollama/models
+
+    script: |
+      #!/bin/bash
+      set -e
+
+      echo "Downloading Ollama Models"
+
+      # Start Ollama temporarily (CPU-only mode for downloads)
+      ollama serve &
+      OLLAMA_PID=$!
+
+      # Verify server is accessible
+      for i in {1..10}; do
+        if ollama ps; then
+          echo "SUCCESS: Ollama server is ready"
+          break
+        fi
+        echo "Waiting for server... ($i/10)"
+        sleep 2
+      done
+
+      # Pull language model from template variable
+      LLM_MODEL="{{ .LLMModel }}"
+      echo ""
+      echo "Pulling language model: ${LLM_MODEL}"
+      echo "This may take 5-15 minutes on first run..."
+      if ollama pull "${LLM_MODEL}"; then
+        echo "SUCCESS: Language model downloaded successfully"
+      else
+        echo "FAILED: Language model pull failed"
+        exit 1
+      fi
+
+      # Pull embedding model for RAG
+      echo ""
+      echo "Pulling embedding model: nomic-embed-text:latest"
+      if ollama pull nomic-embed-text:latest; then
+        echo "SUCCESS: Embedding model downloaded successfully"
+      else
+        echo "FAILED: Embedding model pull failed"
+        exit 1
+      fi
+
+      # List available models
+      echo ""
+      echo "Available Models:"
+      ollama list
+      echo ""
+      echo "Model Download Complete"
+
+      # Clean shutdown
+      kill $OLLAMA_PID
+      wait $OLLAMA_PID 2>/dev/null || true
+
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 8GiB
+
+    policy:
+      timeout:
+        execute: 30m
+      retry:
+        attempts: 2
+
+{{ if .DocumentSource }}
+  ingest-documents:
+    image:
+      uri: docker://python:3.11-slim
+
+    env:
+      - OPENWEBUI_URL=http://open-webui.svc:8080
+      - KNOWLEDGE_BASE_NAME={{ .KnowledgeBaseName | default "Imported Documents" }}
+
+    mounts:
+      docs-to-ingest:
+        location: /input_docs
+
+    script: |
+      #!/usr/bin/env python3
+      import os
+      import sys
+      import time
+      from pathlib import Path
+
+      # Install requests if not available
+      import subprocess
+      subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "requests"])
+      import requests
+
+      OPENWEBUI_URL = os.getenv("OPENWEBUI_URL")
+      KB_NAME = os.getenv("KNOWLEDGE_BASE_NAME", "Imported Documents")
+      INPUT_DOCS = "/input_docs"
+
+      def get_api_token():
+          """Get API token from default admin user created by WEBUI_AUTH=False"""
+          # When WEBUI_AUTH=False, Open WebUI automatically creates admin@localhost/admin
+          signin_data = {
+              "email": "admin@localhost",
+              "password": "admin"
+          }
+          try:
+              resp = requests.post(f"{OPENWEBUI_URL}/api/v1/auths/signin", json=signin_data)
+              if resp.status_code == 200:
+                  token = resp.json().get("token")
+                  if token:
+                      print("Authenticated with default admin user")
+                      return token
+              print(f"Sign in failed: {resp.status_code} - {resp.text}")
+          except Exception as e:
+              print(f"Exception during authentication: {e}")
+
+          return None
+
+      def upload_file(file_path, token):
+          try:
+              headers = {"Authorization": f"Bearer {token}"}
+              with open(file_path, "rb") as f:
+                  files = {"file": (os.path.basename(file_path), f)}
+                  response = requests.post(f"{OPENWEBUI_URL}/api/v1/files/", headers=headers, files=files)
+              print(f"  Upload response: {response.status_code}")
+              if response.status_code == 200:
+                  return response.json()["id"]
+              else:
+                  print(f"  ERROR: {response.text}")
+                  return None
+          except Exception as e:
+              print(f"  Exception uploading file: {e}")
+              return None
+
+      def wait_for_processing(file_id, token, timeout=300):
+          start = time.time()
+          headers = {"Authorization": f"Bearer {token}"}
+          print(f"  Waiting for processing (timeout: {timeout}s)...")
+          last_status = None
+          while time.time() - start < timeout:
+              try:
+                  resp = requests.get(f"{OPENWEBUI_URL}/api/v1/files/{file_id}/process/status", headers=headers)
+                  if resp.status_code == 200:
+                      status = resp.json().get("status", "pending")
+                      if status != last_status:
+                          print(f"  Status: {status}")
+                          last_status = status
+                      if status == "completed":
+                          return True
+                      elif status == "failed":
+                          print(f"  Processing failed")
+                          return False
+                  else:
+                      print(f"  Status check returned {resp.status_code}: {resp.text}")
+                  time.sleep(2)
+              except Exception as e:
+                  print(f"  Warning: Status check exception: {e}")
+                  time.sleep(2)
+          print(f"  Timeout after {timeout}s (last status: {last_status})")
+          return False
+
+      def get_or_create_knowledge_base(name, token):
+          """Get existing knowledge base or create new one"""
+          headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+          # Try to list existing knowledge bases
+          try:
+              resp = requests.get(f"{OPENWEBUI_URL}/api/v1/knowledge/", headers=headers)
+              if resp.status_code == 200:
+                  knowledge_bases = resp.json()
+                  # Handle different response structures
+                  kb_list = []
+                  if isinstance(knowledge_bases, list):
+                      kb_list = knowledge_bases
+                  elif isinstance(knowledge_bases, dict):
+                      kb_list = knowledge_bases.get("items", knowledge_bases.get("data", knowledge_bases.get("knowledges", [])))
+
+                  # Search for existing knowledge base with same name
+                  for kb in kb_list:
+                      if isinstance(kb, dict) and kb.get("name") == name:
+                          kb_id = kb.get("id")
+                          print(f"  Found existing knowledge base '{name}' (ID: {kb_id})")
+                          return kb_id
+          except Exception as e:
+              print(f"  Could not check for existing knowledge bases: {e}")
+
+          # Create new knowledge base if not found
+          data = {
+              "name": name,
+              "description": "Auto-imported documents from volume ingress",
+              "data": {},
+              "access_control": {}
+          }
+          try:
+              resp = requests.post(f"{OPENWEBUI_URL}/api/v1/knowledge/create", headers=headers, json=data)
+              print(f"  Knowledge base creation response: {resp.status_code}")
+              if resp.status_code in [200, 201]:
+                  kb_data = resp.json()
+                  kb_id = kb_data.get("id") or kb_data.get("knowledge_id")
+                  print(f"  Created new knowledge base (ID: {kb_id})")
+                  return kb_id
+              else:
+                  print(f"  ERROR: {resp.text}")
+                  return None
+          except Exception as e:
+              print(f"  Exception creating knowledge base: {e}")
+              return None
+
+      def add_file_to_knowledge(kb_id, file_id, token):
+          headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+          try:
+              resp = requests.post(f"{OPENWEBUI_URL}/api/v1/knowledge/{kb_id}/file/add", headers=headers, json={"file_id": file_id})
+              if resp.status_code in [200, 201]:
+                  return True
+              else:
+                  print(f"  ERROR adding to KB: {resp.status_code} - {resp.text}")
+                  return False
+          except Exception as e:
+              print(f"  Exception adding to KB: {e}")
+              return False
+
+      # Get API token
+      print("Obtaining API token...")
+      token = get_api_token()
+      if not token:
+          print("ERROR: Failed to get API token")
+          sys.exit(1)
+      print("API token obtained")
+      print("")
+
+      # Find documents
+      docs = [f for f in Path(INPUT_DOCS).rglob("*") if f.is_file() and f.suffix.lower() in {".pdf", ".docx", ".txt", ".md", ".csv"}]
+      if not docs:
+          print("No documents found")
+          print(f"Searched for extensions: .pdf, .docx, .txt, .md, .csv")
+          sys.exit(0)
+
+      print(f"Found {len(docs)} documents")
+      print("")
+
+      # Get or create knowledge base
+      print(f"Getting or creating knowledge base: {KB_NAME}")
+      kb_id = get_or_create_knowledge_base(KB_NAME, token)
+      if not kb_id:
+          print("ERROR: Failed to get or create knowledge base")
+          sys.exit(1)
+      print("")
+
+      # Upload and process documents
+      success_count = 0
+      file_ids = []
+      for doc in docs:
+          print(f"Processing: {doc.name}")
+          file_id = upload_file(doc, token)
+          if not file_id:
+              print(f"  FAILED: Upload failed")
+              continue
+
+          print(f"  Uploaded (ID: {file_id})")
+
+          if wait_for_processing(file_id, token):
+              print(f"  SUCCESS: Processed")
+              file_ids.append(file_id)
+              success_count += 1
+          else:
+              print(f"  FAILED: Processing failed")
+
+      # Add files to knowledge base
+      if file_ids:
+          print(f"")
+          print(f"Adding {len(file_ids)} files to knowledge base...")
+          for file_id in file_ids:
+              if add_file_to_knowledge(kb_id, file_id, token):
+                  print(f"  SUCCESS: Added file {file_id}")
+
+      print(f"")
+      print(f"{'='*60}")
+      print(f"Ingestion complete: {success_count}/{len(docs)} documents")
+      print(f"Knowledge base: {KB_NAME} (ID: {kb_id})")
+      print(f"Use #{KB_NAME.lower().replace(' ', '-')} in chat to query documents")
+      print(f"{'='*60}")
+
+      if success_count == 0:
+          sys.exit(1)  # All failed
+
+    depends-on:
+      - name: open-webui
+        status: RUNNING
+        description: "Wait for Open WebUI API"
+      - name: ollama
+        status: RUNNING
+        description: "Wait for embedding model"
+
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 1GiB
+
+    policy:
+      timeout:
+        execute: 30m
+      retry:
+        attempts: 2
+{{ end }}
+{{ if .TestPrompt }}
+  verify-stack:
+    image:
+      uri: docker://curlimages/curl:8.17.0
+
+    env:
+      - OLLAMA_URL=http://ollama.svc:11434
+      - OPENWEBUI_URL=http://open-webui.svc:8080
+
+    script: |
+      #!/bin/sh
+      set -e
+
+      echo "Open WebUI + Ollama Stack Verification"
+      echo ""
+
+      # Test Ollama API
+      echo "Testing Ollama API..."
+      if curl -f -s "${OLLAMA_URL}/api/tags" > /tmp/ollama-tags.json; then
+        echo "SUCCESS: Ollama API is responsive"
+        echo ""
+        echo "Available Models:"
+        cat /tmp/ollama-tags.json | grep -o '"name":"[^"]*"' | cut -d'"' -f4 || echo "  (Model list unavailable - models may still be downloading)"
+      else
+        echo "FAILED: Ollama API check failed"
+        exit 1
+      fi
+      echo ""
+
+      # Test Open WebUI
+      echo "Testing Open WebUI..."
+      if curl -f -s "${OPENWEBUI_URL}/health" > /dev/null; then
+        echo "SUCCESS: Open WebUI is responsive"
+      else
+        echo "FAILED: Open WebUI check failed"
+        exit 1
+      fi
+      echo ""
+
+      echo "Testing prompt against model..."
+      curl ${OLLAMA_URL}/api/generate \
+        -H "Content-Type: application/json" \
+        -d '{
+          "model": {{ toJson .LLMModel }},
+          "prompt": {{ toJson .TestPrompt }}
+          }'
+
+      echo "Open WebUI Endpoint:"
+      echo "   ${FB_ENDPOINT_URL_WEB}"
+      echo ""
+      echo "Ollama API Service (for developers): ollama.svc"
+      echo "   ${OLLAMA_URL}"
+      echo ""
+      echo "Next Steps:"
+      echo "   1. Navigate to the Open WebUI endpoint above"
+      echo "   2. Start chatting (no login required - WEBUI_AUTH=False)"
+{{ if .DocumentSource }}
+      echo "   3. Use #{{ .KnowledgeBaseName | lower | replace " " "-" }} to query ingested documents"
+      echo "   4. Upload additional documents via Settings > Documents"
+{{ else }}
+      echo "   3. Go to Settings > Documents to upload documents for RAG"
+      echo "   4. Start chatting with your documents!"
+{{ end }}
+      echo ""
+      echo "Tips:"
+      echo "   - Models stay loaded in memory for 24 hours"
+      echo "   - First inference may take 10-30s (model loading)"
+      echo "   - Subsequent requests are <2s"
+      echo "   - Upload PDFs, DOCX, TXT, MD, CSV, and more"
+      echo ""
+      echo "Monitoring:"
+      echo "   - Check GPU usage: fuzzball workflow exec <id> ollama -- nvidia-smi"
+      echo "   - View logs: fuzzball workflow logs <id> <service-name>"
+      echo ""
+      echo "Services will persist until workflow is cancelled."
+
+
+    depends-on:
+      - name: ollama
+        status: RUNNING
+        description: "Wait for Ollama to be ready"
+      - name: open-webui
+        status: RUNNING
+        description: "Wait for Open WebUI to be ready"
+{{ if .DocumentSource }}
+      - name: ingest-documents
+        status: FINISHED
+        description: "Wait for document ingestion to complete"
+{{ end }}
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 128MB
+
+    policy:
+      timeout:
+        execute: 15m
+      retry:
+        attempts: 2
+{{ end }}
+defaults: {}
