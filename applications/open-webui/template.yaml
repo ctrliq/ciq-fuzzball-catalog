@@ -43,7 +43,7 @@ services:
       set -e
 
       echo "Starting Ollama Service"
-      echo "CUDA Version: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader || echo 'No GPU detected')"
+      echo "NVIDIA Driver Version: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader || echo 'No GPU detected')"
       echo ""
 
       # Start Ollama in background
@@ -86,7 +86,7 @@ services:
       http-get:
         path: /
         port: 11434
-        scheme: HTTP
+        scheme: http
       initial-delay-seconds: 15
       period-seconds: 10
       timeout-seconds: 5
@@ -104,7 +104,7 @@ services:
 
     depends-on:
       - name: download-models
-        status: FINISHED
+        status: finished
         description: "Wait for models to be downloaded"
 
   open-webui:
@@ -157,7 +157,7 @@ services:
       http-get:
         path: /health
         port: 8080
-        scheme: HTTP
+        scheme: http
       initial-delay-seconds: 20
       period-seconds: 10
       timeout-seconds: 5
@@ -173,7 +173,7 @@ services:
 
     depends-on:
       - name: ollama
-        status: RUNNING
+        status: running
         description: "Open WebUI requires Ollama for inference and embeddings"
 
 jobs:
@@ -569,10 +569,10 @@ jobs:
 
     depends-on:
       - name: ollama
-        status: RUNNING
+        status: running
         description: "Wait for Ollama to be ready"
       - name: open-webui
-        status: RUNNING
+        status: running
         description: "Wait for Open WebUI to be ready"
 {{ if .DocumentSource }}
       - name: ingest-documents
