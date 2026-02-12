@@ -530,7 +530,7 @@ jobs:
       echo ""
 
       echo "Testing prompt against model..."
-      curl ${OLLAMA_URL}/api/generate \
+      curl --fail-with-body ${OLLAMA_URL}/api/generate \
         -H "Content-Type: application/json" \
         -d '{
           "model": {{ toJson .LLMModel }},
