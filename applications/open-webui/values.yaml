@@ -1,0 +1,43 @@
+values:
+  - name: "DocumentSource"
+    display_name: "Document Source URL (optional)"
+    string_value: ""
+    display_category: "Basic Configuration"
+
+  - name: "KnowledgeBaseName"
+    display_name: "Knowledge Base Name"
+    string_value: "Documents"
+    display_category: "Basic Configuration"
+
+  - name: "LLMModel"
+    display_name: "Language Model"
+    string_value: "llama3.1:8b-instruct-q4_K_M"
+    display_category: "Basic Configuration"
+
+  - name: "TestPrompt"
+    display_name: "Test Prompt (leave empty to skip verification)"
+    string_value: "Say Hello, world!"
+    display_category: "Basic Configuration"
+
+  - name: "DataVolume"
+    display_name: "Persistent storage for Ollama models (can be 50-150GB for large models) and Open WebUI data (vector DB, documents, configs)."
+    string_value: "volume://user/persistent"
+    display_category: "Storage"
+
+  - name: "ServiceScope"
+    display_name: |
+      Who can access the Open WebUI service endpoint. Defaults to 'user'.
+    string_value: user
+    options_input:
+      options: [user, group, organization]
+    display_category: "Access"
+
+  - name: "OllamaVersion"
+    display_name: "Ollama Container Version"
+    string_value: "0.15.0"
+    display_category: "Container Versions"
+
+  - name: "OpenWebUIVersion"
+    display_name: "Open WebUI Container Version"
+    string_value: "v0.7.2"
+    display_category: "Container Versions"
