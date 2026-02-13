@@ -6,8 +6,8 @@ annotations:
   stack: "Open WebUI + Ollama"
 
 volumes:
-  # Persistent storage for Ollama models (can be 50-150GiB for large models) and
-  # Open WebUI data (vector DB, documents, configs)
+  # Persistent storage for Ollama models and Open WebUI data
+  # Structure: ollama/ (models, 50-150GiB) and open-webui/ (vector DB, documents, configs)
   data:
     reference: {{ .DataVolume }}
 
@@ -29,14 +29,14 @@ services:
 
     env:
       - OLLAMA_HOST=0.0.0.0:11434
-      - OLLAMA_MODELS=/root/.ollama/models
+      - OLLAMA_MODELS=/data/ollama
       - OLLAMA_KEEP_ALIVE=24h
       - OLLAMA_MAX_LOADED_MODELS=2
       - OLLAMA_NUM_PARALLEL=2
 
     mounts:
       data:
-        location: /root/.ollama/models
+        location: /data
 
     script: |
       #!/bin/bash
@@ -45,6 +45,9 @@ services:
       echo "Starting Ollama Service"
       echo "NVIDIA Driver Version: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader || echo 'No GPU detected')"
       echo ""
+
+      # Ensure data directory exists
+      mkdir -p /data/ollama
 
       # Start Ollama in background
       ollama serve &
@@ -114,6 +117,7 @@ services:
     env:
       - WEBUI_AUTH=False
       - ENABLE_PERSISTENT_CONFIG=False
+      - DATA_DIR=/data/open-webui
 
       - OLLAMA_BASE_URL=http://ollama.svc:11434
 
@@ -131,7 +135,7 @@ services:
 
     mounts:
       data:
-        location: /app/backend/data
+        location: /data
 
     network:
       ports:
@@ -148,6 +152,7 @@ services:
     script: |
       #!/bin/sh
       set -e
+      mkdir -p /data/open-webui
       export WEBUI_URL=${FB_ENDPOINT_URL_WEB}
       exec /bin/bash start.sh
 
@@ -183,17 +188,20 @@ jobs:
 
     env:
       - OLLAMA_HOST=0.0.0.0:11434
-      - OLLAMA_MODELS=/root/.ollama/models
+      - OLLAMA_MODELS=/data/ollama
 
     mounts:
       data:
-        location: /root/.ollama/models
+        location: /data
 
     script: |
       #!/bin/bash
       set -e
 
       echo "Downloading Ollama Models"
+
+      # Ensure data directory exists
+      mkdir -p /data/ollama
 
       # Start Ollama temporarily (CPU-only mode for downloads)
       ollama serve &
