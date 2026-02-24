@@ -115,6 +115,11 @@ jobs:
               ;;
 
             workflow_dispatch)
+              # sanitize input
+              if [[ ! "${APP_INPUT}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                echo "::error::Invalid application name '${APP_INPUT}'"
+                exit 1
+              fi
               action="build"
               pr_number=$(gh api "repos/${GH_REPO}/commits/${GH_SHA}/pulls" \
                 --jq '.[0].number // empty')
@@ -144,7 +149,7 @@ jobs:
             recipe_name="$(basename "${parts[3]}" .def)"
 
             # Version must be declared as '# tag: <version>' in the .def file
-            version="$(perl -nle 'if (m/^#\s*tag\s*:\s*(\S+)/){print $1; exit}' < "${file}")"
+            version="$(perl -nle 'if (m/^#\s*tag\s*:\s*([A-Za-z0-9_.-]{1,128})/){print $1; exit}' < "${file}")"
             if [[ -z "${version}" ]]; then
               echo "'${file}' is missing a '# tag: <version>' comment - skipping"
               continue
@@ -152,12 +157,20 @@ jobs:
 
             for arch in amd64 arm64; do
 
+              item="$(jq -n \
+                --arg df "$file" \
+                --arg an "$app_name" \
+                --arg rn "$recipe_name" \
+                --arg v "$version" \
+                --arg arch "$arch" \
+                '{def_file:$df,app_name:$an,recipe_name:$rn,version:$v,arch:$arch}' \
+              )"
               if [[ "${first}" == "true" ]]; then
                 first="false"
+                matrix_json+="${item}"
               else
-                matrix_json+=','
+                matrix_json+=",${item}"
               fi
-              matrix_json+="{\"def_file\":\"${file}\",\"app_name\":\"${app_name}\",\"recipe_name\":\"${recipe_name}\",\"version\":\"${version}\",\"arch\":\"${arch}\"}"
             done
           done
           matrix_json+=']}'
@@ -169,6 +182,10 @@ jobs:
           echo "${matrix_json}" | jq .
 
   build:
+    # NOTE: ARM64 builds require a runner with the `ubuntu-24.04-arm64` label.
+    # Ensure that a suitable self-hosted or custom-labeled ARM64 runner is
+    # configured in this repository or organization, otherwise ARM64 jobs
+    # will fail to start with a "no matching runner" error.
     name: Build ${{ matrix.recipe_name }} (${{ matrix.arch }})
     needs: discover
     if: needs.discover.outputs.action == 'build' && needs.discover.outputs.matrix != '{"include":[]}'
@@ -261,7 +278,7 @@ jobs:
 
     steps:
       - name: Set up ORAS
-        uses: oras-project/setup-oras@c33dd380c4b2a301e8fd9e4772bf5c1556527afd
+        uses: oras-project/setup-oras@c33dd380c4b2a301e8fd9e4772bf5c1556527afd  # v1-14-gc33dd38
 
       - name: Retag image
         env:
@@ -285,5 +302,12 @@ jobs:
           DEST_TAG="${VERSION}-${ARCH}"
 
           echo "${GH_TOKEN}" | oras login -u "${GH_ACTOR}" --password-stdin "${REGISTRY}"
+
+          # Verify that the source image exists before attempting to retag
+          if ! oras manifest fetch "${IMAGE_PATH}:${SOURCE_TAG}" >/dev/null 2>&1; then
+            echo "::error::Source image '${IMAGE_PATH}:${SOURCE_TAG}' does not exist or is not accessible"
+            exit 1
+          fi
+
           echo "Retagging ${IMAGE_PATH}:${SOURCE_TAG} → ${DEST_TAG}"
           oras tag "${IMAGE_PATH}:${SOURCE_TAG}" "${DEST_TAG}"
