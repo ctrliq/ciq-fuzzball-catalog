@@ -4,7 +4,7 @@
 {{- if and $datavol (not (hasPrefix "volume://" $datavol)) }}
   {{- fail (printf "DataVolume must start with 'volume://', got %q" $datavol) }}
 {{- end }}
-{{- if and $homevol (not (hasPrefix "volume://" $datavolcd ap)) }}
+{{- if and $homevol (not (hasPrefix "volume://" $homevol)) }}
   {{- fail (printf "HomeVolume must start with 'volume://', got %q" $homevol) }}
 {{- end }}
 
