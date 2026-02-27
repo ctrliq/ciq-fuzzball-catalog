@@ -1,7 +1,8 @@
 values:
-  - name: Container
+  - name: "Container"
     display_name: Desktop container to use. Has to be compatible with this application
     string_value: oras://ghcr.io/wresch/test-catalog/desktop-vnc:1.1-amd64
+    display_category: "Container"
   - name: "Cores"
     display_name: "How many CPU cores to allocate."
     uint_value: 2
