@@ -27,18 +27,14 @@
 #
 # workflow_dispatch:
 #   Force-rebuilds all .def files for a named application (required input).
-#   Can be run on any branch. Since all commits are expected to arrive via PRs
-#   (enforced by branch protection), the resulting image will always carry a
-#   PR-scoped tag (<version>-pr<N>-<arch>). There is no automated path to
-#   produce a plain release tag (<version>-<arch>) via this trigger. If a
-#   release-tagged image is needed on a non-main branch (e.g. a hotfix), run
-#   workflow_dispatch to build the image and then retag it manually with ORAS:
-#
-#     oras tag <image>:<version>-pr<N>-<arch> <version>-<arch>
+#   On main, images are tagged with a plain release tag (<version>-<arch>).
+#   On feature branches, images carry a PR-scoped tag (<version>-pr<N>-<arch>)
+#   if a PR is associated with the HEAD commit; otherwise the plain tag is used.
+#   Blocked on release branches (v<major>.<minor>). Builds should happen on main
+#   and templates should then be backported without having to rebuild containers.
 #
 # BACKPORTS
 #   PRs targeting branches other than main do not trigger this workflow.
-#   Use workflow_dispatch to rebuild manually on a release branch if needed.
 #
 # IMAGE PATH
 #   ghcr.io/<org>/<repo>/<app_name>-<recipe_name>:<tag>-<arch>
@@ -108,8 +104,11 @@ jobs:
 
             push)
               action="retag"
-              pr_number=$(gh api "repos/${GH_REPO}/commits/${GH_SHA}/pulls" \
-                --jq '.[0].number // empty')
+              # The commits/{sha}/pulls endpoint is unreliable for merge
+              # commits (race condition with GitHub's indexing). Instead,
+              # query recently closed PRs and match by merge_commit_sha.
+              pr_number=$(gh api "repos/${GH_REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=10" \
+                | jq -r --arg sha "${GH_SHA}" 'map(select(.merge_commit_sha == $sha)) | .[0].number // empty')
               mapfile -t files < <(git diff --name-only "${BEFORE_SHA}" HEAD \
                 -- ":(glob)applications/*/definition_files/*.def" 2>/dev/null || true)
               ;;
@@ -120,9 +119,17 @@ jobs:
                 echo "::error::Invalid application name '${APP_INPUT}'"
                 exit 1
               fi
+              # Release branches only receive backports/cherry-picks via PRs
+              if [[ "${GITHUB_REF}" =~ ^refs/heads/v[0-9]+\.[0-9]+$ ]]; then
+                echo "::error::workflow_dispatch is not supported on release branches (${GITHUB_REF#refs/heads/}). Use a PR to backport changes."
+                exit 1
+              fi
               action="build"
-              pr_number=$(gh api "repos/${GH_REPO}/commits/${GH_SHA}/pulls" \
-                --jq '.[0].number // empty')
+              # On main, produce release tags; on feature branches, add PR scope
+              if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+                pr_number=$(gh api "repos/${GH_REPO}/commits/${GH_SHA}/pulls" \
+                  --jq '.[0].number // empty')
+              fi
               mapfile -t files < <(find "applications/${APP_INPUT}/definition_files" \
                 -name "*.def" 2>/dev/null || true)
               ;;
