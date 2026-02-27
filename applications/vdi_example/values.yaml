@@ -1,29 +1,24 @@
 values:
-  - name: "HomeVolume"
-    display_name: >
-      [optional] Storage volume used as your home directory. Will be mounted at /home/user.
-      Use to house persistent settings etc.
-    string_value: ""
-    display_category: "Storage"
-  - name: "DataVolume"
-    display_name: "[optional] Storage volume for user data."
-    string_value: ""
-    display_category: "Storage"
-
-  - name: "DepotSecret"
-    display_name: "An OCI authentication credential for CIQ Depot."
-    string_value: "secret://user/DEPOT_TOKEN"
-    display_category: "Container"
-
+  - name: Container
+    display_name: Desktop container to use. Has to be compatible with this application
+    string_value: oras://ghcr.io/wresch/test-catalog/desktop-vnc:1.1-amd64
   - name: "Cores"
     display_name: "How many CPU cores to allocate."
     uint_value: 2
     display_category: "Resources"
   - name: "Memory"
     display_name: "How much memory to allocate."
-    string_value: "1GiB"
+    string_value: "4GiB"
     display_category: "Resources"
   - name: "Exclusive"
     display_name: "Disallow other jobs from using the same node/instance."
     bool_value: false
     display_category: "Scheduling"
+  - name: "DataVolume"
+    display_name: "Where to store data."
+    string_value: "volume://user/ephemeral"
+    display_category: "Storage"
+  - name: "HomeVolume"
+    display_name: "Volume to use as your home directory"
+    string_value: ""
+    display_category: "Storage"

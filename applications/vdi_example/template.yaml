@@ -1,13 +1,12 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-
 {{- $datavol := trim .DataVolume }}
 {{- $homevol := trim .HomeVolume }}
 {{- $datamount := "/data" }}
-{{- $home := "/home/user" }}
+{{- $home := "/home/fb" }}
 {{- if not $homevol }}
-  {{ $home = "/tmp/home/user" }}
+  {{ $home = "/tmp/homefb" }}
 {{- end }}
-{{- $port := 6080 }}   ## temporary until i rebuild the container
+{{- $port := randInt 10000 32000 }}
 
 version: v1
 
@@ -24,7 +23,7 @@ volumes:
 {{- end }}
 
 services:
-  xfce4:
+  vnc:
 {{- if (or $datavol $homevol) }}
     mounts:
   {{- if $datavol }}
@@ -47,16 +46,15 @@ services:
           port-name: vnc-port
           protocol: http
           type: subdomain
-          scope: user ## TODO
+          scope: user
     env:
       - HOME={{ $home }}
     image:
-      uri: oras://depot.ciq.com/fuzzball/fuzzball-applications/xfce4-desktop.sif
-      secret: {{ .DepotSecret }}
+      uri: {{ .Container }}
     script: |
       #! /bin/sh
       mkdir -p "$HOME"
-      /usr/local/bin/start-vncserver.sh
+      /usr/local/bin/start-vncserver.sh {{ $port }} || true
     resource:
       cpu:
         cores: {{ .Cores }}
