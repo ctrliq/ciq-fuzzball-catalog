@@ -4,7 +4,7 @@ set -ex
 run_dir="${1}"
 dest="${2}"
 
-run="$(basename $run_dir)"
+run="$(basename "${run_dir}")"
 
 mkdir -p "${dest}"
 if [ -d  "${run_dir}" ] ; then
