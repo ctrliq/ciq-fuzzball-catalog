@@ -57,7 +57,11 @@ values:
     display_category: "Resources"
   - name: "Memory"
     display_name: "How much memory to allocate per node."
-    string_value: "16384MiB"
+    string_value: "14GiB"
+    display_category: "Resources"
+  - name: "GPUVendor"
+    display_name: GPU vendor (nvidia or amd)
+    string_value: "nvidia"
     display_category: "Resources"
   - name: "GPUs"
     display_name: "How many GPUs to allocate per node."
@@ -66,7 +70,7 @@ values:
   - name: GPUModel
     display_name: "What type of GPU to allocate."
     display_category: "Resources"
-    string_value: "nvidia.com/gpu.model: T4"
+    string_value: "T4"
   - name: Nodes
     display_name: "How many Nodes to allocate."
     uint_value: 1

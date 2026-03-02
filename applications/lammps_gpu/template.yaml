@@ -34,6 +34,15 @@ version: v1
 {{- $run_dir := printf "%s/%s" $scratch_mount $run }}
 {{- $out_dir := printf "%s/%s/%s" $data_mount (trim .OutputPath) $run }}
 
+{{- $gpu_vendor := .GPUVendor | trim | lower }}
+{{- if eq $gpu_vendor "nvidia" }}
+  {{- $gpu_vendor = "nvidia.com" }}
+{{- else if eq $gpu_vendor "amd" }}
+  {{- $gpu_vendor = "amd.com" }}
+{{- else }}
+  {{- fail "Currently supported GPU vendors: NVIDIA and AMD" }}
+{{- end }}
+
 defaults:
   job:
     mounts:
@@ -94,10 +103,10 @@ jobs:
       memory:
         size: {{.Memory}}
       devices:
-        nvidia.com/gpu: {{.GPUs}}
+        {{ $gpu_vendor }}/gpu: {{.GPUs}}
 {{- if (trim .GPUModel) }}
       annotations:
-        {{.GPUModel}}
+        {{ $gpu_vendor }}/gpu.model: {{.GPUModel}}
 {{- end }}
     multinode:
       implementation: {{.MpiFlavor}}
