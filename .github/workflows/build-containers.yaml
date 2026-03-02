@@ -164,7 +164,7 @@ jobs:
 
             for arch in amd64 arm64; do
 
-              item="$(jq -n \
+              item="$(jq -cn \
                 --arg df "$file" \
                 --arg an "$app_name" \
                 --arg rn "$recipe_name" \
@@ -187,6 +187,8 @@ jobs:
           echo "matrix=${matrix_json}" >> $GITHUB_OUTPUT
           echo "Definition files to process:"
           echo "${matrix_json}" | jq .
+          echo "action: ${action}"
+          echo "pr:     ${pr_number:-}"
 
   build:
     # NOTE: ARM64 builds require a runner with the `ubuntu-24.04-arm64` label.
