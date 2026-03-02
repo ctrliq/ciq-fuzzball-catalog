@@ -1,19 +1,26 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 version: v1
 
-{{- $stagein := trim .StageinScript }}
-{{- if not $stagein }}
-  {{- fail "StageinScript is required" }}
-{{- end }}
-{{- $stageout := trim .StageoutScript }}
 {{- $expurl := trim .ExperimentUrl }}
 {{- if not $expurl }}
   {{- fail "ExperimentUrl is required" }}
 {{- end }}
 
+{{- $stagein := trim .StageinScript }}
+{{- if not $stagein }}
+  {{- fail "StageinScript is required" }}
+{{- end }}
+{{- $lammps_script := trim .LammpsScript }}
+{{- if not $lammps_script }}
+  {{- fail "LammpsScript is required" }}
+{{- end }}
+
+{{- $stageout := trim .StageoutScript }}
+
 {{- $scratch_vol := trim .ScratchVolume | default "volume://user/ephemeral" }}
 {{- $scratch_mount := "/scratch" }}
 
+## TODO: allow egress to s3??
 {{- $data_vol := trim .DataVolume }}
 {{- if (and $stageout (not $data_vol)) }}
   {{- fail "If a stageout script to save data to a data volume is provided a data volume must be specified" }}
@@ -34,12 +41,16 @@ volumes:
     reference: {{ $scratch_vol }}
     ingress:
       - destination:
-          uri: file://stagein.sh
+          uri: file://stagein
         source:
           uri: {{ $expurl }}/{{ $stagein }}
+      - destination:
+          uri: file://run_lammps
+        source:
+          uri: {{ $expurl }}/{{ $run_lammps }}
 {{- if .StageoutScript }}
       - destination:
-          uri: file://stageout.sh
+          uri: file://stageout
         source:
           uri: {{ $expurl }}/{{ $stageout }}
   data:
@@ -50,13 +61,11 @@ jobs:
   stagein:
     script:
       #!/bin/sh
-      /bin/sh stagein.sh "{{ $run_dir }}"
+      chmod +x "{{ $scratch_mount }}"/stagein
+      "{{ $scratch_mount }}"/stagein "{{ $run_dir }}"
       ls -lh .
     image:
       uri: docker://alpine:latest
-    mounts:
-      scratch:
-        location: /scratch
     resource:
       cpu:
         cores: 1
@@ -66,39 +75,14 @@ jobs:
   run-lammps:
     image:
       uri: {{.LammpsContainerUri}}
-    requires:
-    - stagein
+    depends-on:
+      - name: stagein
+        status: FINISHED
     script: |
       #! /bin/sh
-
-      # GPU capability - this assumes that we are using the nvcr container
-      gpu_cap=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | tr -d '.')
-      lammps_caps=( $(ls /usr/local/lammps | sed 's/^sm//') )
-      use_cap=""
-      for c in ${lammps_caps[@]} ; do
-        if [[ $c -gt $gpu_cap ]]; then
-          break
-        fi
-        use_cap=${c}
-      done
-      printf "GPU capability:    sm%s\n" "${gpu_cap}"
-      printf "LAMMPS capability: sm%s\n" "${use_cap}"
-      prefix="/usr/local/lammps/sm${use_cap}"
-      PATH="${prefix}/bin"
-      LD_LIBRARY_PATH="${prefix}/lib:${LD_LIBRARY_PATH}"
-      LAMMPS_POTENTIALS=${prefix}/share/lammps/potentials"
-      MSI2LMP_LIBRARY=${prefix}/share/lammps/frc_files"
-
-      export PATH LD_LIBRARY_PATH LAMMPS_POTENTIALS MSI2LMP_LIBRARY
-
-      cd "{{ $run_dir }}" || exit 100
-      [[ -e "${prefix}/bin/lmp" ]] || exit 101
-      lmp -k on g 1 -sf kk -pk kokkos cuda/aware \
-        on neigh full comm device binsize 2.8 -var x 8 -var y 4 -var z 8 \
-        -in input.lammps
-
+      chmod +x "{{ $scratch_mount }}"/run_lammps
+      "{{ $scratch_mount }}"/run_lammps
       ls -lh .
-
     resource:
       cpu:
         cores: {{.Cores}}
@@ -114,24 +98,21 @@ jobs:
     policy:
       timeout:
         execute: {{.Timeout}}
-    mounts:
-      scratch:
-        location: /scratch
 
 {{- if .StageoutScript }}
   stageout:
     script:
       #!/bin/sh
-      /bin/sh stageout.sh  "{{ $run_dir }}" "{{ $out_dir }}"
+      chmod +x "{{ $scratch_mount }}"/stageout
+      "{{ $scratch_mount }}"/stageout.sh  "{{ $run_dir }}" "{{ $out_dir }}"
     image:
       uri: docker://alpine:latest
     mounts:
-      scratch:
-        location: /scratch
       data:
         location: /data
-    requires:
-      - run-lammps
+    depends-on:
+      - name: run-lammps
+        status: FINISHED
     resource:
       cpu:
         cores: 1
