@@ -15,7 +15,7 @@
 #   before merge. In-progress builds are cancelled when new commits are pushed.
 #
 #   Image tag: <version>-pr<N>-<arch>
-#   Example:   ghcr.io/org/repo/desktop-desktop:1.0-pr42-amd64
+#   Example:   ghcr.io/org/repo/<app>-<recipe>:1.0-pr42-amd64
 #
 # push (to main, via merged PR only — direct pushes are branch-protected):
 #   Retags the PR image built during the PR to the canonical release tag.
@@ -23,13 +23,12 @@
 #   The source PR number is resolved automatically from the GitHub API.
 #
 #   Image tag: <version>-<arch>
-#   Example:   ghcr.io/org/repo/desktop-desktop:1.0-amd64
+#   Example:   ghcr.io/org/repo/<app>-<recipe>:1.0-amd64
 #
 # workflow_dispatch:
 #   Force-rebuilds all .def files for a named application (required input).
 #   On main, images are tagged with a plain release tag (<version>-<arch>).
-#   On feature branches, images carry a PR-scoped tag (<version>-pr<N>-<arch>)
-#   if a PR is associated with the HEAD commit; otherwise the plain tag is used.
+#   On feature branches, images carry a PR-scoped tag (<version>-pr<N>-<arch>).
 #   Blocked on release branches (v<major>.<minor>). Builds should happen on main
 #   and templates should then be backported without having to rebuild containers.
 #
@@ -37,8 +36,8 @@
 #   PRs targeting branches other than main do not trigger this workflow.
 #
 # IMAGE PATH
-#   ghcr.io/<org>/<repo>/<app_name>-<recipe_name>:<tag>-<arch>
-#   where app_name = applications/<app_name>/definition_files/<recipe_name>.def
+#   ghcr.io/<org>/<repo>/<app>-<recipe>:<tag>-<arch>
+#   where app_name = applications/<app>/definition_files/<recipe>.def
 
 name: Build Apptainer Containers
 
@@ -70,6 +69,9 @@ jobs:
   discover:
     name: Discover definition files
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       action: ${{ steps.set-matrix.outputs.action }}
