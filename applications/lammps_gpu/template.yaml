@@ -1,5 +1,8 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 version: v1
+### TODO: s3 for egress and experiments
+### TODO: pass resource info into lammps run script (gpu, nodes, gpus/node)
+### TODO: should i allow multinode for gpu lammps?
 
 {{- $expurl := trim .ExperimentUrl }}
 {{- if not $expurl }}
@@ -10,8 +13,8 @@ version: v1
 {{- if not $stagein }}
   {{- fail "StageinScript is required" }}
 {{- end }}
-{{- $lammps_script := trim .LammpsScript }}
-{{- if not $lammps_script }}
+{{- $lammps := trim .LammpsScript }}
+{{- if not $lammps }}
   {{- fail "LammpsScript is required" }}
 {{- end }}
 
@@ -20,7 +23,6 @@ version: v1
 {{- $scratch_vol := trim .ScratchVolume | default "volume://user/ephemeral" }}
 {{- $scratch_mount := "/scratch" }}
 
-## TODO: allow egress to s3??
 {{- $data_vol := trim .DataVolume }}
 {{- if (and $stageout (not $data_vol)) }}
   {{- fail "If a stageout script to save data to a data volume is provided a data volume must be specified" }}
@@ -28,13 +30,17 @@ version: v1
 {{- $data_mount := "/data" }}
 
 {{- $run := trim .RunName }}
+{{- if not $run }}
+  {{- fail "RunName is required" }}
+{{- end }}
 {{- $run_dir := printf "%s/%s" $scratch_mount $run }}
-{{- $out_dir := printf "%s/%s" $data_mount $run }}
+{{- $out_dir := printf "%s/%s/%s" $data_mount (trim .OutputPath) $run }}
 
 defaults:
-  mounts:
-    scratch:
-      location: "{{ $scratch_mount }}"
+  job:
+    mounts:
+      scratch:
+        location: "{{ $scratch_mount }}"
 
 volumes:
   scratch:
@@ -47,8 +53,8 @@ volumes:
       - destination:
           uri: file://run_lammps
         source:
-          uri: {{ $expurl }}/{{ $run_lammps }}
-{{- if .StageoutScript }}
+          uri: {{ $expurl }}/{{ $lammps }}
+{{- if $stageout }}
       - destination:
           uri: file://stageout
         source:
@@ -59,20 +65,20 @@ volumes:
 
 jobs:
   stagein:
-    script:
+    script: |
       #!/bin/sh
-      chmod +x "{{ $scratch_mount }}"/stagein
-      "{{ $scratch_mount }}"/stagein "{{ $run_dir }}"
-      ls -lh .
+      chmod +x "{{ $scratch_mount }}/stagein"
+      "{{ $scratch_mount }}/stagein" "{{ $run_dir }}"
+      ls -lh "{{ $scratch_mount }}"
     image:
       uri: docker://alpine:latest
     resource:
       cpu:
         cores: 1
       memory:
-        size: 512MIB
+        size: 512MiB
 
-  run-lammps:
+  lammps:
     image:
       uri: {{.LammpsContainerUri}}
     depends-on:
@@ -80,9 +86,9 @@ jobs:
         status: FINISHED
     script: |
       #! /bin/sh
-      chmod +x "{{ $scratch_mount }}"/run_lammps
-      "{{ $scratch_mount }}"/run_lammps
-      ls -lh .
+      chmod +x "{{ $scratch_mount }}/run_lammps"
+      "{{ $scratch_mount }}/run_lammps" "{{ $run_dir }}"
+      ls -lh "{{ $scratch_mount }}"
     resource:
       cpu:
         cores: {{.Cores}}
@@ -94,17 +100,17 @@ jobs:
     multinode:
       implementation: {{.MpiFlavor}}
       nodes: {{.Nodes}}
-      procs-per-node: {{ .GPUs }}
+      procs-per-node: {{.GPUs}}
     policy:
       timeout:
         execute: {{.Timeout}}
 
-{{- if .StageoutScript }}
+{{- if $stageout }}
   stageout:
-    script:
+    script: |
       #!/bin/sh
-      chmod +x "{{ $scratch_mount }}"/stageout
-      "{{ $scratch_mount }}"/stageout.sh  "{{ $run_dir }}" "{{ $out_dir }}"
+      chmod +x "{{ $scratch_mount }}/stageout"
+      "{{ $scratch_mount }}/stageout"  "{{ $run_dir }}" "{{ $out_dir }}"
     image:
       uri: docker://alpine:latest
     mounts:
@@ -117,5 +123,5 @@ jobs:
       cpu:
         cores: 1
       memory:
-        size: 512MIB
+        size: 512MiB
 {{- end }}

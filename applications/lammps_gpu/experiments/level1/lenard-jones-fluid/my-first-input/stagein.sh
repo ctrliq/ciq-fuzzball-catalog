@@ -1,4 +1,4 @@
-#! /bin/sh
+#!/bin/sh
 # used to set up example from https://github.com/lammpstutorials/lammpstutorials-inputs
 set -ex
 
