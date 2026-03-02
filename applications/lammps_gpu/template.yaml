@@ -1,8 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 version: v1
 ### TODO: s3 for egress and experiments
-### TODO: pass resource info into lammps run script (gpu, nodes, gpus/node)
-### TODO: should i allow multinode for gpu lammps?
 
 {{- $expurl := trim .ExperimentUrl }}
 {{- if not $expurl }}
@@ -85,9 +83,9 @@ jobs:
       - name: stagein
         status: FINISHED
     script: |
-      #! /bin/sh
+      #!/bin/sh
       chmod +x "{{ $scratch_mount }}/run_lammps"
-      "{{ $scratch_mount }}/run_lammps" "{{ $run_dir }}"
+      "{{ $scratch_mount }}/run_lammps" "{{ $run_dir }}" {{.GPUs}}
       ls -lh "{{ $scratch_mount }}"
     resource:
       cpu:
@@ -97,10 +95,13 @@ jobs:
         size: {{.Memory}}
       devices:
         nvidia.com/gpu: {{.GPUs}}
+{{- if (trim .GPUModel) }}
+      annotations:
+        {{.GPUModel}}
+{{- end }}
     multinode:
       implementation: {{.MpiFlavor}}
       nodes: {{.Nodes}}
-      procs-per-node: {{.GPUs}}
     policy:
       timeout:
         execute: {{.Timeout}}
@@ -110,14 +111,14 @@ jobs:
     script: |
       #!/bin/sh
       chmod +x "{{ $scratch_mount }}/stageout"
-      "{{ $scratch_mount }}/stageout"  "{{ $run_dir }}" "{{ $out_dir }}"
+      "{{ $scratch_mount }}/stageout" "{{ $run_dir }}" "{{ $out_dir }}"
     image:
       uri: docker://alpine:latest
     mounts:
       data:
         location: /data
     depends-on:
-      - name: run-lammps
+      - name: lammps
         status: FINISHED
     resource:
       cpu:
