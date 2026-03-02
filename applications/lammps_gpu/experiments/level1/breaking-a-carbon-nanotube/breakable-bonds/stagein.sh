@@ -1,7 +1,6 @@
 #!/bin/sh
 # used to set up example from https://github.com/lammpstutorials/lammpstutorials-inputs
-# This job runs the md part of the second lennard jones liquid example
-set -ex
+set -e
 
 run_dir="${1}"
 mkdir -p "${run_dir}" && cd "${run_dir}"

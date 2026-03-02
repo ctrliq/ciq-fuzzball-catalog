@@ -1,5 +1,5 @@
 #!/bin/sh
-set -ex
+set -e
 
 run_dir="${1}"
 dest="${2}"

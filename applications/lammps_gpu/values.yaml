@@ -11,7 +11,7 @@ values:
   - name: "ExperimentUrl"
     display_name: >-
       Base URL where workflow scripts can be found. The stagein script is required. The stageout is optional.
-    string_value: "https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/FUZZ-4937-lammps-gpu-fix/applications/lammps_gpu/experiments/level1/lenard-jones-fluid/my-first-input"
+    string_value: "https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/FUZZ-4937-lammps-gpu-fix/applications/lammps_gpu/experiments/level1/lennard-jones-fluid/my-first-input"
     display_category: Parameters
   - name: "StageinScript"
     display_name: >
@@ -36,6 +36,7 @@ values:
   - name: "RunName"
     display_name: "Name of the run directory passed to the stagein and stageout scripts."
     string_value: "lj-my-first-input"
+    display_category: Parameters
   - name: "OutputPath"
     display_name: >-
       Path relative to the root of the data volume where results should be written to. Ignored if no stageout script is
