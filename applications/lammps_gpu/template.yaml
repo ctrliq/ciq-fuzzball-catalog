@@ -74,6 +74,7 @@ jobs:
   stagein:
     script: |
       #!/bin/sh
+      set -e
       chmod +x "{{ $scratch_mount }}/stagein"
       "{{ $scratch_mount }}/stagein" "{{ $run_dir }}"
       ls -lh "{{ $scratch_mount }}"
@@ -93,6 +94,7 @@ jobs:
         status: FINISHED
     script: |
       #!/bin/sh
+      set -e
       chmod +x "{{ $scratch_mount }}/run_lammps"
       "{{ $scratch_mount }}/run_lammps" "{{ $run_dir }}" {{.GPUs}}
       ls -lh "{{ $scratch_mount }}"
@@ -119,6 +121,7 @@ jobs:
   stageout:
     script: |
       #!/bin/sh
+      set -e
       chmod +x "{{ $scratch_mount }}/stageout"
       "{{ $scratch_mount }}/stageout" "{{ $run_dir }}" "{{ $out_dir }}"
     image:
