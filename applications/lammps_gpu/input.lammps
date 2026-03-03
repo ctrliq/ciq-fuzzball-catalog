@@ -1,11 +1,3 @@
-#!/bin/sh
-# used to set up example from https://lammpstutorials.github.io/index.html
-set -e
-
-run_dir="${1}"
-mkdir -p "${run_dir}" && cd "${run_dir}"
-
-cat >input.lammps <<'__EOF__'
 # LAMMPS Input File
 # Licensed under CC BY 4.0
 # A Set of Tutorials for the LAMMPS Simulation Package (LiveCoMS, 2025)
@@ -55,5 +47,4 @@ dump_modify viz pad 9 boxcolor royalblue &
 fix mynve all nve
 fix mylgv all langevin 1.0 1.0 0.1 10917
 timestep 0.005
-run 50000
-__EOF__
+run 15000

@@ -61,7 +61,7 @@ values:
     string_value: 14GiB
     display_category: Resources
   - name: GPUVendor
-    display_name: GPU vendor (nvidia or amd)
+    display_name: GPU vendor (nvidia or amd). Container must support the chosen GPU vendor.
     string_value: nvidia
     display_category: Resources
   - name: GPUs
