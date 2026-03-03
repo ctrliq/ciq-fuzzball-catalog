@@ -43,7 +43,7 @@ thermo_style custom step etotal press
 minimize 1.0e-6 1.0e-6 1000 10000
 
 # 6) Save system
-write_data improved.min.data
+write_data ./improved.min.data
 __EOF__
 
 
@@ -63,7 +63,7 @@ boundary p p p
 
 # 2) System definition
 pair_style lj/cut 4.0
-read_data improved.min.data
+read_data ./improved.min.data
 region cyl_in cylinder z 0 0 10 INF INF side in
 region cyl_out cylinder z 0 0 10 INF INF side out
 group grp_t1 type 1
