@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-run="${1}"
+run_dir="${1}"
 gpus_per_node="${2}"
 
 # GPU capability - this assumes that we are using the nvcr container
@@ -24,7 +24,11 @@ MSI2LMP_LIBRARY="${prefix}/share/lammps/frc_files"
 
 export PATH LD_LIBRARY_PATH LAMMPS_POTENTIALS MSI2LMP_LIBRARY
 
-cd "${run}" || exit 100
+cd "${run_dir}" || exit 100
+ls -lhd "${run_dir}"
+ls -lh
+chmod -R 0777 "${run_dir}"
+
 [[ -e "${prefix}/bin/lmp" ]] || { printf "Unable to find lammps executable for GPU architecture\n"; exit 101; }
 lmp -k on g "${gpus_per_node}" -sf kk -pk kokkos cuda/aware on \
     neigh full comm device binsize 2.8 -var x 8 -var y 4 -var z 8 \
