@@ -1,12 +1,104 @@
 #!/bin/sh
-# used to set up example from https://github.com/lammpstutorials/lammpstutorials-inputs
+# used to set up example from https://lammpstutorials.github.io/index.html
 set -e
 
 run_dir="${1}"
 mkdir -p "${run_dir}" && cd "${run_dir}"
 
-commit="dd3dce70b883af02df293ce52491beabd8e01928"
-url="https://raw.githubusercontent.com/lammpstutorials/lammpstutorials-inputs/${commit}"
+cat >minimize.lammps <<'__EOF__'
+# LAMMPS Input File
+# Licensed under CC BY 4.0
+# A Set of Tutorials for the LAMMPS Simulation Package (LiveCoMS, 2025)
+# By Simon Gravelle, Cecilia M. S. Alvares, Jacob R. Gissinger, and Axel Kohlmeyer
+# Please cite doi.org/10.33011/livecoms.6.1.3037
+# Find more on GitHub: https://github.com/lammpstutorials
 
-wget -q -O "input.lammps" "${url}/level1/lennard-jones-fluid/improved-input/input.md.lammps"
-wget -q -O "minimized_coordinate.data" "${url}/level1/lennard-jones-fluid/improved-input/minimized_coordinate.data"
+# 1) Initialization
+units lj
+dimension 3
+atom_style atomic
+boundary p p p
+
+# 2) System definition
+region simbox block -20 20 -20 20 -20 20
+create_box 2 simbox
+# for creating atoms
+region cyl_in cylinder z 0 0 10 INF INF side in
+region cyl_out cylinder z 0 0 10 INF INF side out
+create_atoms 1 random 1000 34134 cyl_out
+create_atoms 2 random 150 12756 cyl_in
+
+# 3) Settings
+mass 1 1.0
+mass 2 10.0
+pair_style lj/cut 4.0
+pair_coeff 1 1 1.0 1.0
+pair_coeff 2 2 0.5 3.0
+
+# 4) Monitoring
+thermo 10
+thermo_style custom step etotal press
+
+# 5) Run
+minimize 1.0e-6 1.0e-6 1000 10000
+
+# 6) Save system
+write_data improved.min.data
+__EOF__
+
+
+cat >md.lammps <<'__EOF__'
+# LAMMPS Input File
+# Licensed under CC BY 4.0
+# A Set of Tutorials for the LAMMPS Simulation Package (LiveCoMS, 2025)
+# By Simon Gravelle, Cecilia M. S. Alvares, Jacob R. Gissinger, and Axel Kohlmeyer
+# Please cite doi.org/10.33011/livecoms.6.1.3037
+# Find more on GitHub: https://github.com/lammpstutorials
+
+# 1) Initialization
+units lj
+dimension 3
+atom_style atomic
+boundary p p p
+
+# 2) System definition
+pair_style lj/cut 4.0
+read_data improved.min.data
+region cyl_in cylinder z 0 0 10 INF INF side in
+region cyl_out cylinder z 0 0 10 INF INF side out
+group grp_t1 type 1
+group grp_t2 type 2
+group grp_in region cyl_in
+group grp_out region cyl_out
+group grp_t1_in intersect grp_t1 grp_in
+group grp_t2_out intersect grp_t2 grp_out
+delete_atoms group grp_t1_in
+delete_atoms group grp_t2_out
+# delete no longer needed groups
+group grp_in delete
+group grp_out delete
+group grp_t1_in delete
+group grp_t2_out delete
+variable n1_in equal count(grp_t1,cyl_in)
+variable n2_in equal count(grp_t2,cyl_in)
+compute coor12 grp_t1 coord/atom cutoff 2.0 group grp_t2
+compute sumcoor12 grp_t1 reduce ave c_coor12
+
+# 3) Settings
+
+# 4) Monitoring
+thermo 1000
+thermo_style custom step temp pe ke etotal &
+  press v_n1_in v_n2_in c_sumcoor12
+dump viz all image 1000 myimage-*.ppm type type &
+  shiny 0.1 box no 0.01 view 0 0 zoom 1.8 fsaa yes size 800 800
+dump_modify viz adiam 1 1 adiam 2 3 acolor 1 &
+  turquoise acolor 2 royalblue backcolor white
+
+# 5) Run
+velocity all create 1.0 49284 mom yes dist gaussian
+fix mynve all nve
+fix mylgv all langevin 1.0 1.0 0.1 10917 zero yes
+timestep 0.005
+run 300000
+__EOF__

@@ -28,4 +28,8 @@ cd "${run}" || exit 100
 [[ -e "${prefix}/bin/lmp" ]] || { printf "Unable to find lammps executable for GPU architecture\n"; exit 101; }
 lmp -k on g "${gpus_per_node}" -sf kk -pk kokkos cuda/aware on \
     neigh full comm device binsize 2.8 -var x 8 -var y 4 -var z 8 \
-    -in input.lammps
+    -in minimize.lammps
+
+lmp -k on g "${gpus_per_node}" -sf kk -pk kokkos cuda/aware on \
+    neigh full comm device binsize 2.8 -var x 8 -var y 4 -var z 8 \
+    -in md.lammps
