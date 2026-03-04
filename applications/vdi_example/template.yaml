@@ -1,37 +1,78 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+{{- $datavol := trim .DataVolume }}
+{{- $homevol := trim .HomeVolume }}
+{{- if and $datavol (not (hasPrefix "volume://" $datavol)) }}
+  {{- fail (printf "DataVolume must start with 'volume://', got %q" $datavol) }}
+{{- end }}
+{{- if and $homevol (not (hasPrefix "volume://" $homevol)) }}
+  {{- fail (printf "HomeVolume must start with 'volume://', got %q" $homevol) }}
+{{- end }}
+
+{{- $datamount := "/data" }}
+{{- $home := "/home/fb" }}
+{{- if not $homevol }}
+  {{ $home = "/tmp/homefb" }}
+{{- end }}
+{{- $port := randInt 10000 32000 }}
+
 version: v1
+
+{{- if (or $datavol $homevol) }}
 volumes:
+  {{- if $datavol }}
   data:
-    name: data
-    reference: {{.Volume}}
-jobs:
-  xfce4:
+    reference: {{ $datavol }}
+  {{- end }}
+  {{- if $homevol }}
+  home:
+    reference: {{ $homevol }}
+  {{- end }}
+{{- end }}
+
+services:
+  vnc:
+{{- if (or $datavol $homevol) }}
     mounts:
+  {{- if $datavol }}
       data:
-        location: /mnt/data
+        location: {{ $datamount }}
+  {{- end }}
+  {{- if $homevol }}
+      home:
+        location: {{ $home }}
+  {{- end }}
+{{- end }}
+    persist: true
+    network:
+      ports:
+        - name: vnc-port
+          protocol: tcp
+          port: {{ $port }}
+      endpoints:
+        - name: vnc
+          port-name: vnc-port
+          protocol: http
+          type: subdomain
+          scope: user
+    readiness-probe:
+      http-get:
+        path: /
+        port: {{ $port }}
+        scheme: http
+      initial-delay-seconds: 10
     env:
-      - HOME=/tmp/home
+      - HOME={{ $home }}
     image:
-      uri: oras://depot.ciq.com/fuzzball/fuzzball-applications/xfce4-desktop.sif
-      secret: {{.DepotSecret}}
-    command:
-      - /bin/sh
-      - '-c'
-      - |
-        echo
-        echo "Accessing the virtual desktop requires port-forwarding via the CLI:"
-        echo
-        echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} xfce4 6080:6080"
-        echo
-        echo Then navigate to http://localhost:6080
-        echo
-        /usr/local/bin/start-vncserver.sh
+      uri: {{ .Container }}
+    script: |
+      #!/bin/sh
+      mkdir -p "${HOME}/.vnc"
+      chown -R $(whoami) "${HOME}/.vnc" # for a quirk in how some storage classes are configured
+      echo "Starting desktop and vnc"
+      /usr/local/bin/start-vncserver.sh {{ $port }}
     resource:
       cpu:
-        cores: {{.Cores}}
+        cores: {{ .Cores }}
       memory:
-        size: {{.Memory}}
-      exclusive: {{.Exclusive}}
-    policy:
-      timeout:
-        execute: {{.Timeout}}
+        size: {{ .Memory }}
+      exclusive: {{ .Exclusive }}
