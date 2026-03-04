@@ -43,7 +43,7 @@ thermo_style custom step etotal press
 minimize 1.0e-6 1.0e-6 1000 10000
 
 # 6) Save system
-write_data ./improved.min.data
+write_data improved.min.data
 __EOF__
 
 

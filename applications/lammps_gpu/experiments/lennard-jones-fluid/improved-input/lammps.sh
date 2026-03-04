@@ -25,8 +25,6 @@ MSI2LMP_LIBRARY="${prefix}/share/lammps/frc_files"
 export PATH LD_LIBRARY_PATH LAMMPS_POTENTIALS MSI2LMP_LIBRARY
 
 cd "${run_dir}" || exit 100
-echo $PWD
-
 [[ -e "${prefix}/bin/lmp" ]] || { printf "Unable to find lammps executable for GPU architecture\n"; exit 101; }
 lmp -k on g "${gpus_per_node}" -sf kk -pk kokkos cuda/aware on \
     neigh full comm device binsize 2.8 -var x 8 -var y 4 -var z 8 \
