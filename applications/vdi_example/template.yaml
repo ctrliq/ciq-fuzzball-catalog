@@ -54,13 +54,20 @@ services:
           protocol: http
           type: subdomain
           scope: user
+    readiness-probe:
+      http-get:
+        path: /
+        port: {{ $port }}
+        scheme: http
+      initial-delay-seconds: 10
     env:
       - HOME={{ $home }}
     image:
       uri: {{ .Container }}
     script: |
       #!/bin/sh
-      mkdir -p "$HOME"
+      mkdir -p "${HOME}/.vnc"
+      chown -R $(whoami) "${HOME}/.vnc" # for a quirk in how some storage classes are configured
       echo "Starting desktop and vnc"
       /usr/local/bin/start-vncserver.sh {{ $port }}
     resource:
