@@ -58,7 +58,7 @@ services:
       http-get:
         path: /
         port: {{ $port }}
-        scheme: http
+        scheme: HTTP
       initial-delay-seconds: 10
     env:
       - HOME={{ $home }}
