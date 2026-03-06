@@ -11,18 +11,25 @@ OS=linux
 detect_arch() {
     ARCH=$(uname -m)
     case "$ARCH" in
-        x86_64|amd64)   ARCH="x86_64" ;;
-        aarch64|arm64)  ARCH="aarch64" ;;
-        armv7l)         ARCH="arm" ;;
-        i686|i386)      ARCH="i686" ;;
-        *)              error "Unsupported architecture: $ARCH" ;;
+        x86_64|amd64)   ARCH="x86_64" ; DUST_SHA256="4e313f9f854017e58a2ada4c0d1774677b8cf53d63ab55a991d5871d5f504452" ;;
+        aarch64|arm64)  ARCH="aarch64" ; DUST_SHA256="e09b0d24b5da0fa06aecf1561849c13ae41ef055c1ce7077e35e9a46744b16af" ;;
+        *)              printf "Unsupported architecture: $ARCH\n" >&2 ;;
     esac
 }
 
-(
-    curl -L https://raw.githubusercontent.com/TurboVNC/repo/main/TurboVNC.repo
-    echo "exclude=turbovnc-*.*.9[0-9]-*"
-) >/etc/yum.repos.d/TurboVNC.repo
+cat >/etc/yum.repos.d/TurboVNC.repo <<'__EOF__'
+[TurboVNC]
+name=TurboVNC official RPMs
+baseurl=https://packagecloud.io/dcommander/turbovnc/rpm_any/rpm_any/$basearch
+repo_gpgcheck=1
+gpgcheck=1
+gpgkey=https://packagecloud.io/dcommander/turbovnc/gpgkey
+       https://raw.githubusercontent.com/TurboVNC/repo/main/VGL-GPG-KEY
+enabled=1
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+exclude=turbovnc-*.*.9[0-9]-*
+__EOF__
 
 dnf upgrade -y
 dnf install -y epel-release && crb enable
@@ -37,7 +44,7 @@ dnf -y install procps-ng perl turbovnc novnc firefox \
 dnf clean all -y
 rm /etc/xdg/autostart/xfce-polkit.desktop
 
-# Things that aren't available in repositories
+# Things that are not available in repositories
 # dust
 mkdir -p /usr/local/bin
 tmp="$(mktemp -d)"
@@ -45,10 +52,14 @@ cd $tmp
 detect_arch
 wget -q -O "dust.tar.gz" \
   https://github.com/bootandy/dust/releases/download/${DUST_VER}/dust-${DUST_VER}-${ARCH}-unknown-linux-musl.tar.gz
-tar -xzf dust.tar.gz
-cp "$(find . -name "dust" | head -n 1)" /usr/local/bin/dust
-chmod +x /usr/local/bin/dust
-rm -rf ./*
+echo "${DUST_SHA256} dust.tar.gz" > dust.sha256
+if sha256sum -c dust.sha256 ; then
+  tar -xzf dust.tar.gz
+  cp "$(find . -name "dust" | head -n 1)" /usr/local/bin/dust
+  chmod +x /usr/local/bin/dust
+else
+  printf "checksum check failure for dust\n" >&2
+fi
 
 ###
 ### xfce config
@@ -134,3 +145,6 @@ PROXY=$!
 kill $PROXY
 __EOF__
 chmod +x /usr/local/bin/start-vncserver.sh
+
+cd /
+rm -rf "$tmp"

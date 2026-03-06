@@ -1,6 +1,6 @@
 # tag: 2.17.0-1
 
-BootStrap: docker
+Bootstrap: docker
 From: mambaorg/micromamba:1.5.10-noble
 
 %post
