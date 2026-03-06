@@ -1,0 +1,330 @@
+# Build Apptainer Containers
+#
+# Builds and publishes Apptainer SIF images for applications in this
+# repository. Each .def file must declare its image version with a comment:
+#
+#   # tag: <version>
+#
+# .def files without this comment are skipped.
+#
+# TRIGGERS AND BEHAVIOR
+#
+# pull_request (targeting main):
+#   Builds all .def files changed relative to the merge base of the PR branch
+#   and main. Images are pushed with a PR-scoped tag so they can be tested
+#   before merge. In-progress builds are cancelled when new commits are pushed.
+#
+#   Image tag: <version>-pr<N>-<arch>
+#   Example:   ghcr.io/org/repo/<app>-<recipe>:1.0-pr42-amd64
+#
+# push (to main, via merged PR only — direct pushes are branch-protected):
+#   Retags the PR image built during the PR to the canonical release tag.
+#   No rebuild occurs; the exact image that was tested is promoted.
+#   The source PR number is resolved automatically from the GitHub API.
+#
+#   Image tag: <version>-<arch>
+#   Example:   ghcr.io/org/repo/<app>-<recipe>:1.0-amd64
+#
+# workflow_dispatch:
+#   Force-rebuilds all .def files for a named application (required input).
+#   On main, images are tagged with a plain release tag (<version>-<arch>).
+#   On feature branches, images carry a PR-scoped tag (<version>-pr<N>-<arch>).
+#   Blocked on release branches (v<major>.<minor>). Builds should happen on main
+#   and templates should then be backported without having to rebuild containers.
+#
+# BACKPORTS
+#   PRs targeting branches other than main do not trigger this workflow.
+#
+# IMAGE PATH
+#   ghcr.io/<org>/<repo>/<app>-<recipe>:<tag>-<arch>
+#   where app_name = applications/<app>/definition_files/<recipe>.def
+
+name: Build Apptainer Containers
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'applications/*/definition_files/*.def'
+  push:
+    # main is protected from direct pushes
+    branches: [main]
+    paths:
+      - 'applications/*/definition_files/*.def'
+  workflow_dispatch:
+    inputs:
+      application:
+        description: 'Application to force-rebuild'
+        required: true
+        type: string
+
+concurrency:
+  group: build-containers-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  discover:
+    name: Discover definition files
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      action: ${{ steps.set-matrix.outputs.action }}
+      pr_number: ${{ steps.set-matrix.outputs.pr_number }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find definition files and resolve build context
+        id: set-matrix
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          APP_INPUT: ${{ github.event.inputs.application }}
+          PR_NUMBER_INPUT: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # Determine action, find changed .def files, and resolve PR number
+          case "${EVENT_NAME}" in
+            pull_request)
+              action="build"
+              pr_number="${PR_NUMBER_INPUT}"
+              MERGE_BASE=$(git merge-base HEAD "${BASE_SHA}")
+              mapfile -t files < <(git diff --name-only "${MERGE_BASE}" HEAD \
+                -- ":(glob)applications/*/definition_files/*.def" 2>/dev/null || true)
+              ;;
+
+            push)
+              action="retag"
+              # The commits/{sha}/pulls endpoint is unreliable for merge
+              # commits (race condition with GitHub's indexing). Instead,
+              # query recently closed PRs and match by merge_commit_sha.
+              pr_number=$(gh api "repos/${GH_REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=20" \
+                | jq -r --arg sha "${GH_SHA}" 'map(select(.merge_commit_sha == $sha)) | .[0].number // empty')
+              mapfile -t files < <(git diff --name-only "${BEFORE_SHA}" HEAD \
+                -- ":(glob)applications/*/definition_files/*.def" 2>/dev/null || true)
+              ;;
+
+            workflow_dispatch)
+              # sanitize input
+              if [[ ! "${APP_INPUT}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                echo "::error::Invalid application name '${APP_INPUT}'"
+                exit 1
+              fi
+              # Release branches only receive backports/cherry-picks via PRs
+              if [[ "${GITHUB_REF}" =~ ^refs/heads/v[0-9]+\.[0-9]+$ ]]; then
+                echo "::error::workflow_dispatch is not supported on release branches (${GITHUB_REF#refs/heads/}). Use a PR to backport changes."
+                exit 1
+              fi
+              action="build"
+              # On main, produce release tags; on feature branches, add PR scope
+              # if no pr - fail
+              if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+                pr_number=$(gh api "repos/${GH_REPO}/commits/${GH_SHA}/pulls" \
+                  --jq '.[0].number // empty')
+                if [[ "${pr_number:-none}" == "none" ]]; then
+                  echo "::error::workflow_dispatch on feature branches requires an associated PR"
+                  exit 1
+                fi
+              fi
+
+              mapfile -t files < <(find "applications/${APP_INPUT}/definition_files" \
+                -name "*.def" 2>/dev/null || true)
+              ;;
+          esac
+
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No definition files found"
+            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+            echo "action=${action}" >> $GITHUB_OUTPUT
+            echo "pr_number=${pr_number:-}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Build JSON matrix including version extracted from each .def file
+          matrix_json='{"include":['
+          first="true"
+          for file in "${files[@]}"; do
+            IFS='/' read -ra parts <<< "${file}"
+            if [[ ${#parts[@]} -ne 4 ]]; then
+              echo "'${file}' does not match expected path pattern - skipping"
+              continue
+            fi
+            app_name="${parts[1]}"
+            recipe_name="$(basename "${parts[3]}" .def)"
+
+            # Version must be declared as '# tag: <version>' in the .def file
+            version="$(perl -nle 'if (m/^#\s*tag\s*:\s*([A-Za-z0-9_.-]{1,128})/){print $1; exit}' < "${file}")"
+            if [[ -z "${version}" ]]; then
+              echo "'${file}' is missing a '# tag: <version>' comment - skipping"
+              continue
+            fi
+
+            for arch in amd64 arm64; do
+
+              item="$(jq -cn \
+                --arg df "$file" \
+                --arg an "$app_name" \
+                --arg rn "$recipe_name" \
+                --arg v "$version" \
+                --arg arch "$arch" \
+                '{def_file:$df,app_name:$an,recipe_name:$rn,version:$v,arch:$arch}' \
+              )"
+              if [[ "${first}" == "true" ]]; then
+                first="false"
+                matrix_json+="${item}"
+              else
+                matrix_json+=",${item}"
+              fi
+            done
+          done
+          matrix_json+=']}'
+
+          echo "action=${action}" >> $GITHUB_OUTPUT
+          echo "pr_number=${pr_number:-}" >> $GITHUB_OUTPUT
+          echo "matrix=${matrix_json}" >> $GITHUB_OUTPUT
+          echo "Definition files to process:"
+          echo "${matrix_json}" | jq .
+          echo "action: ${action}"
+          echo "pr:     ${pr_number:-}"
+
+  build:
+    # NOTE: ARM64 builds require a runner with the `ubuntu-24.04-arm64` label.
+    # Ensure that a suitable self-hosted or custom-labeled ARM64 runner is
+    # configured in this repository or organization, otherwise ARM64 jobs
+    # will fail to start with a "no matching runner" error.
+    name: Build ${{ matrix.recipe_name }} (${{ matrix.arch }})
+    needs: discover
+    if: needs.discover.outputs.action == 'build' && needs.discover.outputs.matrix != '{"include":[]}'
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm64' || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Apptainer
+        uses: eWaterCycle/setup-apptainer@4bb22c52d4f63406c49e94c804632975787312b3  # v2
+        with:
+          apptainer-version: 1.4.5
+
+      - name: Compute image reference
+        id: image
+        env:
+          GH_REPO: ${{ github.repository }}
+          APP_NAME: ${{ matrix.app_name }}
+          RECIPE_NAME: ${{ matrix.recipe_name }}
+          VERSION: ${{ matrix.version }}
+          ARCH: ${{ matrix.arch }}
+          PR_NUMBER: ${{ needs.discover.outputs.pr_number }}
+        run: |
+          REPO_LOWER=$(echo "${GH_REPO}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_PATH="${REGISTRY}/${REPO_LOWER}/${APP_NAME}-${RECIPE_NAME}"
+          echo "image_path=${IMAGE_PATH}" >> $GITHUB_OUTPUT
+
+          # Use PR-scoped tag when a PR is associated; plain version otherwise
+          if [[ -n "${PR_NUMBER}" ]]; then
+            TAG="${VERSION}-pr${PR_NUMBER}-${ARCH}"
+          else
+            TAG="${VERSION}-${ARCH}"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+          SIF_NAME="${APP_NAME}-${RECIPE_NAME}-${ARCH}.sif"
+          echo "sif_name=${SIF_NAME}" >> $GITHUB_OUTPUT
+
+          echo "Building: ${IMAGE_PATH}:${TAG}"
+
+      - name: Build Apptainer container
+        env:
+          DEF_FILE: ${{ matrix.def_file }}
+        run: |
+          apptainer build \
+            --disable-cache \
+            "${{ steps.image.outputs.sif_name }}" \
+            "${DEF_FILE}"
+
+      - name: Test container
+        run: |
+          SIF="${{ steps.image.outputs.sif_name }}"
+          apptainer inspect "$SIF"
+          apptainer exec "$SIF" echo "Container runtime test successful"
+
+      - name: Login to GitHub Container Registry
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "${GH_TOKEN}" | \
+            apptainer registry login -u "${GH_ACTOR}" --password-stdin "oras://${REGISTRY}"
+
+      - name: Push container
+        run: |
+          apptainer push \
+            "${{ steps.image.outputs.sif_name }}" \
+            "oras://${{ steps.image.outputs.image_path }}:${{ steps.image.outputs.tag }}"
+
+  retag:
+    name: Retag ${{ matrix.recipe_name }} (${{ matrix.arch }})
+    needs: discover
+    if: needs.discover.outputs.action == 'retag' && needs.discover.outputs.matrix != '{"include":[]}'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@c33dd380c4b2a301e8fd9e4772bf5c1556527afd  # v1-14-gc33dd38
+
+      - name: Retag image
+        env:
+          GH_REPO: ${{ github.repository }}
+          APP_NAME: ${{ matrix.app_name }}
+          RECIPE_NAME: ${{ matrix.recipe_name }}
+          VERSION: ${{ matrix.version }}
+          ARCH: ${{ matrix.arch }}
+          PR_NUMBER: ${{ needs.discover.outputs.pr_number }}
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [[ -z "${PR_NUMBER}" ]]; then
+            echo "Error: could not determine source PR number for retag"
+            exit 1
+          fi
+
+          REPO_LOWER=$(echo "${GH_REPO}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_PATH="${REGISTRY}/${REPO_LOWER}/${APP_NAME}-${RECIPE_NAME}"
+          SOURCE_TAG="${VERSION}-pr${PR_NUMBER}-${ARCH}"
+          DEST_TAG="${VERSION}-${ARCH}"
+
+          echo "${GH_TOKEN}" | oras login -u "${GH_ACTOR}" --password-stdin "${REGISTRY}"
+
+          # Verify that the source image exists before attempting to retag
+          if ! oras manifest fetch "${IMAGE_PATH}:${SOURCE_TAG}" >/dev/null 2>&1; then
+            echo "::error::Source image '${IMAGE_PATH}:${SOURCE_TAG}' does not exist or is not accessible"
+            exit 1
+          fi
+
+          echo "Retagging ${IMAGE_PATH}:${SOURCE_TAG} → ${DEST_TAG}"
+          oras tag "${IMAGE_PATH}:${SOURCE_TAG}" "${DEST_TAG}"
