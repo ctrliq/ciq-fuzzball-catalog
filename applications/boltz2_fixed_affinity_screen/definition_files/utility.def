@@ -1,0 +1,21 @@
+# tag: 1.0
+
+Bootstrap: docker
+From: ghcr.io/astral-sh/uv@sha256:863ccabb4b64714bf319b5059259cc8e28c9f397b5e294562aa13c28ea0f48ee
+
+%post
+
+export UV_NO_CACHE=1
+mkdir -p /app
+cat <<__EOF__ > /app/requirements.txt
+pyyaml==6.0.3
+boto3==1.42.62
+google-cloud-storage==3.9.0
+smart-open==7.5.1
+__EOF__
+uv venv /app/env
+. /app/env/bin/activate
+uv pip install -r /app/requirements.txt
+
+%environment
+PATH=$PATH:/app/env/bin

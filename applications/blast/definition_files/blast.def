@@ -1,0 +1,25 @@
+# tag: 2.17.0
+
+BootStrap: docker
+From: mambaorg/micromamba:1.5.10-noble
+
+%post
+
+cat >/app/env.yaml <<__EOF__
+channels:
+- conda-forge
+- bioconda
+dependencies:
+- bioconda::blast=2.17.0
+- bioconda::entrez-direct=24.0
+__EOF__
+
+export MAMBA_ROOT_PREFIX=/app/env
+micromamba install -y -n base -f /scratch/conda.yml
+micromamba install -y -n base conda-forge::procps-ng
+micromamba env export --name base --explicit > /app/environment.lock
+micromamba clean -a -y
+
+%environment
+export MAMBA_ROOT_PREFIX=/app/env
+export PATH="$MAMBA_ROOT_PREFIX/bin:$PATH"
