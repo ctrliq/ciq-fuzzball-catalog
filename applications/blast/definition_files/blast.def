@@ -5,7 +5,8 @@ From: mambaorg/micromamba:1.5.10-noble
 
 %post
 
-cat >/app/env.yaml <<__EOF__
+mkdir -p /opt/conda/defs
+cat >/opt/conda/defs/base.yaml <<__EOF__
 channels:
 - conda-forge
 - bioconda
@@ -14,12 +15,9 @@ dependencies:
 - bioconda::entrez-direct=24.0
 __EOF__
 
-export MAMBA_ROOT_PREFIX=/app/env
-micromamba install -y -n base -f /scratch/conda.yml
-micromamba install -y -n base conda-forge::procps-ng
-micromamba env export --name base --explicit > /app/environment.lock
+micromamba install -q -y -n base -f /opt/conda/defs/base.yaml
+micromamba env export --name base --explicit > /opt/conda/defs/base.lock
 micromamba clean -a -y
 
 %environment
-export MAMBA_ROOT_PREFIX=/app/env
 export PATH="$MAMBA_ROOT_PREFIX/bin:$PATH"

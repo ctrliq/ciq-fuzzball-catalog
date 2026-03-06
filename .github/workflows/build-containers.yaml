@@ -170,7 +170,9 @@ jobs:
               continue
             fi
 
-            for arch in amd64 arm64; do
+            #disabling arm64 builds for now
+            #for arch in amd64 arm64; do
+            for arch in amd64; do
 
               item="$(jq -cn \
                 --arg df "$file" \
