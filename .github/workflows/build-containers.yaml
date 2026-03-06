@@ -109,7 +109,7 @@ jobs:
               # The commits/{sha}/pulls endpoint is unreliable for merge
               # commits (race condition with GitHub's indexing). Instead,
               # query recently closed PRs and match by merge_commit_sha.
-              pr_number=$(gh api "repos/${GH_REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=10" \
+              pr_number=$(gh api "repos/${GH_REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=20" \
                 | jq -r --arg sha "${GH_SHA}" 'map(select(.merge_commit_sha == $sha)) | .[0].number // empty')
               mapfile -t files < <(git diff --name-only "${BEFORE_SHA}" HEAD \
                 -- ":(glob)applications/*/definition_files/*.def" 2>/dev/null || true)
@@ -128,10 +128,16 @@ jobs:
               fi
               action="build"
               # On main, produce release tags; on feature branches, add PR scope
+              # if no pr - fail
               if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
                 pr_number=$(gh api "repos/${GH_REPO}/commits/${GH_SHA}/pulls" \
                   --jq '.[0].number // empty')
+                if [[ "${pr_number:-none}" == "none" ]]; then
+                  echo "::error::workflow_dispatch on feature branches requires an associated PR"
+                  exit 1
+                fi
               fi
+
               mapfile -t files < <(find "applications/${APP_INPUT}/definition_files" \
                 -name "*.def" 2>/dev/null || true)
               ;;
