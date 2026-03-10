@@ -34,8 +34,8 @@ __EOF__
 dnf upgrade -y
 dnf install -y epel-release && crb enable
 dnf groupinstall -y Xfce --exclude=xfce4-power-manager
-dnf -y install procps-ng perl turbovnc novnc firefox \
-  baobab openssh-clients tree vim-enhanced ripgrep wget which bash awscli2 \
+dnf -y install perl turbovnc novnc firefox \
+  baobab openssh-clients tree vim-enhanced wget which bash awscli2 \
   jq jello python3.12 ca-certificates \
   java-21-openjdk iputils bind-utils \
   nvtop htop procps-ng bat ripgrep fzf \
@@ -59,6 +59,7 @@ if sha256sum -c dust.sha256 ; then
   chmod +x /usr/local/bin/dust
 else
   printf "checksum check failure for dust\n" >&2
+  exit 1
 fi
 
 ###
@@ -66,10 +67,12 @@ fi
 ###
 
 # theming
-git clone --depth 1 https://github.com/daniruiz/flat-remix-gtk.git
+git clone https://github.com/daniruiz/flat-remix-gtk.git
+cd flat-remix-gtk && git checkout 919494f4f4ede88e2efb45cd48b98db7cc23f6ee && cd ..
 cp -r flat-remix-gtk/themes/Flat-Remix-GTK-Blue-Dark/ /usr/share/themes
 
-git clone --depth 1 https://github.com/daniruiz/flat-remix.git
+git clone https://github.com/daniruiz/flat-remix.git
+cd flat-remix && git checkout e7de6c346da46e008987228f363b0eae6e638637 && cd ..
 cp -r flat-remix/Flat-Remix-Blue-Dark /usr/share/icons
 
 cat >/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-screensaver.xml <<__EOF__
@@ -126,16 +129,18 @@ cat >/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml <<__EOF__
 __EOF__
 
 # make novnc default to using remote resize
-sed -i.bak -E "s/UI.initSetting\('resize',[[:space:]]*'off'\)/UI.initSetting('resize', 'remote')/" \
-  /usr/share/novnc/app/ui.js
+sed -E "s/UI.initSetting\('resize',[[:space:]]*'off'\)/UI.initSetting('resize', 'remote')/" \
+  /usr/share/novnc/app/ui.js > /tmp/ui.js && mv /tmp/ui.js /usr/share/novnc/app/ui.js
 
 
 # script used by workflow
 cat >/usr/local/bin/start-vncserver.sh <<'__EOF__'
 #!/bin/sh
+(
 mkdir -p "${HOME}/.vnc"
 chown -R $(whoami) "${HOME}/.vnc"
 chmod 700 "${HOME}/.vnc"
+) &>/dev/null
 umask 007
 export USER=$(whoami)
 
