@@ -20,4 +20,4 @@ micromamba env export --name base --explicit > /opt/conda/defs/base.lock
 micromamba clean -a -y
 
 %environment
-export PATH="$MAMBA_ROOT_PREFIX/bin:$PATH"
+export PATH=${MAMBA_ROOT_PREFIX}/bin:${PATH}

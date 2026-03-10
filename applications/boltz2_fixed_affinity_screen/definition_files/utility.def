@@ -18,4 +18,4 @@ uv venv /app/env
 uv pip install -r /app/requirements.txt
 
 %environment
-PATH=$PATH:/app/env/bin
+export PATH=/app/env/bin:${PATH}
