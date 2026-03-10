@@ -5,7 +5,7 @@ set -e
 run_dir="${1}"
 mkdir -p "${run_dir}" && cd "${run_dir}"
 
-cat >minimize.lammps <<'__EOF__'
+cat >input.lammps <<'__EOF__'
 # LAMMPS Input File
 # Licensed under CC BY 4.0
 # A Set of Tutorials for the LAMMPS Simulation Package (LiveCoMS, 2025)
@@ -44,28 +44,8 @@ minimize 1.0e-6 1.0e-6 1000 10000
 
 # 6) Save system
 write_data improved.min.data
-__EOF__
 
-
-cat >md.lammps <<'__EOF__'
-# LAMMPS Input File
-# Licensed under CC BY 4.0
-# A Set of Tutorials for the LAMMPS Simulation Package (LiveCoMS, 2025)
-# By Simon Gravelle, Cecilia M. S. Alvares, Jacob R. Gissinger, and Axel Kohlmeyer
-# Please cite doi.org/10.33011/livecoms.6.1.3037
-# Find more on GitHub: https://github.com/lammpstutorials
-
-# 1) Initialization
-units lj
-dimension 3
-atom_style atomic
-boundary p p p
-
-# 2) System definition
-pair_style lj/cut 4.0
-read_data ./improved.min.data
-region cyl_in cylinder z 0 0 10 INF INF side in
-region cyl_out cylinder z 0 0 10 INF INF side out
+# 7) System definition
 group grp_t1 type 1
 group grp_t2 type 2
 group grp_in region cyl_in
@@ -84,9 +64,7 @@ variable n2_in equal count(grp_t2,cyl_in)
 compute coor12 grp_t1 coord/atom cutoff 2.0 group grp_t2
 compute sumcoor12 grp_t1 reduce ave c_coor12
 
-# 3) Settings
-
-# 4) Monitoring
+# 8) Monitoring
 thermo 1000
 thermo_style custom step temp pe ke etotal &
   press v_n1_in v_n2_in c_sumcoor12
@@ -95,7 +73,7 @@ dump viz all image 1000 myimage-*.ppm type type &
 dump_modify viz adiam 1 1 adiam 2 3 acolor 1 &
   turquoise acolor 2 royalblue backcolor white
 
-# 5) Run
+# 9) Run
 velocity all create 1.0 49284 mom yes dist gaussian
 fix mynve all nve
 fix mylgv all langevin 1.0 1.0 0.1 10917 zero yes
@@ -103,4 +81,4 @@ timestep 0.005
 run 300000
 __EOF__
 
-chown -R $(whoami) "${run_dir}"
+#chown -R $(whoami) "${run_dir}"
