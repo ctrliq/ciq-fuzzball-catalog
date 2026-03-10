@@ -15,7 +15,7 @@ values:
 
   - name: Boltz2Container
     display_name: Container used for boltz2.
-    string_value: oras://docker.io/wresch/boltz:2.2.1-c724b483910f3533
+    string_value: oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/boltz2_fixed_affinity_screen-utility:1.0-1-amd64
     display_category: Container
 
   - name: ProteinSequence
