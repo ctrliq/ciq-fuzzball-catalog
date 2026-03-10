@@ -64,6 +64,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
+  ARM64_ENABLED: ${{ vars.ARM64_ENABLED || 'false' }}
 
 jobs:
   discover:
@@ -170,9 +171,11 @@ jobs:
               continue
             fi
 
-            #disabling arm64 builds for now
-            #for arch in amd64 arm64; do
-            for arch in amd64; do
+            arches="amd64"
+            if [[ "${ARM64_ENABLED}" == "true" ]]; then
+              arches="amd64 arm64"
+            fi
+            for arch in ${arches}; do
 
               item="$(jq -cn \
                 --arg df "$file" \
