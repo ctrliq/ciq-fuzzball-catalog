@@ -6,7 +6,6 @@ From: rockylinux/rockylinux:9
 %post
 DUST_VER="v1.2.4"
 
-OS=linux
 # Detect architecture
 detect_arch() {
     ARCH=$(uname -m)
@@ -140,7 +139,7 @@ cat >/usr/local/bin/start-vncserver.sh <<'__EOF__'
 mkdir -p "${HOME}/.vnc"
 chown -R $(whoami) "${HOME}/.vnc"
 chmod 700 "${HOME}/.vnc"
-) &>/dev/null
+) >/dev/null 2>&1
 umask 007
 export USER=$(whoami)
 
