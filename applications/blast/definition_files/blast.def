@@ -1,0 +1,23 @@
+# tag: 2.17.0-1
+
+Bootstrap: docker
+From: mambaorg/micromamba:1.5.10-noble
+
+%post
+
+mkdir -p /opt/conda/defs
+cat >/opt/conda/defs/base.yaml <<__EOF__
+channels:
+- conda-forge
+- bioconda
+dependencies:
+- bioconda::blast=2.17.0
+- bioconda::entrez-direct=24.0
+__EOF__
+
+micromamba install -q -y -n base -f /opt/conda/defs/base.yaml
+micromamba env export --name base --explicit > /opt/conda/defs/base.lock
+micromamba clean -a -y
+
+%environment
+export PATH=${MAMBA_ROOT_PREFIX}/bin:${PATH}
