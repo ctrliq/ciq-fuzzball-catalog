@@ -1,3 +1,4 @@
+# tag: 2.2.1-1
 Bootstrap: docker
 From: ghcr.io/astral-sh/uv@sha256:863ccabb4b64714bf319b5059259cc8e28c9f397b5e294562aa13c28ea0f48ee
 
@@ -105,4 +106,4 @@ uv venv /app/env
 uv pip install -r /app/requirements.txt
 
 %environment
-PATH=$PATH:/app/env/bin
+export PATH=/app/env/bin:${PATH}
