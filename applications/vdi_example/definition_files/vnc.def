@@ -1,0 +1,154 @@
+# tag: 1.3-1
+
+Bootstrap: docker
+From: rockylinux/rockylinux:9
+
+%post
+DUST_VER="v1.2.4"
+
+# Detect architecture
+detect_arch() {
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64|amd64)   ARCH="x86_64" ; DUST_SHA256="4e313f9f854017e58a2ada4c0d1774677b8cf53d63ab55a991d5871d5f504452" ;;
+        aarch64|arm64)  ARCH="aarch64" ; DUST_SHA256="e09b0d24b5da0fa06aecf1561849c13ae41ef055c1ce7077e35e9a46744b16af" ;;
+        *)              printf "Unsupported architecture: $ARCH\n" >&2 ;;
+    esac
+}
+
+cat >/etc/yum.repos.d/TurboVNC.repo <<'__EOF__'
+[TurboVNC]
+name=TurboVNC official RPMs
+baseurl=https://packagecloud.io/dcommander/turbovnc/rpm_any/rpm_any/$basearch
+repo_gpgcheck=1
+gpgcheck=1
+gpgkey=https://packagecloud.io/dcommander/turbovnc/gpgkey
+       https://raw.githubusercontent.com/TurboVNC/repo/main/VGL-GPG-KEY
+enabled=1
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+exclude=turbovnc-*.*.9[0-9]-*
+__EOF__
+
+dnf upgrade -y
+dnf install -y epel-release && crb enable
+dnf groupinstall -y Xfce --exclude=xfce4-power-manager
+dnf -y install perl turbovnc novnc firefox \
+  baobab openssh-clients tree vim-enhanced wget which bash awscli2 \
+  jq jello python3.12 ca-certificates \
+  java-21-openjdk iputils bind-utils \
+  nvtop htop procps-ng bat ripgrep fzf \
+  parole vim-X11 zip tar gzip pigz git \
+  rocky-backgrounds gstreamer1-plugin-openh264 fastfetch
+dnf clean all -y
+rm /etc/xdg/autostart/xfce-polkit.desktop
+
+# Things that are not available in repositories
+# dust
+mkdir -p /usr/local/bin
+tmp="$(mktemp -d)"
+cd $tmp
+detect_arch
+wget -q -O "dust.tar.gz" \
+  https://github.com/bootandy/dust/releases/download/${DUST_VER}/dust-${DUST_VER}-${ARCH}-unknown-linux-musl.tar.gz
+echo "${DUST_SHA256} dust.tar.gz" > dust.sha256
+if sha256sum -c dust.sha256 ; then
+  tar -xzf dust.tar.gz
+  cp "$(find . -name "dust" | head -n 1)" /usr/local/bin/dust
+  chmod +x /usr/local/bin/dust
+else
+  printf "checksum check failure for dust\n" >&2
+  exit 1
+fi
+
+###
+### xfce config
+###
+
+# theming
+git clone https://github.com/daniruiz/flat-remix-gtk.git
+cd flat-remix-gtk && git checkout 919494f4f4ede88e2efb45cd48b98db7cc23f6ee && cd ..
+cp -r flat-remix-gtk/themes/Flat-Remix-GTK-Blue-Dark/ /usr/share/themes
+
+git clone https://github.com/daniruiz/flat-remix.git
+cd flat-remix && git checkout e7de6c346da46e008987228f363b0eae6e638637 && cd ..
+cp -r flat-remix/Flat-Remix-Blue-Dark /usr/share/icons
+
+cat >/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-screensaver.xml <<__EOF__
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-screensaver" version="1.0">
+  <property name="lock" type="empty">
+    <property name="sleep-activation" type="bool" value="false"/>
+    <property name="enabled" type="bool" value="false"/>
+  </property>
+  <property name="saver" type="empty">
+    <property name="mode" type="int" value="0"/>
+  </property>
+</channel>
+__EOF__
+
+cat >/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml <<__EOF__
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xsettings" version="1.0">
+  <property name="Net" type="empty">
+    <property name="ThemeName" type="string" value="Flat-Remix-GTK-Blue-Dark"/>
+    <property name="IconThemeName" type="string" value="Flat-Remix-Blue-Dark"/>
+  </property>
+  <property name="Gtk" type="empty">
+    <property name="FontName" type="string" value="Sans 10"/>
+    <property name="CursorThemeName" type="string" value="Adwaita"/>
+  </property>
+</channel>
+__EOF__
+
+cat >/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml <<__EOF__
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="theme" type="string" value="Arc-Dark"/>
+  </property>
+</channel>
+__EOF__
+
+cat >/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml <<__EOF__
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-desktop" version="1.0">
+  <property name="backdrop" type="empty">
+    <property name="screen0" type="empty">
+      <property name="monitorVNC-0" type="empty">
+        <property name="workspace0" type="empty">
+          <property name="color-style" type="int" value="0"/>
+          <property name="image-style" type="int" value="5"/>
+          <property name="last-image" type="string" value="/usr/share/backgrounds/rocky-default-9-onyx-mountains.png"/>
+        </property>
+      </property>
+    </property>
+  </property>
+</channel>
+__EOF__
+
+# make novnc default to using remote resize
+sed -E "s/UI.initSetting\('resize',[[:space:]]*'off'\)/UI.initSetting('resize', 'remote')/" \
+  /usr/share/novnc/app/ui.js > /tmp/ui.js && mv /tmp/ui.js /usr/share/novnc/app/ui.js
+
+
+# script used by workflow
+cat >/usr/local/bin/start-vncserver.sh <<'__EOF__'
+#!/bin/sh
+(
+mkdir -p "${HOME}/.vnc"
+chown -R $(whoami) "${HOME}/.vnc"
+chmod 700 "${HOME}/.vnc"
+) >/dev/null 2>&1
+umask 007
+export USER=$(whoami)
+
+/usr/bin/novnc_proxy --vnc localhost:5900 --listen ${1:-6080} &
+PROXY=$!
+/opt/TurboVNC/bin/vncserver -securitytypes tlsnone,x509none,none -wm xfce -fg ${VNCSERVER_ARGS} :0
+kill $PROXY
+__EOF__
+chmod +x /usr/local/bin/start-vncserver.sh
+
+cd /
+rm -rf "$tmp"

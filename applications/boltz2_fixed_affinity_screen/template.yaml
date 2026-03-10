@@ -58,7 +58,7 @@ volumes:
 jobs:
   setup:
     image:
-      uri: docker://community.wave.seqera.io/library/pip_pyyaml_boto3_google-cloud-storage_pruned:0e2f4410f52d7676
+      uri: oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/boltz2_fixed_affinity_screen-utility:1.0-1-amd64
     cwd: {{ $scratch_mount }}
     resource:
       cpu:
@@ -239,7 +239,7 @@ jobs:
     requires:
       - boltz-predict
     image:
-      uri: docker://community.wave.seqera.io/library/pip_pyyaml_boto3_google-cloud-storage_pruned:0e2f4410f52d7676
+      uri: oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/boltz2_fixed_affinity_screen-utility:1.0-1-amd64
     cwd: {{ $scratch_mount }}
     resource:
       cpu:
