@@ -35,6 +35,7 @@ units metal
 atom_style atomic
 boundary f f f
 
+newton on
 read_data breakable.data
 pair_style airebo 3.0
 pair_coeff * * CH.airebo C
