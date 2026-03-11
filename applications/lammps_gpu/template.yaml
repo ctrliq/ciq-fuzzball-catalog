@@ -61,14 +61,14 @@ volumes:
       - destination:
           uri: file://stagein
         source:
-          uri: {{ $expurl }}/{{ $stagein }}
+          uri: {{ $expurl }}/{{ $run }}/{{ $stagein }}
 {{- if $s3_ingress }}
           secret: {{ $s3_secret }}
 {{- end }}
       - destination:
           uri: file://run_lammps
         source:
-          uri: {{ $expurl }}/{{ $lammps }}
+          uri: {{ $expurl }}/{{ $run }}/{{ $lammps }}
 {{- if $s3_ingress }}
           secret: {{ $s3_secret }}
 {{- end }}
