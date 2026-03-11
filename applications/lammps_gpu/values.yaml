@@ -11,7 +11,7 @@ values:
   - name: ExperimentUrl
     display_name: >-
       Base URL where workflow scripts can be found. The stagein script is required. The stageout is optional.
-    string_value: "https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/FUZZ-4937-lammps-gpu-fix/applications/lammps_gpu/experiments/lennard-jones-fluid/my-first-input"
+    string_value: "https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/main/applications/lammps_gpu/experiments/lennard-jones-fluid/my-first-input"
     display_category: Parameters
   - name: StageinScript
     display_name: >-
