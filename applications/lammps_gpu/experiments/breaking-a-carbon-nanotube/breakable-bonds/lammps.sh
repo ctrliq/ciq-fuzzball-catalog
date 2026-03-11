@@ -27,4 +27,4 @@ export PATH LD_LIBRARY_PATH LAMMPS_POTENTIALS MSI2LMP_LIBRARY
 cd "${run_dir}" || exit 100
 [[ -e "${prefix}/bin/lmp" ]] || { printf "Unable to find lammps executable for GPU architecture\n"; exit 101; }
 lmp -k on g "${gpus_per_node}" -sf kk -pk kokkos cuda/aware on \
-    neigh full comm device binsize 2.8 -in input.lammps
+    neigh half comm device binsize 2.8 -in input.lammps
