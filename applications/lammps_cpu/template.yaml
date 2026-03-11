@@ -80,8 +80,8 @@ jobs:
         location: /data
     name: stageout
     depends-on:
-    - name: run-lammps
-      status: FINISHED
+      - name: run-lammps
+        status: FINISHED
     resource:
       cpu:
         cores: 1
