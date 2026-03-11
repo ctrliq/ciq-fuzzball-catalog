@@ -33,7 +33,8 @@ exit 0
 
 units metal
 atom_style atomic
-boundary f f f
+# shrink wrap boundaries to prevent fragments from flying out of the box
+boundary s s s
 
 newton on
 read_data breakable.data
