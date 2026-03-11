@@ -108,7 +108,7 @@ run 5000
 velocity cnt_top set 0.0005 0 0
 velocity cnt_bot set -0.0005 0 0
 
-run 100000
+run 10000
 #--- END input.lammps ---
 
 #--- BEGIN unbreakable.data ---
