@@ -3,17 +3,19 @@
 set -e
 
 run_dir="${1}"
-mkdir -p "${run_dir}" && cd "${run_dir}"
+script="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+mkdir -p "${run_dir}"
 
 extract_file() {
     local marker="$1"
     local dest="$2"
-    sed -n "/^#--- BEGIN ${marker} ---$/,/^#--- END ${marker} ---$/{//d;p}" "$0" > "$dest"
+    sed -n "/^#--- BEGIN ${marker} ---$/,/^#--- END ${marker} ---$/p" "${script}" \
+        | sed '1d;$d' > "$dest"
 }
 
-extract_file "input.lammps" ./input.lammps
-extract_file "breakable.data" ./breakable.data
-extract_file "CH.airebo" ./CH.airebo
+extract_file "input.lammps" "${run_dir}/input.lammps"
+extract_file "breakable.data" "${run_dir}/breakable.data"
+extract_file "CH.airebo" "${run_dir}/CH.airebo"
 
 exit 0
 
