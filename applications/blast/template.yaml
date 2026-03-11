@@ -117,7 +117,9 @@ jobs:
     policy:
       timeout:
         execute: {{.CustomBlastDbTimeout}}
-    requires: [retrieve-database-sequences]
+    depends-on:
+      - name: retrieve-database-sequences
+        status: FINISHED
 {{- else}}
 {{ fail "Either CustomBlastDbFetchCmd or BlastDbName have to be specified" -}}
 {{- end }}
@@ -165,4 +167,13 @@ jobs:
     policy:
       timeout:
         execute: {{.BlastQueryTimeout}}
-    requires: [retrieve-query-sequences, {{if .BlastDbName -}}fetch-db {{- else -}} make-blast-database {{- end -}} ]
+    depends-on:
+      - name: retrieve-query-sequences
+        status: FINISHED
+{{- if .BlastDbName }}
+      - name: fetch-db
+        status: FINISHED
+{{- else }}
+      - name: make-blast-database
+        status: FINISHED
+{{- end }}

@@ -33,8 +33,9 @@ jobs:
     policy:
       timeout:
         execute: {{.JupyterTimeout}}
-    requires:
-      - txt2img
+    depends-on:
+      - name: txt2img
+        status: FINISHED
   txt2img:
     cwd: /stable-diffusion
     env:
@@ -58,8 +59,9 @@ jobs:
         echo "${TXT2IMG_PROMPT}" >"${outdir}/prompt.txt"; python3
         /stable-diffusion/scripts/txt2img.py --prompt "${TXT2IMG_PROMPT}" --ckpt
         /data/txt2img/sd-v1-4.ckpt --outdir "${outdir}" --seed $RANDOM
-    requires:
-      - prefetch
+    depends-on:
+      - name: prefetch
+        status: FINISHED
     resource:
       cpu:
         cores: {{.StableDiffusionCores}}

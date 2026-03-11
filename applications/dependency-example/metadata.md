@@ -28,11 +28,11 @@ Each stage demonstrates how to properly configure job dependencies to ensure seq
 
 ## How It Works
 
-This workflow uses Fuzzball's `requires` field to establish dependencies between jobs:
+This workflow uses Fuzzball's `depends-on` field to establish dependencies between jobs:
 
 1. The **pre** job runs first (no dependencies)
-2. The **main-job** stage waits for **pre** to complete (requires: pre)
-3. The **post** stage waits for **main-job** to complete (requires: main-job)
+2. The **main-job** stage waits for **pre** to complete (`depends-on: [ {name: pre, status: FINISHED}]`)
+3. The **post** stage waits for **main-job** to complete (`depends-on: [ {name: main-job, status: FINISHED}]`)
 
 When you submit this workflow, Fuzzball's scheduler will:
 
@@ -72,6 +72,6 @@ Each job:
 This workflow is ideal for:
 
 - Learning how to create dependent jobs in Fuzzball workflows
-- Understanding the `requires` field and dependency syntax
+- Understanding the `depends-on` field and dependency syntax
 - Testing multi-stage pipeline execution with sequential dependencies
 - Serving as a template for more complex workflows with dependency chains

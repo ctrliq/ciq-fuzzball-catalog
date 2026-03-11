@@ -77,8 +77,9 @@ jobs:
 
         echo "----------------------------------------------------------"
         cat mdlog.log
-    requires:
-      - setup
+    depends-on:
+      - name: setup
+        status: FINISHED
     resource:
       cpu:
         cores: {{.Cores}}

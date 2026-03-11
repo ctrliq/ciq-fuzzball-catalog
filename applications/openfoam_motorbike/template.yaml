@@ -74,7 +74,9 @@ jobs:
     mounts:
       scratch:
         location: /scratch
-    requires: ["preprocess-model"]
+    depends-on:
+      - name: preprocess-model
+        status: FINISHED
 
   toposet:
     image:
@@ -93,7 +95,9 @@ jobs:
     mounts:
       scratch:
         location: /scratch
-    requires: ["snappy-hex-mesh"]
+    depends-on:
+      - name: snappy-hex-mesh
+        status: FINISHED
 
   set-initial-conditions:
     image:
@@ -115,7 +119,9 @@ jobs:
     mounts:
       scratch:
         location: /scratch
-    requires: ["toposet"]
+    depends-on:
+      - name: toposet
+        status: FINISHED
 
   patch-summary:
     image:
@@ -134,7 +140,9 @@ jobs:
     mounts:
       scratch:
         location: /scratch
-    requires: ["set-initial-conditions"]
+    depends-on:
+      - name: set-initial-conditions
+        status: FINISHED
 
   potential-foam:
     image:
@@ -153,7 +161,9 @@ jobs:
     mounts:
       scratch:
         location: /scratch
-    requires: ["patch-summary"]
+    depends-on:
+      - name: patch-summary
+        status: FINISHED
 
   check-mesh:
     image:
@@ -172,7 +182,9 @@ jobs:
     mounts:
       scratch:
         location: /scratch
-    requires: ["potential-foam"]
+    depends-on:
+      - name: potential-foam
+        status: FINISHED
 
   simple-foam:
     image:
@@ -191,7 +203,9 @@ jobs:
     mounts:
       scratch:
         location: /scratch
-    requires: ["check-mesh"]
+    depends-on:
+      - name: check-mesh
+        status: FINISHED
 
   reconstruct-mesh:
     image:
@@ -213,7 +227,9 @@ jobs:
     mounts:
       scratch:
         location: /scratch
-    requires: ["simple-foam"]
+    depends-on:
+      - name: simple-foam
+        status: FINISHED
 
   to-vtk:
     image:
@@ -237,7 +253,9 @@ jobs:
     mounts:
       scratch:
         location: /scratch
-    requires: ["reconstruct-mesh"]
+    depends-on:
+      - name: reconstruct-mesh
+        status: FINISHED
 
   tar-results:
     image:
@@ -268,7 +286,9 @@ jobs:
       data:
         location: /data
 {{- end }}
-    requires: ["to-vtk"]
+    depends-on:
+      - name: to-vtk
+        status: FINISHED
 
 {{- if .ParaviewContainerUri }}
   port-forwarding-info:
@@ -286,7 +306,9 @@ jobs:
         echo "Accessing the paraview server once it starts requires port-forwarding via the CLI:"
         echo
         echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} paraview {{ .ParaviewPort }}:{{ .ParaviewPort }}"
-    requires: ["to-vtk"]
+    depends-on:
+      - name: to-vtk
+        status: FINISHED
 
   paraview:
     image:
@@ -311,5 +333,7 @@ jobs:
     policy:
       timeout:
         execute: {{ .ParaviewTimeout }}
-    requires: ["port-forwarding-info"]
+    depends-on:
+      - name: port-forwarding-info
+        status: FINISHED
 {{- end }}
