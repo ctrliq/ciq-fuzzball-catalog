@@ -160,8 +160,9 @@ jobs:
                   yaml.dump(boltz_input, outfile, Dumper=IndentListDumper, default_flow_style=False, sort_keys=False)
               print(f"Generated Boltz input for compound {row['id']} in {out_filename}")
   boltz-predict:
-    requires:
-      - setup
+    depends-on:
+      - name: setup
+        status: FINISHED
     image:
       uri: {{ .Boltz2Container }}
     cwd: {{ $scratch_mount }}
@@ -236,8 +237,9 @@ jobs:
 {{- end }}
 {{- if $abs_output_path }}
   teardown:
-    requires:
-      - boltz-predict
+    depends-on:
+      - name: boltz-predict
+        status: FINISHED
     image:
       uri: oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/boltz2_fixed_affinity_screen-utility:1.0-1-amd64
     cwd: {{ $scratch_mount }}

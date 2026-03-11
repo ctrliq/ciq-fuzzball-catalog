@@ -74,7 +74,7 @@ jobs:
 
         # Run BWA-MEM2 alignment and convert directly to BAM
         bwa-mem2 mem -t {{.AlignThreads}} ${RG_OPTS} ${EXTRA_OPTS} reference.fa sample_1.fastq.gz sample_2.fastq.gz | samtools view -o aligned.bam -
-        
+
         # Generate statistics using samtools
         echo "Alignment Date: $(date)" > aligned.stats.txt
         echo "Reference Genome: {{.ReferenceGenomeName}}" >> aligned.stats.txt
@@ -82,8 +82,9 @@ jobs:
         du -h aligned.bam >> aligned.stats.txt
         echo "----- Flagstat -------" >> aligned.stats.txt
         samtools flagstat aligned.bam >> aligned.stats.txt
-    requires:
-      - bwa-mem2-index
+    depends-on:
+      - name: bwa-mem2-index
+        status: FINISHED
     resource:
       cpu:
         cores: {{.AlignCpuCores}}

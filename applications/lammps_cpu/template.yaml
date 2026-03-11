@@ -54,8 +54,9 @@ jobs:
     policy:
       timeout:
         execute: {{.Timeout}}
-    requires:
-      - stagein
+    depends-on:
+      - name: stagein
+        status: FINISHED
     resource:
       cpu:
         affinity: NUMA
@@ -78,8 +79,9 @@ jobs:
       data:
         location: /data
     name: stageout
-    requires:
-    - run-lammps
+    depends-on:
+      - name: run-lammps
+        status: FINISHED
     resource:
       cpu:
         cores: 1
