@@ -25,8 +25,9 @@ jobs:
     script: |
       #! /bin/sh
       echo "Job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
-    requires:
-      - pre
+    depends-on:
+      - name: pre
+        status: FINISHED
     resource:
       cpu:
         cores: 1
@@ -43,8 +44,9 @@ jobs:
     script: |
       #! /bin/sh
       echo "Post-job; sleeping ${SECONDS} seconds"; sleep ${SECONDS}
-    requires:
-      - main-job
+    depends-on:
+      - name: main-job
+        status: FINISHED
     resource:
       cpu:
         cores: 1
