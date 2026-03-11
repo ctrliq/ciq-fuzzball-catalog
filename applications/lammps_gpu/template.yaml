@@ -1,28 +1,116 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 version: v1
+
+{{- $expurl := trim .ExperimentUrl }}
+{{- if not $expurl }}
+  {{- fail "ExperimentUrl is required" }}
+{{- end }}
+
+{{- $stagein := trim .StageinScript }}
+{{- if not $stagein }}
+  {{- fail "StageinScript is required" }}
+{{- end }}
+{{- $lammps := trim .LammpsScript }}
+{{- if not $lammps }}
+  {{- fail "LammpsScript is required" }}
+{{- end }}
+
+{{- $scratch_vol := default "volume://user/ephemeral" .ScratchVolume | trim }}
+{{- $scratch_mount := "/scratch" }}
+
+{{- $data_vol := trim .DataVolume }}
+{{- $data_mount := "/data" }}
+
+{{- $run := trim .RunName }}
+{{- if not $run }}
+  {{- fail "RunName is required" }}
+{{- end }}
+{{- $run_dir := printf "%s/%s" $scratch_mount $run }}
+{{- $output_path := trim .OutputPath }}
+{{- $out_dir := printf "%s/%s" $data_mount $output_path }}
+
+{{- $s3_bucket := trim .S3Bucket }}
+{{- $s3_secret := trim .S3Secret }}
+{{- $s3_ingress := hasPrefix "s3://" $expurl }}
+{{- if (and (or $s3_bucket $s3_ingress) (not $s3_secret)) }}
+  {{- fail "S3Secret is required when using S3 for ingress or egress" }}
+{{- end }}
+
+{{- $ts := now | unixEpoch }}
+{{- $tar_base := list $run $ts | join "-" }}
+
+{{- $gpu_vendor := .GPUVendor | trim | lower }}
+{{- if eq $gpu_vendor "nvidia" }}
+  {{- $gpu_vendor = "nvidia.com" }}
+{{- else if eq $gpu_vendor "amd" }}
+  {{- $gpu_vendor = "amd.com" }}
+{{- else }}
+  {{- fail "Currently supported GPU vendors: NVIDIA and AMD" }}
+{{- end }}
+
+defaults:
+  job:
+    mounts:
+      scratch:
+        location: "{{ $scratch_mount }}"
+
 volumes:
-  lammps-data-volume:
-    name: lammps-data-volume
-    reference: {{.Volume}}
+  scratch:
+    reference: {{ $scratch_vol }}
     ingress:
+      - destination:
+          uri: file://stagein
+        source:
+          uri: {{ $expurl }}/{{ $run }}/{{ $stagein }}
+{{- if $s3_ingress }}
+          secret: {{ $s3_secret }}
+{{- end }}
+      - destination:
+          uri: file://run_lammps
+        source:
+          uri: {{ $expurl }}/{{ $run }}/{{ $lammps }}
+{{- if $s3_ingress }}
+          secret: {{ $s3_secret }}
+{{- end }}
+{{- if $s3_bucket }}
+    egress:
       - source:
-          uri: {{.LammpsInputUrl}}
+          uri: file://{{ $tar_base }}.tar.gz
         destination:
-          uri: file://{{.LammpsInputFile}}
+          uri: s3://{{ $s3_bucket }}/{{ $output_path }}/{{ $tar_base }}.tar.gz
+          secret: {{ $s3_secret }}
+{{- end }}
+{{- if $data_vol }}
+  data:
+    reference: {{ $data_vol }}
+{{- end }}
+
 jobs:
-  run-lammps:
+  stagein:
+    script: |
+      #!/bin/sh
+      set -e
+      chmod +x "{{ $scratch_mount }}/stagein"
+      "{{ $scratch_mount }}/stagein" "{{ $run_dir }}"
+    image:
+      uri: docker://alpine:3.23.3
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 512MiB
+
+  lammps:
     image:
       uri: {{.LammpsContainerUri}}
-      secret: {{.DepotSecret}}
-    env:
-      - LAMMPS_INPUT_FILE_PATH=/data/{{.LammpsInputFile}}
-    command:
-      - /bin/sh
-      - '-c'
-      - >-
-        lmp -k on g {{.GPUs}} -sf kk -pk kokkos cuda/aware on neigh full comm device binsize 2.8 -var x 8 -var y 4 -var z 8
-        -in ${LAMMPS_INPUT_FILE_PATH}
-    cwd: /data
+    depends-on:
+      - name: stagein
+        status: FINISHED
+    script: |
+      #!/bin/sh
+      set -e
+      chmod +x "{{ $scratch_mount }}/run_lammps"
+      "{{ $scratch_mount }}/run_lammps" "{{ $run_dir }}" {{.GPUs}}
     resource:
       cpu:
         cores: {{.Cores}}
@@ -30,10 +118,43 @@ jobs:
       memory:
         size: {{.Memory}}
       devices:
-        nvidia.com/gpu: {{.GPUs}}
+        {{ $gpu_vendor }}/gpu: {{.GPUs}}
+{{- if (trim .GPUModel) }}
+      annotations:
+        {{ $gpu_vendor }}/gpu.model: {{.GPUModel}}
+{{- end }}
+    multinode:
+      implementation: {{.MpiFlavor}}
+      nodes: {{.Nodes}}
     policy:
       timeout:
         execute: {{.Timeout}}
+
+{{- if (or $s3_bucket $data_vol) }}
+  stageout:
+    script: |
+      #!/bin/sh
+      set -e
+      echo "${FB_WORKFLOW_ID}" > "{{ $run_dir }}/FB_WORKFLOW_ID"
+      cd "{{ $scratch_mount }}"
+      tar -czf "{{ $tar_base }}.tar.gz" "{{ $run }}"
+{{- if $data_vol }}
+      mkdir -p "{{ $out_dir }}"
+      cp "{{ $tar_base }}.tar.gz" "{{ $out_dir }}/{{ $tar_base }}.tar.gz"
+{{- end }}
+    image:
+      uri: docker://alpine:3.23.3
+{{- if $data_vol }}
     mounts:
-      lammps-data-volume:
-        location: /data
+      data:
+        location: {{ $data_mount }}
+{{- end }}
+    depends-on:
+      - name: lammps
+        status: FINISHED
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 512MiB
+{{- end }}
