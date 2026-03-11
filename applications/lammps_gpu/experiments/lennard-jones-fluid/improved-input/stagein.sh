@@ -80,5 +80,3 @@ fix mylgv all langevin 1.0 1.0 0.1 10917 zero yes
 timestep 0.005
 run 300000
 __EOF__
-
-#chown -R $(whoami) "${run_dir}"
