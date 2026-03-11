@@ -4,7 +4,7 @@ values:
     string_value: "volume://user/ephemeral"
     display_category: Storage
   - name: DataVolume
-    display_name: Persistent volume to store data. Required if saving to a perstistent volume with a stageout script.
+    display_name: Persistent volume to store data. Required if saving to a persistent volume with a stageout script.
     string_value: ""
     display_category: Storage
 
@@ -35,7 +35,7 @@ values:
     display_category: Parameters
   - name: RunName
     display_name: Name of the run directory passed to the stagein and stageout scripts.
-    string_value: lj-my-first-input
+    string_value: lammps-test
     display_category: Parameters
   - name: OutputPath
     display_name: >-

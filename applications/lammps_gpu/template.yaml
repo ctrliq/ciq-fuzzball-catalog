@@ -1,6 +1,5 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 version: v1
-### TODO: s3 for egress and experiments
 
 {{- $expurl := trim .ExperimentUrl }}
 {{- if not $expurl }}
@@ -77,9 +76,8 @@ jobs:
       set -e
       chmod +x "{{ $scratch_mount }}/stagein"
       "{{ $scratch_mount }}/stagein" "{{ $run_dir }}"
-      ls -lh "{{ $scratch_mount }}"
     image:
-      uri: docker://alpine:latest
+      uri: docker://alpine:3.23.3
     resource:
       cpu:
         cores: 1
@@ -97,7 +95,6 @@ jobs:
       set -e
       chmod +x "{{ $scratch_mount }}/run_lammps"
       "{{ $scratch_mount }}/run_lammps" "{{ $run_dir }}" {{.GPUs}}
-      ls -lh "{{ $scratch_mount }}"
     resource:
       cpu:
         cores: {{.Cores}}
@@ -125,7 +122,7 @@ jobs:
       chmod +x "{{ $scratch_mount }}/stageout"
       "{{ $scratch_mount }}/stageout" "{{ $run_dir }}" "{{ $out_dir }}"
     image:
-      uri: docker://alpine:latest
+      uri: docker://alpine:3.23.3
     mounts:
       data:
         location: /data
