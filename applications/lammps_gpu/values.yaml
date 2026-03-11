@@ -4,13 +4,21 @@ values:
     string_value: "volume://user/ephemeral"
     display_category: Storage
   - name: DataVolume
-    display_name: Persistent volume to store data. Required if saving to a persistent volume with a stageout script.
+    display_name: Persistent volume to store results. If set, a tar archive of the run directory is copied here.
+    string_value: ""
+    display_category: Storage
+  - name: S3Bucket
+    display_name: S3 bucket name for result egress. If set, a tar archive is uploaded via Fuzzball volume egress.
+    string_value: ""
+    display_category: Storage
+  - name: S3Secret
+    display_name: Fuzzball secret name with S3 credentials. Required when S3Bucket is set.
     string_value: ""
     display_category: Storage
 
   - name: ExperimentUrl
     display_name: >-
-      Base URL where workflow scripts can be found. The stagein script is required. The stageout is optional.
+      Base URL where workflow scripts (stagein, lammps) can be found.
     string_value: "https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/main/applications/lammps_gpu/experiments/lennard-jones-fluid/my-first-input"
     display_category: Parameters
   - name: StageinScript
@@ -26,23 +34,16 @@ values:
       name of the lammps run directory as an argument.
     string_value: lammps.sh
     display_category: Parameters
-  - name: StageoutScript
-    display_name: >-
-      Path of a script relative to the ExperimentUrl that copies output data to S3 or some other location. It takes the
-      full path to the run directory and a fully expanded destination directory (including OutputPath and RunName) as
-      arguments. If no script is provided results will not be persisted.
-    string_value: ""
-    display_category: Parameters
   - name: RunName
     display_name: >-
-      Name of the run directory in the ephemeral scratch volume. Also used to compose the output file name
-      along with the workflow id.
+      Name of the run directory in the ephemeral scratch volume. Also used as a prefix for the output tar archive name along with
+      a time stamp.
     string_value: lammps-test
     display_category: Parameters
   - name: OutputPath
     display_name: >-
-      Path relative to the root of the data volume where results should be written to. Ignored if no stageout script is
-      provided.
+      Path used for result storage. For persistent volumes, this is relative to the volume root. For S3, this is the
+      key prefix within the bucket.
     string_value: "results/lammps_gpu"
     display_category: Parameters
 

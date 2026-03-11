@@ -15,15 +15,10 @@ version: v1
   {{- fail "LammpsScript is required" }}
 {{- end }}
 
-{{- $stageout := trim .StageoutScript }}
-
 {{- $scratch_vol := default "volume://user/ephemeral" .ScratchVolume | trim }}
 {{- $scratch_mount := "/scratch" }}
 
 {{- $data_vol := trim .DataVolume }}
-{{- if (and $stageout (not $data_vol)) }}
-  {{- fail "If a stageout script to save data to a data volume is provided a data volume must be specified" }}
-{{- end }}
 {{- $data_mount := "/data" }}
 
 {{- $run := trim .RunName }}
@@ -31,7 +26,17 @@ version: v1
   {{- fail "RunName is required" }}
 {{- end }}
 {{- $run_dir := printf "%s/%s" $scratch_mount $run }}
-{{- $out_dir := printf "%s/%s/%s" $data_mount (trim .OutputPath) $run }}
+{{- $output_path := trim .OutputPath }}
+{{- $out_dir := printf "%s/%s" $data_mount $output_path }}
+
+{{- $s3_bucket := trim .S3Bucket }}
+{{- $s3_secret := trim .S3Secret }}
+{{- if (and $s3_bucket (not $s3_secret)) }}
+  {{- fail "S3Secret is required when S3Bucket is set" }}
+{{- end }}
+
+{{- $ts := now | unixEpoch }}
+{{- $tar_base := list $run $ts | join "-" }}
 
 {{- $gpu_vendor := .GPUVendor | trim | lower }}
 {{- if eq $gpu_vendor "nvidia" }}
@@ -60,11 +65,15 @@ volumes:
           uri: file://run_lammps
         source:
           uri: {{ $expurl }}/{{ $lammps }}
-{{- if $stageout }}
-      - destination:
-          uri: file://stageout
-        source:
-          uri: {{ $expurl }}/{{ $stageout }}
+{{- if $s3_bucket }}
+    egress:
+      - source:
+          uri: file://{{ $tar_base }}.tar.gz
+        destination:
+          uri: s3://{{ $s3_bucket }}/{{ $output_path }}/{{ $tar_base }}.tar.gz
+          secret: {{ $s3_secret }}
+{{- end }}
+{{- if $data_vol }}
   data:
     reference: {{ $data_vol }}
 {{- end }}
@@ -114,18 +123,25 @@ jobs:
       timeout:
         execute: {{.Timeout}}
 
-{{- if $stageout }}
+{{- if (or $s3_bucket $data_vol) }}
   stageout:
     script: |
       #!/bin/sh
       set -e
-      chmod +x "{{ $scratch_mount }}/stageout"
-      "{{ $scratch_mount }}/stageout" "{{ $run_dir }}" "{{ $out_dir }}"
+      echo "${FB_WORKFLOW_ID}" > "{{ $run_dir }}/FB_WORKFLOW_ID"
+      cd "{{ $scratch_mount }}"
+      tar -czf "{{ $tar_base }}.tar.gz" "{{ $run }}"
+{{- if $data_vol }}
+      mkdir -p "{{ $out_dir }}"
+      cp "{{ $tar_base }}.tar.gz" "{{ $out_dir }}/{{ $tar_base }}.tar.gz"
+{{- end }}
     image:
       uri: docker://alpine:3.23.3
+{{- if $data_vol }}
     mounts:
       data:
-        location: /data
+        location: {{ $data_mount }}
+{{- end }}
     depends-on:
       - name: lammps
         status: FINISHED
