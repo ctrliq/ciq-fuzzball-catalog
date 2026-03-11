@@ -31,8 +31,9 @@ version: v1
 
 {{- $s3_bucket := trim .S3Bucket }}
 {{- $s3_secret := trim .S3Secret }}
-{{- if (and $s3_bucket (not $s3_secret)) }}
-  {{- fail "S3Secret is required when S3Bucket is set" }}
+{{- $s3_ingress := hasPrefix "s3://" $expurl }}
+{{- if (and (or $s3_bucket $s3_ingress) (not $s3_secret)) }}
+  {{- fail "S3Secret is required when using S3 for ingress or egress" }}
 {{- end }}
 
 {{- $ts := now | unixEpoch }}
@@ -61,10 +62,16 @@ volumes:
           uri: file://stagein
         source:
           uri: {{ $expurl }}/{{ $stagein }}
+{{- if $s3_ingress }}
+          secret: {{ $s3_secret }}
+{{- end }}
       - destination:
           uri: file://run_lammps
         source:
           uri: {{ $expurl }}/{{ $lammps }}
+{{- if $s3_ingress }}
+          secret: {{ $s3_secret }}
+{{- end }}
 {{- if $s3_bucket }}
     egress:
       - source:
