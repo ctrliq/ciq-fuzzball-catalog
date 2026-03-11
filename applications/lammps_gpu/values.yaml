@@ -81,7 +81,7 @@ values:
     uint_value: 1
     display_category: Resources
   - name: MpiFlavor
-    display_name: "MPI flavor. Options: openmpi, mpich. The NVRC container uses OpenMPI."
+    display_name: "MPI flavor. Options: openmpi, mpich. The NVCR container uses OpenMPI."
     string_value: openmpi
     display_category: Resources
 
