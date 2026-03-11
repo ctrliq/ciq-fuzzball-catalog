@@ -17,7 +17,7 @@ version: v1
 
 {{- $stageout := trim .StageoutScript }}
 
-{{- $scratch_vol := trim .ScratchVolume | default "volume://user/ephemeral" }}
+{{- $scratch_vol := default "volume://user/ephemeral" .ScratchVolume | trim }}
 {{- $scratch_mount := "/scratch" }}
 
 {{- $data_vol := trim .DataVolume }}

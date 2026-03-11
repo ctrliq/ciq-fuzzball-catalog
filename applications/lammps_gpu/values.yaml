@@ -29,12 +29,14 @@ values:
   - name: StageoutScript
     display_name: >-
       Path of a script relative to the ExperimentUrl that copies output data to S3 or some other location. It takes the
-      name of the run (RunName) and an output destination (OutputPath) as arguments. If no script is provided results
-      will not be persisted.
+      full path to the run directory and a fully expanded destination directory (including OutputPath and RunName) as
+      arguments. If no script is provided results will not be persisted.
     string_value: ""
     display_category: Parameters
   - name: RunName
-    display_name: Name of the run directory passed to the stagein and stageout scripts.
+    display_name: >-
+      Name of the run directory in the ephemeral scratch volume. Also used to compose the output file name
+      along with the workflow id.
     string_value: lammps-test
     display_category: Parameters
   - name: OutputPath
