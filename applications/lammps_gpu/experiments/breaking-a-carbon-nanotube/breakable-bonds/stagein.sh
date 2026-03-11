@@ -15,6 +15,8 @@ extract_file "input.lammps" ./input.lammps
 extract_file "breakable.data" ./breakable.data
 extract_file "CH.airebo" ./CH.airebo
 
+exit 0
+
 ################################################################################
 #                                  DATA FILES                                  #
 ################################################################################
