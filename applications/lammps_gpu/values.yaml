@@ -19,7 +19,7 @@ values:
   - name: ExperimentUrl
     display_name: >-
       Base URL where workflow scripts (stagein, lammps) can be found. Supports https:// and s3:// URLs. The experiment files
-      are expected in <ExperimentUrl/RunName>. Examples included here are lj-simple, lj-improved, cnt-unbreakable, cnt-breakable.
+      are expected in <ExperimentUrl/RunName>.
     string_value: "https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/main/applications/lammps_gpu/experiments"
     display_category: Parameters
   - name: StageinScript
@@ -37,7 +37,8 @@ values:
   - name: RunName
     display_name: >-
       Name of the run directory in the ephemeral scratch volume. Also used as a prefix for the output tar archive name along with
-      a time stamp and the path relative to the ExperimentUrl where the experiment scripts are located.
+      a time stamp and the path relative to the ExperimentUrl where the experiment scripts are located. Examples included here
+      are lj-simple, lj-improved, cnt-unbreakable, cnt-breakable available at the default Experiment Url.
     string_value: lj-simple
     display_category: Parameters
   - name: OutputPath
