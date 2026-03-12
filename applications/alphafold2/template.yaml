@@ -284,9 +284,11 @@ jobs:
         size: 2GB
 
   download-uniprot-concatenate:
-    requires:
-      - download-uniprot-sprot
-      - download-uniprot-trembl
+    depends-on:
+      - name: download-uniprot-sprot
+        status: FINISHED
+      - name: download-uniprot-trembl
+        status: FINISHED
     cwd: /data/alphafold2/uniprot
     image:
       uri: docker://p3terx/aria2-pro
@@ -545,23 +547,33 @@ jobs:
         size: 1GB
 
   alphafold2-predict:
-    requires:
-      - download-params
-      - download-bfd
-      - download-uniref30
-      - download-uniref90
+    depends-on:
+      - name: download-params
+        status: FINISHED
+      - name: download-bfd
+        status: FINISHED
+      - name: download-uniref30
+        status: FINISHED
+      - name: download-uniref90
+        status: FINISHED
 {{- if eq .ModelPreset "multimer" }}
-      - download-uniprot-concatenate
+      - name: download-uniprot-concatenate
+        status: FINISHED
 {{- end }}
-      - download-mgnify
+      - name: download-mgnify
+        status: FINISHED
 {{- if eq .ModelPreset "monomer" }}
-      - download-pdb70
+      - name: download-pdb70
+        status: FINISHED
 {{- end }}
 {{- if eq .ModelPreset "multimer" }}
-      - download-pdb-seqres
+      - name: download-pdb-seqres
+        status: FINISHED
 {{- end }}
-      - download-pdb-mmcif
-      - download-pdb-obsolete
+      - name: download-pdb-mmcif
+        status: FINISHED
+      - name: download-pdb-obsolete
+        status: FINISHED
     cwd: /data/alphafold2
     image:
       uri: docker://unlhcc/alphafold:latest

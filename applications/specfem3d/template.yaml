@@ -56,8 +56,9 @@ jobs:
         xdecompose_mesh {{.MeshCores}} ./MESH-default $BASEMPIDIR
 
         echo "Complete"
-    requires:
-      - fetch-project
+    depends-on:
+      - name: fetch-project
+        status: FINISHED
     resource:
       cpu:
         cores: {{.MeshCores}}
@@ -82,8 +83,9 @@ jobs:
         mpirun -np {{.DbCores}} xgenerate_databases
 
         echo "Database generation complete."
-    requires:
-      - mesh-generation
+    depends-on:
+      - name: mesh-generation
+        status: FINISHED
     resource:
       cpu:
         cores: {{.DbCores}}
@@ -111,19 +113,20 @@ jobs:
 
         if [[ $? -ne 0 ]]; then exit 1; fi
 
-        echo "Simulation completed!" 
+        echo "Simulation completed!"
 
-        echo  
+        echo
 
         echo "see results in directory: $(pwd)/OUTPUT_FILES/"
 
         tar -czvf /mnt/results.tar.gz ./OUTPUT_FILES/
 
-        echo 
+        echo
 
         echo "Results have also been archived at /mnt/results.tar.gz"
-    requires:
-      - db-generation
+    depends-on:
+      - name: db-generation
+        status: FINISHED
     resource:
       cpu:
         cores: {{.SimCores}}
