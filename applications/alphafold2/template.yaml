@@ -557,17 +557,23 @@ jobs:
       - name: download-uniref90
         status: FINISHED
 {{- if eq .ModelPreset "multimer" }}
-      - download-uniprot-concatenate
+      - name: download-uniprot-concatenate
+        status: FINISHED
 {{- end }}
-      - download-mgnify
+      - name: download-mgnify
+        status: FINISHED
 {{- if eq .ModelPreset "monomer" }}
-      - download-pdb70
+      - name: download-pdb70
+        status: FINISHED
 {{- end }}
 {{- if eq .ModelPreset "multimer" }}
-      - download-pdb-seqres
+      - name: download-pdb-seqres
+        status: FINISHED
 {{- end }}
-      - download-pdb-mmcif
-      - download-pdb-obsolete
+      - name: download-pdb-mmcif
+        status: FINISHED
+      - name: download-pdb-obsolete
+        status: FINISHED
     cwd: /data/alphafold2
     image:
       uri: docker://unlhcc/alphafold:latest
