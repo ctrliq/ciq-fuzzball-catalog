@@ -7,6 +7,7 @@ featured: true
 tags:
 - desktop
 - interactive
+- gpu
 keyart: keyart.jpg
 ---
-An open-source application for interactive scientific visualization. Runs in a web-accessible Xfce Virtual Desktop Environment.
+An open-source application for interactive scientific visualization. Runs as a persistent web-accessible Xfce Virtual Desktop Environment — no port-forwarding required. Supports optional GPU-accelerated rendering via VirtualGL when an NVIDIA GPU is allocated.

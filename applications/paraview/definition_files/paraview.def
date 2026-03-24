@@ -1,0 +1,177 @@
+# tag: 6.0.1-0
+
+Bootstrap: docker
+From: rockylinux/rockylinux:9
+
+%environment
+export PATH="/opt/paraview/bin:/opt/VirtualGL/bin:${PATH}"
+
+%post
+PARAVIEW_VER="6.0.1"
+PARAVIEW_PYTHON_VER="3.12"
+VIRTUALGL_VER="3.1.1"
+
+cat >/etc/yum.repos.d/TurboVNC.repo <<'__EOF__'
+[TurboVNC]
+name=TurboVNC official RPMs
+baseurl=https://packagecloud.io/dcommander/turbovnc/rpm_any/rpm_any/$basearch
+repo_gpgcheck=1
+gpgcheck=1
+gpgkey=https://packagecloud.io/dcommander/turbovnc/gpgkey
+       https://raw.githubusercontent.com/TurboVNC/repo/main/VGL-GPG-KEY
+enabled=1
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+exclude=turbovnc-*.*.9[0-9]-*
+__EOF__
+
+dnf upgrade -y
+dnf install -y epel-release && crb enable
+dnf groupinstall -y Xfce --exclude=xfce4-power-manager
+dnf -y install perl turbovnc novnc python${PARAVIEW_PYTHON_VER} \
+  wget which bash ca-certificates git \
+  nvtop htop procps-ng zip tar gzip pigz \
+  rocky-backgrounds mesa-libGL mesa-libEGL mesa-libGLU mesa-dri-drivers \
+  libglvnd-egl libglvnd-glx
+dnf clean all -y
+rm /etc/xdg/autostart/xfce-polkit.desktop
+
+ln -sf /usr/bin/python${PARAVIEW_PYTHON_VER} /usr/local/bin/python3
+ln -sf /usr/bin/python${PARAVIEW_PYTHON_VER} /usr/local/bin/python
+
+
+###
+### VirtualGL
+###
+
+wget -q -O /tmp/virtualgl.rpm \
+  "https://github.com/VirtualGL/virtualgl/releases/download/${VIRTUALGL_VER}/VirtualGL-${VIRTUALGL_VER}.x86_64.rpm"
+rpm -i /tmp/virtualgl.rpm
+rm /tmp/virtualgl.rpm
+
+###
+### ParaView
+###
+PARAVIEW_TARBALL="ParaView-${PARAVIEW_VER}-MPI-Linux-Python${PARAVIEW_PYTHON_VER}-x86_64.tar.gz"
+wget -q -O /tmp/paraview.tar.gz \
+  "https://www.paraview.org/files/v${PARAVIEW_VER%.*}/${PARAVIEW_TARBALL}"
+mkdir -p /opt
+tar -xzf /tmp/paraview.tar.gz -C /opt
+mv "/opt/ParaView-${PARAVIEW_VER}-MPI-Linux-Python${PARAVIEW_PYTHON_VER}-x86_64" /opt/paraview
+rm /tmp/paraview.tar.gz
+
+###
+### xfce config
+###
+
+# theming
+git clone https://github.com/daniruiz/flat-remix-gtk.git
+cd flat-remix-gtk && git checkout 919494f4f4ede88e2efb45cd48b98db7cc23f6ee && cd ..
+cp -r flat-remix-gtk/themes/Flat-Remix-GTK-Blue-Dark/ /usr/share/themes
+
+git clone https://github.com/daniruiz/flat-remix.git
+cd flat-remix && git checkout e7de6c346da46e008987228f363b0eae6e638637 && cd ..
+cp -r flat-remix/Flat-Remix-Blue-Dark /usr/share/icons
+
+cat >/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-screensaver.xml <<__EOF__
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-screensaver" version="1.0">
+  <property name="lock" type="empty">
+    <property name="sleep-activation" type="bool" value="false"/>
+    <property name="enabled" type="bool" value="false"/>
+  </property>
+  <property name="saver" type="empty">
+    <property name="mode" type="int" value="0"/>
+  </property>
+</channel>
+__EOF__
+
+cat >/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml <<__EOF__
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xsettings" version="1.0">
+  <property name="Net" type="empty">
+    <property name="ThemeName" type="string" value="Flat-Remix-GTK-Blue-Dark"/>
+    <property name="IconThemeName" type="string" value="Flat-Remix-Blue-Dark"/>
+  </property>
+  <property name="Gtk" type="empty">
+    <property name="FontName" type="string" value="Sans 10"/>
+    <property name="CursorThemeName" type="string" value="Adwaita"/>
+  </property>
+</channel>
+__EOF__
+
+cat >/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml <<__EOF__
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="theme" type="string" value="Arc-Dark"/>
+  </property>
+</channel>
+__EOF__
+
+cat >/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml <<__EOF__
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-desktop" version="1.0">
+  <property name="backdrop" type="empty">
+    <property name="screen0" type="empty">
+      <property name="monitorVNC-0" type="empty">
+        <property name="workspace0" type="empty">
+          <property name="color-style" type="int" value="0"/>
+          <property name="image-style" type="int" value="5"/>
+          <property name="last-image" type="string" value="/usr/share/backgrounds/rocky-default-9-onyx-mountains.png"/>
+        </property>
+      </property>
+    </property>
+  </property>
+</channel>
+__EOF__
+
+# make novnc default to using remote resize
+sed -E "s/UI.initSetting\('resize',[[:space:]]*'off'\)/UI.initSetting('resize', 'remote')/" \
+  /usr/share/novnc/app/ui.js > /tmp/ui.js && mv /tmp/ui.js /usr/share/novnc/app/ui.js
+
+###
+### scripts
+###
+
+# VNC server startup script (same as vdi_example)
+cat >/usr/local/bin/start-vncserver.sh <<'__EOF__'
+#!/bin/sh
+(
+mkdir -p "${HOME}/.vnc"
+chown -R $(whoami) "${HOME}/.vnc"
+chmod 700 "${HOME}/.vnc"
+) >/dev/null 2>&1
+umask 007
+export USER=$(whoami)
+
+/usr/bin/novnc_proxy --vnc localhost:5900 --listen ${1:-6080} &
+PROXY=$!
+/opt/TurboVNC/bin/vncserver -securitytypes tlsnone,x509none,none -wm xfce -fg ${VNCSERVER_ARGS} :0
+kill $PROXY
+__EOF__
+chmod +x /usr/local/bin/start-vncserver.sh
+
+# ParaView launcher: uses VirtualGL + EGL when an NVIDIA GPU is present,
+# falls back to Mesa software rendering otherwise.
+cat >/usr/local/bin/launch-paraview.sh <<'__EOF__'
+#!/bin/sh
+if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+  exec /opt/VirtualGL/bin/vglrun -d egl /opt/paraview/bin/paraview "$@"
+else
+  exec /opt/paraview/bin/paraview "$@"
+fi
+__EOF__
+chmod +x /usr/local/bin/launch-paraview.sh
+
+# Xfce autostart entry — launches ParaView when the desktop session starts
+cat >/etc/xdg/autostart/paraview.desktop <<'__EOF__'
+[Desktop Entry]
+Type=Application
+Name=ParaView
+Exec=/usr/local/bin/launch-paraview.sh
+X-GNOME-Autostart-enabled=true
+__EOF__
+
+cd /
+rm -rf "$tmp"
