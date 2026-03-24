@@ -1,7 +1,7 @@
 values:
   - name: "Container"
     display_name: "ParaView desktop container to use. Must be compatible with this application."
-    string_value: "oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/paraview-vnc:1.0-0-amd64"
+    string_value: "oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/paraview-paraview:6.0.1-0-amd64"
     display_category: "Container"
   - name: "Cores"
     display_name: "How many CPU cores to allocate."
