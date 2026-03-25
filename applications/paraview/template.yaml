@@ -1,11 +1,23 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $datavol := trim .DataVolume }}
 {{- $homevol := trim .HomeVolume }}
+{{- $ingressurl := trim .IngressURL | stripPrefix "file:///" }}
+{{- $ingresspath := trim .IngressPath }}
+{{- $s3_secret := trim .S3Secret }}
 {{- if and $datavol (not (hasPrefix "volume://" $datavol)) }}
   {{- fail (printf "DataVolume must start with 'volume://', got %q" $datavol) }}
 {{- end }}
 {{- if and $homevol (not (hasPrefix "volume://" $homevol)) }}
   {{- fail (printf "HomeVolume must start with 'volume://', got %q" $homevol) }}
+{{- end }}
+{{- if and $ingressurl (not $datavol) }}
+  {{- fail "IngressURL requires DataVolume to be set" }}
+{{- end }}
+{{- if and $ingressurl (not $ingresspath) }}
+  {{- fail "IngressPath is required when IngressURL is set" }}
+{{- end }}
+{{- if and (hasPrefix "s3://" $ingressurl) (not $s3_secret) }}
+  {{- fail "S3Secret is required when IngressURL uses an s3:// prefix" }}
 {{- end }}
 
 {{- $datamount := "/data" }}
@@ -22,6 +34,16 @@ volumes:
   {{- if $datavol }}
   data:
     reference: {{ $datavol }}
+    {{- if $ingressurl }}
+    ingress:
+      - source:
+          uri: {{ $ingressurl }}
+          {{- if $s3_secret }}
+          secret: {{ $s3_secret }}
+          {{- end }}
+        destination:
+          uri: file:///{{ $ingresspath }}
+    {{- end }}
   {{- end }}
   {{- if $homevol }}
   home:
