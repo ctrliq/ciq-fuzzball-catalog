@@ -53,7 +53,7 @@ services:
           port-name: vnc-port
           protocol: http
           type: subdomain
-          scope: {{ .ServiceScope }}
+          scope: user
     readiness-probe:
       http-get:
         path: /

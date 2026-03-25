@@ -19,10 +19,6 @@ values:
     display_name: "Disallow other jobs from using the same node/instance."
     bool_value: false
     display_category: "Scheduling"
-  - name: "ServiceScope"
-    display_name: "Access scope for the ParaView web endpoint (user, group, or organization)."
-    string_value: "user"
-    display_category: "Network"
   - name: "DataVolume"
     display_name: "Volume to mount at /data for datasets."
     string_value: "volume://user/ephemeral"
