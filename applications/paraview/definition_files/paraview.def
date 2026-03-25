@@ -43,35 +43,43 @@ ln -sf /usr/bin/python${PARAVIEW_PYTHON_VER} /usr/local/bin/python
 ###
 ### VirtualGL
 ###
+tmp="$(mktemp -d)"
+export tmp
+trap 'rm -rf "$tmp"' EXIT
 
-wget -q -O /tmp/virtualgl.rpm \
+wget -q -O "${tmp}/virtualgl.rpm" \
   "https://github.com/VirtualGL/virtualgl/releases/download/${VIRTUALGL_VER}/VirtualGL-${VIRTUALGL_VER}.x86_64.rpm"
-rpm -i /tmp/virtualgl.rpm
-rm /tmp/virtualgl.rpm
+rpm --checksig "${tmp}/virtualgl.rpm" || exit 1
+rpm -i "${tmp}/virtualgl.rpm"
 
 ###
 ### ParaView
 ###
 PARAVIEW_TARBALL="ParaView-${PARAVIEW_VER}-MPI-Linux-Python${PARAVIEW_PYTHON_VER}-x86_64.tar.gz"
-wget -q -O /tmp/paraview.tar.gz \
+ptmp="${tmp}/v${PARAVIEW_VER%.*}"
+mkdir "${ptmp}"
+wget -q -O "${ptmp}/${PARAVIEW_TARBALL}" \
   "https://www.paraview.org/files/v${PARAVIEW_VER%.*}/${PARAVIEW_TARBALL}"
-mkdir -p /opt
-tar -xzf /tmp/paraview.tar.gz -C /opt
-mv "/opt/ParaView-${PARAVIEW_VER}-MPI-Linux-Python${PARAVIEW_PYTHON_VER}-x86_64" /opt/paraview
-rm /tmp/paraview.tar.gz
+# the md5sum file includes the version subdirectory
+wget -q -O -  "https://www.paraview.org/files/v${PARAVIEW_VER%.*}/md5sum.txt" \
+  | grep "${PARAVIEW_TARBALL}" > "${tmp}/paraview.md5"
+( cd "${tmp}" && md5sum -c paraview.md5 && exit 0 || exit 1) || exit 1
+mkdir -p /opt/paraview
+tar -xzf "${ptmp}/${PARAVIEW_TARBALL}" -C /opt/paraview --strip-components=1
 
 ###
 ### xfce config
 ###
 
 # theming
-git clone https://github.com/daniruiz/flat-remix-gtk.git
-cd flat-remix-gtk && git checkout 919494f4f4ede88e2efb45cd48b98db7cc23f6ee && cd ..
-cp -r flat-remix-gtk/themes/Flat-Remix-GTK-Blue-Dark/ /usr/share/themes
+git clone https://github.com/daniruiz/flat-remix-gtk.git "${tmp}/flat-remix-gtk"
+( cd "${tmp}/flat-remix-gtk" && git checkout 919494f4f4ede88e2efb45cd48b98db7cc23f6ee )
+cp -r "${tmp}/flat-remix-gtk/themes/Flat-Remix-GTK-Blue-Dark/" /usr/share/themes
 
-git clone https://github.com/daniruiz/flat-remix.git
-cd flat-remix && git checkout e7de6c346da46e008987228f363b0eae6e638637 && cd ..
-cp -r flat-remix/Flat-Remix-Blue-Dark /usr/share/icons
+git clone https://github.com/daniruiz/flat-remix.git "${tmp}/flat-remix"
+( cd "${tmp}/flat-remix" && git checkout e7de6c346da46e008987228f363b0eae6e638637 )
+cp -r "${tmp}/flat-remix/Flat-Remix-Blue-Dark" /usr/share/icons
+
 
 cat >/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-screensaver.xml <<__EOF__
 <?xml version="1.0" encoding="UTF-8"?>
@@ -172,6 +180,3 @@ Name=ParaView
 Exec=/usr/local/bin/launch-paraview.sh
 X-GNOME-Autostart-enabled=true
 __EOF__
-
-cd /
-rm -rf "$tmp"
