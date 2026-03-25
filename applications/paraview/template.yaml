@@ -1,7 +1,7 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $datavol := trim .DataVolume }}
 {{- $homevol := trim .HomeVolume }}
-{{- $ingressurl := trim .IngressURL | stripPrefix "file:///" }}
+{{- $ingressurl := trim .IngressURL | trimPrefix "file:///" }}
 {{- $ingresspath := trim .IngressPath }}
 {{- $s3_secret := trim .S3Secret }}
 {{- if and $datavol (not (hasPrefix "volume://" $datavol)) }}
@@ -42,7 +42,7 @@ volumes:
           secret: {{ $s3_secret }}
           {{- end }}
         destination:
-          uri: file:///{{ $ingresspath }}
+          uri: file://{{ $ingresspath }}
     {{- end }}
   {{- end }}
   {{- if $homevol }}
