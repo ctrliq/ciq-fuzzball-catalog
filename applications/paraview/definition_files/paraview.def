@@ -29,7 +29,7 @@ dnf upgrade -y
 dnf install -y epel-release && crb enable
 dnf groupinstall -y Xfce --exclude=xfce4-power-manager
 dnf -y install perl turbovnc novnc python${PARAVIEW_PYTHON_VER} \
-  wget which bash ca-certificates git xcb-util-cursor \
+  wget which bash ca-certificates git xcb-util-cursor xcb-util-wm xcb-util-keysyms \
   nvtop htop procps-ng zip tar gzip pigz \
   rocky-backgrounds mesa-libGL mesa-libEGL mesa-libGLU mesa-dri-drivers \
   libglvnd-egl libglvnd-glx
