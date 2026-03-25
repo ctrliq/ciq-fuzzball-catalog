@@ -160,11 +160,26 @@ kill $PROXY
 __EOF__
 chmod +x /usr/local/bin/start-vncserver.sh
 
-# ParaView launcher: uses VirtualGL + EGL when an NVIDIA GPU is present,
+# Tell GLVND's EGL dispatcher to use the NVIDIA EGL ICD that substrate
+# mounts at /gpu-libs at runtime. Without this JSON the dispatcher only
+# sees Mesa and vglrun falls back to software rendering even though the
+# NVIDIA libraries are present.
+mkdir -p /usr/share/glvnd/egl_vendor.d
+cat >/usr/share/glvnd/egl_vendor.d/10_nvidia.json <<'__EOF__'
+{
+    "file_format_version" : "1.0.0",
+    "ICD" : {
+        "library_path" : "libEGL_nvidia.so.0"
+    }
+}
+__EOF__
+
+# ParaView launcher: uses VirtualGL + EGL when an NVIDIA GPU is present
+# (NVIDIA_VISIBLE_DEVICES is set by substrate when a GPU is allocated),
 # falls back to Mesa software rendering otherwise.
 cat >/usr/local/bin/launch-paraview.sh <<'__EOF__'
 #!/bin/sh
-if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+if [ -n "${NVIDIA_VISIBLE_DEVICES}" ]; then
   exec /opt/VirtualGL/bin/vglrun -d egl /opt/paraview/bin/paraview "$@"
 else
   exec /opt/paraview/bin/paraview "$@"
