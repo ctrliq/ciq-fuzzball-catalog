@@ -1,0 +1,84 @@
+version: v1
+volumes:
+  scratch:
+    reference: volume://user/ephemeral
+    ingress:
+      - source:
+          uri: {{ .ProjectUrl }}
+        destination:
+          uri: file://project.zip
+    # The egress section is only rendered if OutputS3Uri is provided
+    {{- if .OutputS3Uri }}
+    egress:
+      - source:
+          uri: file://output.mp4
+        destination:
+          uri: {{ .OutputS3Uri }}
+        {{- if .S3Secret }}
+        secret: {{ .S3Secret }}
+        {{- end }}
+    {{- end }}
+
+jobs:
+  setup:
+    image:
+      uri: docker://alpine:3.21
+    mounts:
+      scratch:
+        location: /scratch
+    script: |
+      #!/bin/sh
+      echo "Extracting project files..."
+      mkdir -p /scratch/frames
+      apk add --no-cache unzip
+      unzip -q /scratch/project.zip -d /scratch/
+      echo "Setup complete."
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 1GiB
+
+  render-frames:
+    image:
+      uri: {{ .BlenderImage }}
+    mounts:
+      scratch:
+        location: /scratch
+    script: |
+      #!/bin/bash
+      echo "Rendering frame ${FB_TASK_ID}..."
+      blender -b /scratch/{{ .BlenderFilePath }} -o /scratch/frames/frame_##### -F PNG -f ${FB_TASK_ID}
+    resource:
+      cpu:
+        cores: {{ .RenderCores }}
+        affinity: CORE
+      memory:
+        size: {{ .RenderMemory }}
+    depends-on:
+      - name: setup
+        status: FINISHED
+    task-array:
+      start: {{ .StartFrame }}
+      end: {{ .EndFrame }}
+      concurrency: {{ .Concurrency }}
+
+  assemble-video:
+    image:
+      uri: docker://jrottenberg/ffmpeg:4.4-alpine
+    mounts:
+      scratch:
+        location: /scratch
+    script: |
+      #!/bin/sh
+      echo "Assembling frames into video..."
+      ffmpeg -y -framerate 24 -i /scratch/frames/frame_%05d.png -c:v libx264 -pix_fmt yuv420p /scratch/output.mp4
+      echo "Video assembly complete!"
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 4GiB
+    depends-on:
+      - name: render-frames
+        status: FINISHED
