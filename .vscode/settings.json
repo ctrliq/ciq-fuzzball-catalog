@@ -1,0 +1,12 @@
+{
+  "files.associations": {
+    "**/template.yaml": "helm"
+  },
+  "[helm]": {
+    "editor.quickSuggestions": {
+      "strings": true,
+      "other": true,
+      "comments": false
+    }
+  }
+}

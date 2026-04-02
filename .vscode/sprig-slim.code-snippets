@@ -1,0 +1,940 @@
+{
+  // ─── String Functions ────────────────────────────────────────────────────────
+
+  "trim": {
+    "prefix": "trim",
+    "body": "{{ trim ${1:value} }}",
+    "description": "Removes whitespace from both sides of a string",
+    "scope": "helm,yaml"
+  },
+  "trimAll": {
+    "prefix": "trimAll",
+    "body": "{{ trimAll \"${1:chars}\" ${2:value} }}",
+    "description": "Removes specified characters from both sides of a string",
+    "scope": "helm,yaml"
+  },
+  "trimPrefix": {
+    "prefix": "trimPrefix",
+    "body": "{{ trimPrefix \"${1:prefix}\" ${2:value} }}",
+    "description": "Removes a prefix from the start of a string",
+    "scope": "helm,yaml"
+  },
+  "trimSuffix": {
+    "prefix": "trimSuffix",
+    "body": "{{ trimSuffix \"${1:suffix}\" ${2:value} }}",
+    "description": "Removes a suffix from the end of a string",
+    "scope": "helm,yaml"
+  },
+  "upper": {
+    "prefix": "upper",
+    "body": "{{ upper ${1:value} }}",
+    "description": "Converts a string to uppercase",
+    "scope": "helm,yaml"
+  },
+  "lower": {
+    "prefix": "lower",
+    "body": "{{ lower ${1:value} }}",
+    "description": "Converts a string to lowercase",
+    "scope": "helm,yaml"
+  },
+  "title": {
+    "prefix": "title",
+    "body": "{{ title ${1:value} }}",
+    "description": "Converts a string to title case",
+    "scope": "helm,yaml"
+  },
+  "repeat": {
+    "prefix": "repeat",
+    "body": "{{ repeat ${1:count} ${2:value} }}",
+    "description": "Repeats a string N times",
+    "scope": "helm,yaml"
+  },
+  "substr": {
+    "prefix": "substr",
+    "body": "{{ substr ${1:start} ${2:end} ${3:value} }}",
+    "description": "Extracts a substring by start and end index",
+    "scope": "helm,yaml"
+  },
+  "trunc": {
+    "prefix": "trunc",
+    "body": "{{ trunc ${1:length} ${2:value} }}",
+    "description": "Truncates a string to the given length",
+    "scope": "helm,yaml"
+  },
+  "contains": {
+    "prefix": "contains",
+    "body": "{{ contains \"${1:substr}\" ${2:value} }}",
+    "description": "Tests if a string contains a substring",
+    "scope": "helm,yaml"
+  },
+  "hasPrefix": {
+    "prefix": "hasPrefix",
+    "body": "{{ hasPrefix \"${1:prefix}\" ${2:value} }}",
+    "description": "Tests if a string starts with the given prefix",
+    "scope": "helm,yaml"
+  },
+  "hasSuffix": {
+    "prefix": "hasSuffix",
+    "body": "{{ hasSuffix \"${1:suffix}\" ${2:value} }}",
+    "description": "Tests if a string ends with the given suffix",
+    "scope": "helm,yaml"
+  },
+  "quote": {
+    "prefix": "quote",
+    "body": "{{ quote ${1:value} }}",
+    "description": "Wraps a string in double quotes",
+    "scope": "helm,yaml"
+  },
+  "squote": {
+    "prefix": "squote",
+    "body": "{{ squote ${1:value} }}",
+    "description": "Wraps a string in single quotes",
+    "scope": "helm,yaml"
+  },
+  "cat": {
+    "prefix": "cat",
+    "body": "{{ cat ${1:val1} ${2:val2} }}",
+    "description": "Concatenates strings with spaces",
+    "scope": "helm,yaml"
+  },
+  "indent": {
+    "prefix": "indent",
+    "body": "{{ indent ${1:spaces} ${2:value} }}",
+    "description": "Indents every line by N spaces",
+    "scope": "helm,yaml"
+  },
+  "nindent": {
+    "prefix": "nindent",
+    "body": "{{ nindent ${1:spaces} ${2:value} }}",
+    "description": "Indents every line by N spaces and prepends a newline",
+    "scope": "helm,yaml"
+  },
+  "replace": {
+    "prefix": "replace",
+    "body": "{{ replace \"${1:old}\" \"${2:new}\" ${3:value} }}",
+    "description": "Performs simple string replacement",
+    "scope": "helm,yaml"
+  },
+  "plural": {
+    "prefix": "plural",
+    "body": "{{ plural \"${1:singular}\" \"${2:plural}\" ${3:count} }}",
+    "description": "Returns singular or plural form based on count",
+    "scope": "helm,yaml"
+  },
+  "regexMatch": {
+    "prefix": "regexMatch",
+    "body": "{{ regexMatch \"${1:pattern}\" ${2:value} }}",
+    "description": "Tests if a string matches a regex pattern",
+    "scope": "helm,yaml"
+  },
+  "regexFindAll": {
+    "prefix": "regexFindAll",
+    "body": "{{ regexFindAll \"${1:pattern}\" ${2:value} ${3:-1} }}",
+    "description": "Returns all regex matches in a string (-1 = all)",
+    "scope": "helm,yaml"
+  },
+  "regexFind": {
+    "prefix": "regexFind",
+    "body": "{{ regexFind \"${1:pattern}\" ${2:value} }}",
+    "description": "Returns the first regex match in a string",
+    "scope": "helm,yaml"
+  },
+  "regexReplaceAll": {
+    "prefix": "regexReplaceAll",
+    "body": "{{ regexReplaceAll \"${1:pattern}\" ${2:value} \"${3:replacement}\" }}",
+    "description": "Replaces all regex matches with a replacement string",
+    "scope": "helm,yaml"
+  },
+  "regexReplaceAllLiteral": {
+    "prefix": "regexReplaceAllLiteral",
+    "body": "{{ regexReplaceAllLiteral \"${1:pattern}\" ${2:value} \"${3:replacement}\" }}",
+    "description": "Replaces all regex matches literally (no $1 expansion)",
+    "scope": "helm,yaml"
+  },
+  "regexSplit": {
+    "prefix": "regexSplit",
+    "body": "{{ regexSplit \"${1:pattern}\" ${2:value} ${3:-1} }}",
+    "description": "Splits a string by a regex pattern (-1 = all splits)",
+    "scope": "helm,yaml"
+  },
+  "regexQuoteMeta": {
+    "prefix": "regexQuoteMeta",
+    "body": "{{ regexQuoteMeta ${1:value} }}",
+    "description": "Escapes all regex metacharacters in a string",
+    "scope": "helm,yaml"
+  },
+
+  // ─── List Functions ──────────────────────────────────────────────────────────
+
+  "list": {
+    "prefix": "list",
+    "body": "{{ list ${1:item1} ${2:item2} }}",
+    "description": "Creates a list from the given values",
+    "scope": "helm,yaml"
+  },
+  "first": {
+    "prefix": "first",
+    "body": "{{ first ${1:list} }}",
+    "description": "Returns the first item of a list",
+    "scope": "helm,yaml"
+  },
+  "mustFirst": {
+    "prefix": "mustFirst",
+    "body": "{{ mustFirst ${1:list} }}",
+    "description": "Returns the first item of a list (returns error instead of panic)",
+    "scope": "helm,yaml"
+  },
+  "rest": {
+    "prefix": "rest",
+    "body": "{{ rest ${1:list} }}",
+    "description": "Returns all items except the first",
+    "scope": "helm,yaml"
+  },
+  "mustRest": {
+    "prefix": "mustRest",
+    "body": "{{ mustRest ${1:list} }}",
+    "description": "Returns all items except the first (returns error instead of panic)",
+    "scope": "helm,yaml"
+  },
+  "last": {
+    "prefix": "last",
+    "body": "{{ last ${1:list} }}",
+    "description": "Returns the last item of a list",
+    "scope": "helm,yaml"
+  },
+  "mustLast": {
+    "prefix": "mustLast",
+    "body": "{{ mustLast ${1:list} }}",
+    "description": "Returns the last item of a list (returns error instead of panic)",
+    "scope": "helm,yaml"
+  },
+  "initial": {
+    "prefix": "initial",
+    "body": "{{ initial ${1:list} }}",
+    "description": "Returns all items except the last",
+    "scope": "helm,yaml"
+  },
+  "mustInitial": {
+    "prefix": "mustInitial",
+    "body": "{{ mustInitial ${1:list} }}",
+    "description": "Returns all items except the last (returns error instead of panic)",
+    "scope": "helm,yaml"
+  },
+  "append": {
+    "prefix": "append",
+    "body": "{{ append ${1:list} ${2:item} }}",
+    "description": "Appends an item to the end of a list",
+    "scope": "helm,yaml"
+  },
+  "mustAppend": {
+    "prefix": "mustAppend",
+    "body": "{{ mustAppend ${1:list} ${2:item} }}",
+    "description": "Appends an item to the end of a list (returns error instead of panic)",
+    "scope": "helm,yaml"
+  },
+  "prepend": {
+    "prefix": "prepend",
+    "body": "{{ prepend ${1:list} ${2:item} }}",
+    "description": "Prepends an item to the start of a list",
+    "scope": "helm,yaml"
+  },
+  "mustPrepend": {
+    "prefix": "mustPrepend",
+    "body": "{{ mustPrepend ${1:list} ${2:item} }}",
+    "description": "Prepends an item to the start of a list (returns error instead of panic)",
+    "scope": "helm,yaml"
+  },
+  "concat": {
+    "prefix": "concat",
+    "body": "{{ concat ${1:list1} ${2:list2} }}",
+    "description": "Concatenates multiple lists into one",
+    "scope": "helm,yaml"
+  },
+  "reverse": {
+    "prefix": "reverse",
+    "body": "{{ reverse ${1:list} }}",
+    "description": "Returns a list with elements in reverse order",
+    "scope": "helm,yaml"
+  },
+  "mustReverse": {
+    "prefix": "mustReverse",
+    "body": "{{ mustReverse ${1:list} }}",
+    "description": "Returns a reversed list (returns error instead of panic)",
+    "scope": "helm,yaml"
+  },
+  "uniq": {
+    "prefix": "uniq",
+    "body": "{{ uniq ${1:list} }}",
+    "description": "Removes duplicate entries from a list",
+    "scope": "helm,yaml"
+  },
+  "mustUniq": {
+    "prefix": "mustUniq",
+    "body": "{{ mustUniq ${1:list} }}",
+    "description": "Removes duplicate entries from a list (returns error instead of panic)",
+    "scope": "helm,yaml"
+  },
+  "without": {
+    "prefix": "without",
+    "body": "{{ without ${1:list} ${2:item} }}",
+    "description": "Returns a list with the specified items removed",
+    "scope": "helm,yaml"
+  },
+  "mustWithout": {
+    "prefix": "mustWithout",
+    "body": "{{ mustWithout ${1:list} ${2:item} }}",
+    "description": "Returns a list with items removed (returns error instead of panic)",
+    "scope": "helm,yaml"
+  },
+  "has": {
+    "prefix": "has",
+    "body": "{{ has ${1:item} ${2:list} }}",
+    "description": "Tests if a list contains the given item",
+    "scope": "helm,yaml"
+  },
+  "mustHas": {
+    "prefix": "mustHas",
+    "body": "{{ mustHas ${1:item} ${2:list} }}",
+    "description": "Tests if a list contains the given item (returns error instead of panic)",
+    "scope": "helm,yaml"
+  },
+  "compact": {
+    "prefix": "compact",
+    "body": "{{ compact ${1:list} }}",
+    "description": "Removes empty/nil entries from a list",
+    "scope": "helm,yaml"
+  },
+  "mustCompact": {
+    "prefix": "mustCompact",
+    "body": "{{ mustCompact ${1:list} }}",
+    "description": "Removes empty/nil entries from a list (returns error instead of panic)",
+    "scope": "helm,yaml"
+  },
+  "slice": {
+    "prefix": "slice",
+    "body": "{{ slice ${1:list} ${2:start} ${3:end} }}",
+    "description": "Returns a slice of a list from start to end index",
+    "scope": "helm,yaml"
+  },
+  "mustSlice": {
+    "prefix": "mustSlice",
+    "body": "{{ mustSlice ${1:list} ${2:start} ${3:end} }}",
+    "description": "Returns a slice of a list (returns error instead of panic)",
+    "scope": "helm,yaml"
+  },
+  "chunk": {
+    "prefix": "chunk",
+    "body": "{{ chunk ${1:size} ${2:list} }}",
+    "description": "Splits a list into chunks of the given size",
+    "scope": "helm,yaml"
+  },
+
+  // ─── Dictionary Functions ────────────────────────────────────────────────────
+
+  "dict": {
+    "prefix": "dict",
+    "body": "{{ dict \"${1:key}\" ${2:value} }}",
+    "description": "Creates a dictionary from key/value pairs",
+    "scope": "helm,yaml"
+  },
+  "get": {
+    "prefix": "get",
+    "body": "{{ get ${1:dict} \"${2:key}\" }}",
+    "description": "Gets a value from a dictionary by key",
+    "scope": "helm,yaml"
+  },
+  "set": {
+    "prefix": "set",
+    "body": "{{ set ${1:dict} \"${2:key}\" ${3:value} }}",
+    "description": "Adds or updates a key/value pair in a dictionary",
+    "scope": "helm,yaml"
+  },
+  "unset": {
+    "prefix": "unset",
+    "body": "{{ unset ${1:dict} \"${2:key}\" }}",
+    "description": "Removes a key from a dictionary",
+    "scope": "helm,yaml"
+  },
+  "hasKey": {
+    "prefix": "hasKey",
+    "body": "{{ hasKey ${1:dict} \"${2:key}\" }}",
+    "description": "Returns true if the dictionary contains the given key",
+    "scope": "helm,yaml"
+  },
+  "pluck": {
+    "prefix": "pluck",
+    "body": "{{ pluck \"${1:key}\" ${2:dict1} ${3:dict2} }}",
+    "description": "Extracts a key's values from multiple dictionaries",
+    "scope": "helm,yaml"
+  },
+  "dig": {
+    "prefix": "dig",
+    "body": "{{ dig \"${1:key1}\" \"${2:key2}\" ${3:default} ${4:dict} }}",
+    "description": "Traverses a nested dict, returning default if any key is missing",
+    "scope": "helm,yaml"
+  },
+  "merge": {
+    "prefix": "merge",
+    "body": "{{ merge ${1:dest} ${2:src} }}",
+    "description": "Merges src into dest; dest keys take priority",
+    "scope": "helm,yaml"
+  },
+  "mustMerge": {
+    "prefix": "mustMerge",
+    "body": "{{ mustMerge ${1:dest} ${2:src} }}",
+    "description": "Merges dicts (returns error on failure)",
+    "scope": "helm,yaml"
+  },
+  "mergeOverwrite": {
+    "prefix": "mergeOverwrite",
+    "body": "{{ mergeOverwrite ${1:dest} ${2:src} }}",
+    "description": "Merges src into dest; src keys overwrite dest",
+    "scope": "helm,yaml"
+  },
+  "mustMergeOverwrite": {
+    "prefix": "mustMergeOverwrite",
+    "body": "{{ mustMergeOverwrite ${1:dest} ${2:src} }}",
+    "description": "Merges with overwrite (returns error on failure)",
+    "scope": "helm,yaml"
+  },
+  "keys": {
+    "prefix": "keys",
+    "body": "{{ keys ${1:dict} }}",
+    "description": "Returns a list of all keys in a dictionary",
+    "scope": "helm,yaml"
+  },
+  "pick": {
+    "prefix": "pick",
+    "body": "{{ pick ${1:dict} \"${2:key}\" }}",
+    "description": "Creates a new dict with only the specified keys",
+    "scope": "helm,yaml"
+  },
+  "omit": {
+    "prefix": "omit",
+    "body": "{{ omit ${1:dict} \"${2:key}\" }}",
+    "description": "Creates a new dict excluding the specified keys",
+    "scope": "helm,yaml"
+  },
+  "values": {
+    "prefix": "values",
+    "body": "{{ values ${1:dict} }}",
+    "description": "Returns all values from a dictionary as a list",
+    "scope": "helm,yaml"
+  },
+
+  // ─── Math Functions ──────────────────────────────────────────────────────────
+
+  "add": {
+    "prefix": "add",
+    "body": "{{ add ${1:a} ${2:b} }}",
+    "description": "Adds two or more numbers",
+    "scope": "helm,yaml"
+  },
+  "add1": {
+    "prefix": "add1",
+    "body": "{{ add1 ${1:value} }}",
+    "description": "Increments a value by 1",
+    "scope": "helm,yaml"
+  },
+  "sub": {
+    "prefix": "sub",
+    "body": "{{ sub ${1:a} ${2:b} }}",
+    "description": "Subtracts b from a",
+    "scope": "helm,yaml"
+  },
+  "div": {
+    "prefix": "div",
+    "body": "{{ div ${1:a} ${2:b} }}",
+    "description": "Integer division of a by b",
+    "scope": "helm,yaml"
+  },
+  "mod": {
+    "prefix": "mod",
+    "body": "{{ mod ${1:a} ${2:b} }}",
+    "description": "Modulo of a by b",
+    "scope": "helm,yaml"
+  },
+  "mul": {
+    "prefix": "mul",
+    "body": "{{ mul ${1:a} ${2:b} }}",
+    "description": "Multiplies two or more numbers",
+    "scope": "helm,yaml"
+  },
+  "max": {
+    "prefix": "max",
+    "body": "{{ max ${1:a} ${2:b} }}",
+    "description": "Returns the largest integer from the arguments",
+    "scope": "helm,yaml"
+  },
+  "min": {
+    "prefix": "min",
+    "body": "{{ min ${1:a} ${2:b} }}",
+    "description": "Returns the smallest integer from the arguments",
+    "scope": "helm,yaml"
+  },
+  "floor": {
+    "prefix": "floor",
+    "body": "{{ floor ${1:value} }}",
+    "description": "Returns the greatest float less than or equal to the value",
+    "scope": "helm,yaml"
+  },
+  "ceil": {
+    "prefix": "ceil",
+    "body": "{{ ceil ${1:value} }}",
+    "description": "Returns the smallest float greater than or equal to the value",
+    "scope": "helm,yaml"
+  },
+  "round": {
+    "prefix": "round",
+    "body": "{{ round ${1:value} ${2:digits} }}",
+    "description": "Rounds a float to the given number of decimal places",
+    "scope": "helm,yaml"
+  },
+  "randInt": {
+    "prefix": "randInt",
+    "body": "{{ randInt ${1:min} ${2:max} }}",
+    "description": "Returns a random integer in [min, max)",
+    "scope": "helm,yaml"
+  },
+
+  // ─── Default and Coercion Functions ─────────────────────────────────────────
+
+  "default": {
+    "prefix": "default",
+    "body": "{{ default \"${1:fallback}\" ${2:.Value} }}",
+    "description": "Returns the default if the value is empty",
+    "scope": "helm,yaml"
+  },
+  "empty": {
+    "prefix": "empty",
+    "body": "{{ empty ${1:value} }}",
+    "description": "Returns true if the value is considered empty",
+    "scope": "helm,yaml"
+  },
+  "coalesce": {
+    "prefix": "coalesce",
+    "body": "{{ coalesce ${1:val1} ${2:val2} \"${3:fallback}\" }}",
+    "description": "Returns the first non-empty value",
+    "scope": "helm,yaml"
+  },
+  "all": {
+    "prefix": "all",
+    "body": "{{ all ${1:val1} ${2:val2} }}",
+    "description": "Returns true if all values are non-empty",
+    "scope": "helm,yaml"
+  },
+  "any": {
+    "prefix": "any",
+    "body": "{{ any ${1:val1} ${2:val2} }}",
+    "description": "Returns true if at least one value is non-empty",
+    "scope": "helm,yaml"
+  },
+  "ternary": {
+    "prefix": "ternary",
+    "body": "{{ ternary \"${1:trueVal}\" \"${2:falseVal}\" ${3:condition} }}",
+    "description": "Returns trueVal if condition is true, otherwise falseVal",
+    "scope": "helm,yaml"
+  },
+
+  // ─── JSON Functions ──────────────────────────────────────────────────────────
+
+  "fromJson": {
+    "prefix": "fromJson",
+    "body": "{{ fromJson ${1:value} }}",
+    "description": "Decodes a JSON string into a structure",
+    "scope": "helm,yaml"
+  },
+  "mustFromJson": {
+    "prefix": "mustFromJson",
+    "body": "{{ mustFromJson ${1:value} }}",
+    "description": "Decodes JSON (returns error on invalid input)",
+    "scope": "helm,yaml"
+  },
+  "toJson": {
+    "prefix": "toJson",
+    "body": "{{ toJson ${1:value} }}",
+    "description": "Encodes a value as a JSON string",
+    "scope": "helm,yaml"
+  },
+  "mustToJson": {
+    "prefix": "mustToJson",
+    "body": "{{ mustToJson ${1:value} }}",
+    "description": "Encodes as JSON (returns error on failure)",
+    "scope": "helm,yaml"
+  },
+  "toPrettyJson": {
+    "prefix": "toPrettyJson",
+    "body": "{{ toPrettyJson ${1:value} }}",
+    "description": "Encodes a value as indented JSON",
+    "scope": "helm,yaml"
+  },
+  "mustToPrettyJson": {
+    "prefix": "mustToPrettyJson",
+    "body": "{{ mustToPrettyJson ${1:value} }}",
+    "description": "Encodes as indented JSON (returns error on failure)",
+    "scope": "helm,yaml"
+  },
+  "toRawJson": {
+    "prefix": "toRawJson",
+    "body": "{{ toRawJson ${1:value} }}",
+    "description": "Encodes as JSON with unescaped HTML characters",
+    "scope": "helm,yaml"
+  },
+  "mustToRawJson": {
+    "prefix": "mustToRawJson",
+    "body": "{{ mustToRawJson ${1:value} }}",
+    "description": "Encodes as raw JSON (returns error on failure)",
+    "scope": "helm,yaml"
+  },
+
+  // ─── Encoding Functions ──────────────────────────────────────────────────────
+
+  "b64enc": {
+    "prefix": "b64enc",
+    "body": "{{ b64enc ${1:value} }}",
+    "description": "Encodes a string to Base64",
+    "scope": "helm,yaml"
+  },
+  "b64dec": {
+    "prefix": "b64dec",
+    "body": "{{ b64dec ${1:value} }}",
+    "description": "Decodes a Base64 string",
+    "scope": "helm,yaml"
+  },
+  "b32enc": {
+    "prefix": "b32enc",
+    "body": "{{ b32enc ${1:value} }}",
+    "description": "Encodes a string to Base32",
+    "scope": "helm,yaml"
+  },
+  "b32dec": {
+    "prefix": "b32dec",
+    "body": "{{ b32dec ${1:value} }}",
+    "description": "Decodes a Base32 string",
+    "scope": "helm,yaml"
+  },
+
+  // ─── Path Functions ──────────────────────────────────────────────────────────
+
+  "base": {
+    "prefix": "base",
+    "body": "{{ base ${1:path} }}",
+    "description": "Returns the last element of a slash-separated path",
+    "scope": "helm,yaml"
+  },
+  "dir": {
+    "prefix": "dir",
+    "body": "{{ dir ${1:path} }}",
+    "description": "Returns the directory portion of a path",
+    "scope": "helm,yaml"
+  },
+  "clean": {
+    "prefix": "clean",
+    "body": "{{ clean ${1:path} }}",
+    "description": "Cleans a path by resolving relative components",
+    "scope": "helm,yaml"
+  },
+  "ext": {
+    "prefix": "ext",
+    "body": "{{ ext ${1:path} }}",
+    "description": "Returns the file extension from a path",
+    "scope": "helm,yaml"
+  },
+  "isAbs": {
+    "prefix": "isAbs",
+    "body": "{{ isAbs ${1:path} }}",
+    "description": "Returns true if the path is absolute",
+    "scope": "helm,yaml"
+  },
+  "osBase": {
+    "prefix": "osBase",
+    "body": "{{ osBase ${1:path} }}",
+    "description": "Returns the last element of a filepath (OS-aware)",
+    "scope": "helm,yaml"
+  },
+  "osDir": {
+    "prefix": "osDir",
+    "body": "{{ osDir ${1:path} }}",
+    "description": "Returns the directory portion using native separators",
+    "scope": "helm,yaml"
+  },
+  "osClean": {
+    "prefix": "osClean",
+    "body": "{{ osClean ${1:path} }}",
+    "description": "Cleans a path using OS-native rules",
+    "scope": "helm,yaml"
+  },
+  "osExt": {
+    "prefix": "osExt",
+    "body": "{{ osExt ${1:path} }}",
+    "description": "Returns the file extension (OS-aware)",
+    "scope": "helm,yaml"
+  },
+  "osIsAbs": {
+    "prefix": "osIsAbs",
+    "body": "{{ osIsAbs ${1:path} }}",
+    "description": "Returns true if the filepath is absolute (OS-aware)",
+    "scope": "helm,yaml"
+  },
+
+  // ─── Type Conversion Functions ───────────────────────────────────────────────
+
+  "atoi": {
+    "prefix": "atoi",
+    "body": "{{ atoi ${1:value} }}",
+    "description": "Converts a string to an integer",
+    "scope": "helm,yaml"
+  },
+  "float64": {
+    "prefix": "float64",
+    "body": "{{ float64 ${1:value} }}",
+    "description": "Converts a value to float64",
+    "scope": "helm,yaml"
+  },
+  "int": {
+    "prefix": "int",
+    "body": "{{ int ${1:value} }}",
+    "description": "Converts a value to int",
+    "scope": "helm,yaml"
+  },
+  "int64": {
+    "prefix": "int64",
+    "body": "{{ int64 ${1:value} }}",
+    "description": "Converts a value to int64",
+    "scope": "helm,yaml"
+  },
+  "toDecimal": {
+    "prefix": "toDecimal",
+    "body": "{{ toDecimal ${1:value} }}",
+    "description": "Converts a Unix octal permission string to decimal",
+    "scope": "helm,yaml"
+  },
+  "toString": {
+    "prefix": "toString",
+    "body": "{{ toString ${1:value} }}",
+    "description": "Converts a value to its string representation",
+    "scope": "helm,yaml"
+  },
+  "toStrings": {
+    "prefix": "toStrings",
+    "body": "{{ toStrings ${1:list} }}",
+    "description": "Converts a list-like collection to a slice of strings",
+    "scope": "helm,yaml"
+  },
+
+  // ─── Reflection Functions ────────────────────────────────────────────────────
+
+  "kindOf": {
+    "prefix": "kindOf",
+    "body": "{{ kindOf ${1:value} }}",
+    "description": "Returns the Go kind of a value (e.g. string, int, map)",
+    "scope": "helm,yaml"
+  },
+  "kindIs": {
+    "prefix": "kindIs",
+    "body": "{{ kindIs \"${1:kind}\" ${2:value} }}",
+    "description": "Returns true if the value matches the given kind",
+    "scope": "helm,yaml"
+  },
+  "typeOf": {
+    "prefix": "typeOf",
+    "body": "{{ typeOf ${1:value} }}",
+    "description": "Returns the Go type of a value",
+    "scope": "helm,yaml"
+  },
+  "typeIs": {
+    "prefix": "typeIs",
+    "body": "{{ typeIs \"${1:type}\" ${2:value} }}",
+    "description": "Returns true if the value matches the given type",
+    "scope": "helm,yaml"
+  },
+  "typeIsLike": {
+    "prefix": "typeIsLike",
+    "body": "{{ typeIsLike \"${1:type}\" ${2:value} }}",
+    "description": "Like typeIs but also dereferences pointers",
+    "scope": "helm,yaml"
+  },
+  "deepEqual": {
+    "prefix": "deepEqual",
+    "body": "{{ deepEqual ${1:a} ${2:b} }}",
+    "description": "Returns true if two values are deeply equal",
+    "scope": "helm,yaml"
+  },
+
+  // ─── Date and Time Functions ─────────────────────────────────────────────────
+
+  "now": {
+    "prefix": "now",
+    "body": "{{ now }}",
+    "description": "Returns the current date/time",
+    "scope": "helm,yaml"
+  },
+  "ago": {
+    "prefix": "ago",
+    "body": "{{ ago ${1:time} }}",
+    "description": "Returns the duration since the given time (seconds resolution)",
+    "scope": "helm,yaml"
+  },
+  "date": {
+    "prefix": "date",
+    "body": "{{ date \"${1:2006-01-02}\" ${2:time} }}",
+    "description": "Formats a date using Go time layout",
+    "scope": "helm,yaml"
+  },
+  "dateInZone": {
+    "prefix": "dateInZone",
+    "body": "{{ dateInZone \"${1:2006-01-02}\" ${2:time} \"${3:UTC}\" }}",
+    "description": "Formats a date with a specific timezone",
+    "scope": "helm,yaml"
+  },
+  "duration": {
+    "prefix": "duration",
+    "body": "{{ duration ${1:seconds} }}",
+    "description": "Formats a number of seconds as a time.Duration string",
+    "scope": "helm,yaml"
+  },
+  "durationRound": {
+    "prefix": "durationRound",
+    "body": "{{ durationRound ${1:duration} }}",
+    "description": "Rounds a duration to its most significant unit",
+    "scope": "helm,yaml"
+  },
+  "unixEpoch": {
+    "prefix": "unixEpoch",
+    "body": "{{ unixEpoch ${1:time} }}",
+    "description": "Returns seconds since Unix epoch for a time.Time value",
+    "scope": "helm,yaml"
+  },
+  "dateModify": {
+    "prefix": "dateModify",
+    "body": "{{ dateModify \"${1:+1h}\" ${2:time} }}",
+    "description": "Modifies a date by a duration string (e.g. +1h, -30m)",
+    "scope": "helm,yaml"
+  },
+  "mustDateModify": {
+    "prefix": "mustDateModify",
+    "body": "{{ mustDateModify \"${1:+1h}\" ${2:time} }}",
+    "description": "Modifies a date by a duration (returns error on failure)",
+    "scope": "helm,yaml"
+  },
+  "htmlDate": {
+    "prefix": "htmlDate",
+    "body": "{{ htmlDate ${1:time} }}",
+    "description": "Formats a date for an HTML date input (YYYY-MM-DD)",
+    "scope": "helm,yaml"
+  },
+  "htmlDateInZone": {
+    "prefix": "htmlDateInZone",
+    "body": "{{ htmlDateInZone ${1:time} \"${2:UTC}\" }}",
+    "description": "Formats a date for an HTML date input with timezone",
+    "scope": "helm,yaml"
+  },
+  "toDate": {
+    "prefix": "toDate",
+    "body": "{{ toDate \"${1:2006-01-02}\" \"${2:value}\" }}",
+    "description": "Parses a string into a time.Time using the given layout",
+    "scope": "helm,yaml"
+  },
+  "mustToDate": {
+    "prefix": "mustToDate",
+    "body": "{{ mustToDate \"${1:2006-01-02}\" \"${2:value}\" }}",
+    "description": "Parses a string into time.Time (returns error on failure)",
+    "scope": "helm,yaml"
+  },
+
+  // ─── Cryptographic and Hashing Functions ────────────────────────────────────
+
+  "sha1sum": {
+    "prefix": "sha1sum",
+    "body": "{{ sha1sum ${1:value} }}",
+    "description": "Returns the SHA1 hex digest of a string",
+    "scope": "helm,yaml"
+  },
+  "sha256sum": {
+    "prefix": "sha256sum",
+    "body": "{{ sha256sum ${1:value} }}",
+    "description": "Returns the SHA256 hex digest of a string",
+    "scope": "helm,yaml"
+  },
+  "adler32sum": {
+    "prefix": "adler32sum",
+    "body": "{{ adler32sum ${1:value} }}",
+    "description": "Returns the Adler-32 checksum of a string",
+    "scope": "helm,yaml"
+  },
+
+  // ─── OS and Environment Functions ───────────────────────────────────────────
+
+  "env": {
+    "prefix": "env",
+    "body": "{{ env \"${1:VAR_NAME}\" }}",
+    "description": "Reads an environment variable",
+    "scope": "helm,yaml"
+  },
+  "expandenv": {
+    "prefix": "expandenv",
+    "body": "{{ expandenv \"${1:\\$VAR_NAME}\" }}",
+    "description": "Expands environment variable references within a string",
+    "scope": "helm,yaml"
+  },
+
+  // ─── Flow Control ────────────────────────────────────────────────────────────
+
+  "fail": {
+    "prefix": "fail",
+    "body": "{{ fail \"${1:error message}\" }}",
+    "description": "Causes template execution to fail with the given message",
+    "scope": "helm,yaml"
+  },
+
+  // ─── Template Control Flow ───────────────────────────────────────────────────
+
+  "if block": {
+    "prefix": "tif",
+    "body": "{{- if ${1:condition} }}\n  ${2}\n{{- end }}",
+    "description": "Go template if block",
+    "scope": "helm,yaml"
+  },
+  "if-else block": {
+    "prefix": "tifelse",
+    "body": "{{- if ${1:condition} }}\n  ${2}\n{{- else }}\n  ${3}\n{{- end }}",
+    "description": "Go template if/else block",
+    "scope": "helm,yaml"
+  },
+  "range block": {
+    "prefix": "trange",
+    "body": "{{- range ${1:list} }}\n  ${2}\n{{- end }}",
+    "description": "Go template range loop",
+    "scope": "helm,yaml"
+  },
+  "range with index": {
+    "prefix": "trangei",
+    "body": "{{- range \\$${1:i}, \\$${2:v} := ${3:list} }}\n  ${4}\n{{- end }}",
+    "description": "Go template range loop with index and value",
+    "scope": "helm,yaml"
+  },
+  "with block": {
+    "prefix": "twith",
+    "body": "{{- with ${1:value} }}\n  ${2}\n{{- end }}",
+    "description": "Go template with block (sets . to value if non-empty)",
+    "scope": "helm,yaml"
+  },
+  "variable assignment": {
+    "prefix": "tvar",
+    "body": "{{- \\$${1:name} := ${2:value} }}",
+    "description": "Go template variable assignment",
+    "scope": "helm,yaml"
+  },
+  "template expression": {
+    "prefix": "tt",
+    "body": "{{ ${1:expression} }}",
+    "description": "Go template expression (no whitespace trimming)",
+    "scope": "helm,yaml"
+  },
+  "template expression (trim)": {
+    "prefix": "ttrim",
+    "body": "{{- ${1:expression} -}}",
+    "description": "Go template expression with whitespace trimming on both sides",
+    "scope": "helm,yaml"
+  }
+}
