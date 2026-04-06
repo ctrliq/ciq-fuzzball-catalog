@@ -16,7 +16,6 @@ volumes:
 
 services:
   jupyter:
-    export: workflow
     persist: true
     network:
       ports:
