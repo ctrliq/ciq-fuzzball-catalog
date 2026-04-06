@@ -1,0 +1,70 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $vllm_api_port := randInt 10000 24000 }}
+{{- $data_mount := "/home/vllm" }}
+
+version: v1
+volumes:
+  data:
+    reference: {{ .VllmVolume }}
+
+services:
+  vllm:
+    network:
+      ports:
+        - name: openai-api
+          port: {{ $vllm_api_port }}
+          protocol: tcp
+      endpoints:
+        - name: openai-vllm
+          port-name: openai-api
+          protocol: http
+          type: subdomain
+          scope: public
+    persist: true
+    image:
+      uri: {{ .VllmImage }}
+    mounts:
+      data:
+        location: {{ $data_mount }}
+    resource:
+      cpu:
+        cores: {{ .ServerCores }}
+      memory:
+        size: {{ .ServerMemory }}
+      devices:
+        nvidia.com/gpu: {{ .ServerGPUDevices }}
+      annotations:
+        nvidia.com/gpu.model: "{{ .ServerGPUModel }}"
+    env:
+      - HOME={{ $data_mount }}
+      {{- if .HuggingFaceHubToken }}
+      - HF_TOKEN={{ .HuggingFaceHubToken }}
+      {{- end }}
+      - VLLM_API_KEY={{ .ServerApiKey }}
+    script: |
+      #!/bin/sh
+      cd $HOME && exec vllm serve "{{ .ModelName }}" \
+      --dtype {{ .DataType }} \
+      --tool-call-parser {{ .ToolCallParser }} \
+      --reasoning-parser {{ .ReasoningParser }} \
+      --enable-auto-tool-choice \
+      --tensor-parallel-size {{ .ServerGPUDevices }} \
+      --gpu-memory-utilization {{ .GPUMemoryUtilization }} \
+      --kv-cache-dtype {{ .KVCacheDtype }} \
+      --max-num-batched-tokens {{ .MaxNumBatchedTokens }} \
+      --max-model-len {{ .MaxContextSize }} \
+      --host 0.0.0.0 \
+      --port {{ $vllm_api_port }}
+    readiness-probe:
+      http-get:
+        path: /v1/models
+        port: {{ $vllm_api_port }}
+        scheme: http
+        http-headers:
+          - name: Authorization
+            value: "{{ printf "Bearer %s" .ServerApiKey }}"
+      initial-delay-seconds: 60
+      period-seconds: 30
+      failure-threshold: 60
+      success-threshold: 1
