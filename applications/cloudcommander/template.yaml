@@ -34,7 +34,6 @@ services:
     cwd: /fuzzball
     env:
       - HOME=/tmp/cloudcommander
-    export: workflow
     persist: true
     network:
       ports:
