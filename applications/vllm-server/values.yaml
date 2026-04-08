@@ -1,0 +1,69 @@
+values:
+  - name: ModelName
+    display_name: Name of the HuggingFace model to use.
+    string_value: openai/gpt-oss-20b
+    display_category: Model Configuration
+  - name: MaxContextSize
+    display_name: Maximum context size. This will impact GPU memory usage.
+    uint_value: 131072
+    display_category: Model Configuration
+  - name: HuggingFaceHubToken
+    display_name: HuggingFace Hub Token secret.
+    string_value: ""
+    display_category: Model Configuration
+  - name: ToolCallParser
+    display_name: Tool call parser used for the model.
+    string_value: openai
+    display_category: Model Configuration
+  - name: ReasoningParser
+    display_name: Reasoning parser used for the model.
+    string_value: openai_gptoss
+    display_category: Model Configuration
+  - name: KVCacheDtype
+    display_name: KV Cache data type.
+    string_value: auto
+    display_category: Model Configuration
+  - name: GPUMemoryUtilization
+    display_name: The fraction of GPU memory to be used for the model.
+    string_value: "0.9"
+    display_category: Model Configuration
+  - name: DataType
+    display_name: Data type for model weights.
+    string_value: auto
+    display_category: Model Configuration
+  - name: MaxNumBatchedTokens
+    display_name: Maximum number of tokens that can be processed in a single iteration.
+    uint_value: 2048
+    display_category: Model Configuration
+
+  - name: VllmVolume
+    display_name: Volume to store the vLLM/HuggingFace cache directories.
+    string_value: volume://user/persistent/vllm
+    display_category: Storage
+
+  - name: ServerGPUModel
+    display_name: GPU model to request.
+    string_value: NVIDIA L40S
+    display_category: Resources
+  - name: ServerCores
+    display_name: Cores to allocate for the LLM server service.
+    uint_value: 2
+    display_category: Resources
+  - name: ServerMemory
+    display_name: Amount of memory to allocate for the LLM server service.
+    string_value: 24GiB
+    display_category: Resources
+  - name: ServerGPUDevices
+    display_name: Number of GPU devices to request.
+    uint_value: 1
+    display_category: Resources
+
+  - name: ServerApiKey
+    display_name: API key to use for accessing OpenAI API
+    string_value: ""
+    display_category: Access
+
+  - name: VllmImage
+    display_name: vLLM container image to use as inference server.
+    string_value: docker://vllm/vllm-openai:latest
+    display_category: Versions
