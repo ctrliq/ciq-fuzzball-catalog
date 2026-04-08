@@ -3,6 +3,10 @@
 {{- $vllm_api_port := randInt 10000 24000 }}
 {{- $data_mount := "/home/vllm" }}
 
+{{- if not (trim .ServerApiKey) }}
+  {{- fail "ServerApiKey is required" }}
+{{- end }}
+
 version: v1
 volumes:
   data:
@@ -57,13 +61,8 @@ services:
       --host 0.0.0.0 \
       --port {{ $vllm_api_port }}
     readiness-probe:
-      http-get:
-        path: /v1/models
+      tcp-socket:
         port: {{ $vllm_api_port }}
-        scheme: http
-        http-headers:
-          - name: Authorization
-            value: "{{ printf "Bearer %s" .ServerApiKey }}"
       initial-delay-seconds: 60
       period-seconds: 30
       failure-threshold: 60

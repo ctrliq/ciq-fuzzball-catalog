@@ -9,9 +9,7 @@ values:
     display_category: Model Configuration
   - name: HuggingFaceHubToken
     display_name: HuggingFace Hub Token secret.
-    secret_value:
-      reference: ""
-      type: "VALUE"
+    string_value: ""
     display_category: Model Configuration
   - name: ToolCallParser
     display_name: Tool call parser used for the model.
@@ -62,9 +60,7 @@ values:
 
   - name: ServerApiKey
     display_name: API key to use for accessing OpenAI API
-    secret_value:
-      reference: ""
-      type: "VALUE"
+    string_value: ""
     display_category: Access
 
   - name: VllmImage
