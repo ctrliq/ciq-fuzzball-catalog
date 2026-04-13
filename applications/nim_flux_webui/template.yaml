@@ -8,6 +8,10 @@
 {{- if not $oci_secret }}
   {{- fail "NgcOciSecret is required" }}
 {{- end }}
+{{- $hf_token := trim .HuggingFaceTokenSecret }}
+{{- if not $hf_token }}
+  {{- fail "HuggingFaceTokenSecret is required — accept the model EULA on Hugging Face before running this workflow" }}
+{{- end }}
 
 {{- $model_name := trim .ModelName }}
 {{- $model_id := base $model_name }}
@@ -38,9 +42,7 @@ services:
       - VAE_CPU_OFFLOAD=true
       - DIT_LAYERWISE_OFFLOAD=true
       - TEXT_ENCODER_CPU_OFFLOAD=true
-      {{- if trim .HuggingFaceTokenSecret }}
-      - HF_TOKEN={{ trim .HuggingFaceTokenSecret }}
-      {{- end }}
+      - HF_TOKEN={{ $hf_token }}
     mounts:
       cache:
         location: /opt/nim/.cache
@@ -99,7 +101,15 @@ services:
               self.wfile.write(MODELS)
 
           def do_POST(self):
-              body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+              try:
+                  raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                  body = json.loads(raw)
+              except (json.JSONDecodeError, ValueError) as e:
+                  self.send_response(400)
+                  self.send_header("Content-Type", "application/json")
+                  self.end_headers()
+                  self.wfile.write(json.dumps({"error": f"invalid JSON body: {e}"}).encode())
+                  return
               if "images" in self.path:
                   body["response_format"] = "b64_json"
                   body["model"] = "{{ $model_name }}"
@@ -173,6 +183,10 @@ services:
         affinity: NUMA
       memory:
         size: 256MiB
+    depends-on:
+      - name: nim
+        status: RUNNING
+        description: stub proxies to NIM so NIM must be ready first
     network:
       ports:
         - name: http
@@ -195,9 +209,9 @@ services:
       - OPENAI_API_BASE_URL=http://nim-stub.svc:{{ $stub_port }}/v1
       - OPENAI_API_KEY={{ $ngc_secret }}
     depends-on:
-      - name: nim
+      - name: nim-stub
         status: RUNNING
-        description: NIM must be ready before Open WebUI starts
+        description: stub must be ready before Open WebUI starts
     script: |
       #!/bin/sh
       set -e

@@ -27,7 +27,7 @@ values:
 
   - name: OpenWebUIVersion
     display_name: Open WebUI container image tag.
-    string_value: "main"
+    string_value: "v0.7.2"
     display_category: Container
 
   - name: ModelName
@@ -72,8 +72,9 @@ values:
     display_category: Execution
 
   - name: ServiceScope
-    display_name: >-
-      Access scope for the Open WebUI endpoint.
-      Options: user (only you), group (your group), organization (your org), public (anyone).
+    display_name: |
+      Who can access the Open WebUI endpoint. Defaults to 'group'.
     string_value: "group"
-    display_category: Networking
+    options_input:
+      options: [user, group, organization]
+    display_category: "Access"
