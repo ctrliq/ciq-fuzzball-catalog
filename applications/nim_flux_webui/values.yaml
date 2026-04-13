@@ -1,0 +1,80 @@
+values:
+  - name: NgcApiKeySecret
+    display_name: >-
+      Secret reference for the NGC API key (e.g. secret://user/NGC_API_KEY).
+      Required for NIM inference and Open WebUI image generation authentication.
+    string_value: ""
+    display_category: Secrets
+
+  - name: NgcOciSecret
+    display_name: >-
+      Secret reference for NGC OCI registry credentials used to pull the NIM container
+      (e.g. secret://user/NGC_OCI_SECRET).
+    string_value: ""
+    display_category: Secrets
+
+  - name: HuggingFaceTokenSecret
+    display_name: >-
+      Secret reference for a Hugging Face token (e.g. secret://user/HF_TOKEN).
+      Required — you must accept the model EULA on Hugging Face before running this workflow.
+    string_value: ""
+    display_category: Secrets
+
+  - name: NimImageUri
+    display_name: URI of the NVIDIA NIM image generation container.
+    string_value: "docker://nvcr.io/nim/black-forest-labs/flux.2-klein-4b:1.0.0-variant"
+    display_category: Container
+
+  - name: OpenWebUIVersion
+    display_name: Open WebUI container image tag.
+    string_value: "v0.7.2"
+    display_category: Container
+
+  - name: ModelName
+    display_name: >-
+      Full NIM model name used for image generation requests
+      (e.g. black-forest-labs/flux.2-klein-4b). Must match the model served by NimImageUri.
+    string_value: "black-forest-labs/flux.2-klein-4b"
+    display_category: Model
+
+  - name: CacheVolume
+    display_name: >-
+      Persistent volume where NIM model weights are cached between runs.
+      Using a persistent volume avoids re-downloading weights on each workflow run.
+    string_value: "volume://user/persistent"
+    display_category: Storage
+
+  - name: Cores
+    display_name: Number of CPU cores to allocate for the NIM service.
+    uint_value: 4
+    display_category: Resources
+
+  - name: Memory
+    display_name: Amount of memory to allocate for the NIM service.
+    string_value: "30GiB"
+    display_category: Resources
+
+  - name: GPUs
+    display_name: Number of GPUs to allocate for the NIM service.
+    uint_value: 1
+    display_category: Resources
+
+  - name: GPUModel
+    display_name: >-
+      GPU model annotation for scheduling (e.g. NVIDIA L40S).
+      Leave empty to accept any available GPU.
+    string_value: ""
+    display_category: Resources
+
+  - name: NimTimeout
+    display_name: Maximum runtime for the NIM service before it is terminated.
+    string_value: "2h"
+    display_category: Execution
+
+  - name: ServiceScope
+    display_name: |
+      Who can access the Open WebUI endpoint. Defaults to 'group'.
+    string_value: "group"
+    options_input:
+      options: [user, group, organization]
+    display_category: "Access"
