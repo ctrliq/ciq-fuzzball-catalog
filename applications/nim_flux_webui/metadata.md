@@ -14,7 +14,7 @@ Deploys an NVIDIA NIM image generation service (Flux family models) paired with 
 
 The workflow runs three persistent services:
 
-- **nim**: The NVIDIA NIM inference server, which serves the Flux model via an OpenAI-compatible HTTP API. CPU offloading is enabled for VAE, DiT layers, and text encoders to allow operation with limited GPU memory.
+- **nim**: The NVIDIA NIM inference server, which serves the Flux model via an OpenAI-compatible HTTP API. By default, CPU offloading is enabled for text encoders; VAE and DiT layer offloading are available as optional settings to help operation with limited GPU memory.
 - **nim-stub**: A lightweight OpenAI-compatible adapter that bridges Open WebUI's chat and model-discovery APIs to the NIM image generation endpoint.
 - **open-webui**: The Open WebUI interface, pre-configured for image generation via the stub. No login is required by default.
 

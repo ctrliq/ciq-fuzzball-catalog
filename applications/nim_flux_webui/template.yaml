@@ -118,7 +118,8 @@ services:
                   body["response_format"] = "b64_json"
                   body["model"] = "{{ $model_name }}"
                   auth = self.headers.get("Authorization", "")
-                  print(f"[stub] proxying {self.path} prompt={body.get('prompt', '<none>')!r}", flush=True)
+                  prompt = body.get('prompt', '')
+                  print(f"[stub] proxying {self.path} prompt_length={len(prompt)}", flush=True)
                   req = urllib.request.Request(
                       NIM + self.path,
                       data=json.dumps(body).encode(),
@@ -163,7 +164,7 @@ services:
                       content = json.dumps({"tags": ["General"]})
                   else:
                       content = last_user
-                  print(f"[stub] chat completion, content={content!r}", flush=True)
+                  print(f"[stub] chat completion generated, content_length={len(content)}", flush=True)
                   resp = json.dumps({
                       "id": "chatcmpl-stub",
                       "object": "chat.completion",
