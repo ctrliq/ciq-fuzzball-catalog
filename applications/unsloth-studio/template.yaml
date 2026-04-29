@@ -1,0 +1,176 @@
+# Copyright 2026 CIQ, Inc. All rights reserved.
+
+{{- $jupyter_port := randInt 20001 21000 }}
+{{- $unsloth_port := randInt 21001 22000 }}
+
+{{- if not (trim .UserPassword) }}
+  {{- fail "UserPassword is required" }}
+{{- end }}
+
+version: v1
+volumes:
+  workspace:
+    reference: {{ .UnslothVolume }}
+services:
+  unsloth:
+    network:
+      ports:
+        - name: jupyter
+          port: {{ $jupyter_port }}
+          protocol: tcp
+        - name: unsloth
+          port: {{ $unsloth_port }}
+          protocol: tcp
+      endpoints:
+        - name: unsloth
+          port-name: unsloth
+          protocol: http
+          type: subdomain
+          scope: public
+        - name: jupyter
+          port-name: jupyter
+          protocol: http
+          type: subdomain
+          scope: public
+    persist: true
+    env:
+      - HOME=/workspace/home
+      - UNSLOTH_STUDIO_HOME=/workspace/studio
+      - USER_PASSWORD={{ .UserPassword }}
+    mounts:
+      workspace:
+        location: /workspace
+    image:
+      uri: "{{ .UnslothImage }}"
+    files:
+      /usr/local/bin/entrypoint.sh: |-
+        #!/bin/bash
+        set -e
+
+        cd /workspace
+
+        # environment variables
+        echo "Exporting environment variables for terminal sessions..."
+        printenv | grep -E '^HF_|^CUDA_|^NCCL_|^JUPYTER_|^SSH_|^PUBLIC_|^USER_|^UNSLOTH_|^PATH=' | \
+        sed 's/^\([^=]*\)=\(.*\)$/export \1="\2"/' > /tmp/unsloth_environment
+
+        grep "source /tmp/unsloth_environment" ${HOME}/.bashrc >/dev/null 2>&1 || echo 'source /tmp/unsloth_environment' >> ${HOME}/.bashrc
+
+        # Use USER_PASSWORD from env, or default to 'unsloth'.
+        FINAL_PASSWORD="${USER_PASSWORD:-unsloth}"
+
+        # Export variables for supervisor
+        export JUPYTER_PASSWORD="${JUPYTER_PASSWORD:-${FINAL_PASSWORD}}"
+
+        # silence trl experimental warnings
+        export TRL_EXPERIMENTAL_SILENCE=1
+
+        # Configure Jupyter ONCE if the config doesn't exist.
+        echo "Generating Jupyter configuration..."
+        rm -f ${HOME}/.jupyter/jupyter_lab_config.py
+
+        jupyter lab --generate-config
+
+        python3 -c "
+        import studio.backend.run
+        from auth import storage
+        storage.ensure_default_admin()
+        storage.update_password(storage.DEFAULT_ADMIN_USERNAME, '${FINAL_PASSWORD}')
+        "
+
+        python3 -c "
+        from jupyter_server.auth import passwd
+        import os
+        password_hash = passwd('${JUPYTER_PASSWORD}')
+        config_file = '${HOME}/.jupyter/jupyter_lab_config.py'
+        config_content = ''
+        if os.path.exists(config_file):
+            with open(config_file, 'r') as f:
+                lines = f.readlines()
+            lines = [line for line in lines if not line.strip().startswith('c.ServerApp.password')]
+            config_content = ''.join(lines)
+        config_content += f'''
+        c.ServerApp.password = '{password_hash}'
+        c.ServerApp.allow_root = False
+        c.ServerApp.allow_remote_access = True
+        c.ServerApp.open_browser = False
+        c.ServerApp.ip = '0.0.0.0'
+        c.ServerApp.port = {{ $jupyter_port }}
+        c.ServerApp.notebook_dir = '/workspace'
+        c.ServerApp.terminado_settings = {{ `{{'shell_command': ['/bin/bash', '-l']}}` }}
+        '''
+        with open(config_file, 'w') as f:
+          f.write(config_content)
+        "
+
+        # Final step: hand off control to supervisor
+        echo "Handing over control to supervisord..."
+        exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+
+      /etc/supervisor/conf.d/supervisord.conf: |-
+        # supervisord.conf
+
+        [unix_http_server]
+        file=/tmp/supervisor.sock
+        chmod=0700
+
+        [supervisorctl]
+        serverurl=unix:///tmp/supervisor.sock
+
+        [supervisord]
+        nodaemon=true                    ; Run in the foreground, required for Docker
+        pidfile=/tmp/supervisord.pid;
+        logfile=/dev/stdout
+        logfile_maxbytes=0
+        logfile_backups=0
+        loglevel=info
+
+        [program:jupyter]
+        command=jupyter lab --no-browser --ip="0.0.0.0" --port="{{ $jupyter_port }}" --ServerApp.allow_origin=*
+        directory=/workspace
+        autostart=true
+        autorestart=true
+        environment=HOME="/workspace/home"
+        stdout_logfile=/dev/stdout
+        stderr_logfile=/dev/stderr
+        stdout_logfile_maxbytes=0
+        stderr_logfile_maxbytes=0
+
+        [program:studio]
+        command=unsloth studio -H 0.0.0.0 -p {{ $unsloth_port }}
+        directory=/workspace
+        autostart=true
+        autorestart=true
+        startretries=3
+        startsecs=2
+        environment=HOME="/workspace/home",UNSLOTH_STUDIO_HOME="/workspace/studio"
+        stdout_logfile=/dev/stdout
+        stderr_logfile=/dev/stderr
+        stdout_logfile_maxbytes=0
+        stderr_logfile_maxbytes=0
+    command:
+      - /bin/bash
+      - /usr/local/bin/entrypoint.sh
+    readiness-probe:
+      http-get:
+        path: /api/auth/status
+        port: {{ $unsloth_port }}
+        scheme: http
+      initial-delay-seconds: 15
+      period-seconds: 10
+      timeout-seconds: 300
+      success-threshold: 1
+      failure-threshold: 30
+    resource:
+      cpu:
+        cores: {{ .CpuCores }}
+      memory:
+        size: {{ .Memory }}
+      {{- if .NumGPUs }}
+      devices:
+        nvidia.com/gpu: {{ .NumGPUs }}
+      {{- end }}
+      {{- if .ModelGPU }}
+      annotations:
+        nvidia.com/gpu.model: {{ .ModelGPU }}
+      {{- end }}

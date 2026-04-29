@@ -1,0 +1,32 @@
+values:
+  - name: UserPassword
+    display_name: User password for accessing Unsloth/Jupyter frontends.
+    string_value: change-this-password-or-use-a-secret-reference
+    display_category: Configuration
+
+  - name: UnslothVolume
+    display_name: Volume used as workspace for Unsloth/Jupyter.
+    string_value: volume://user/persistent/unsloth
+    display_category: Storage
+
+  - name: CpuCores
+    display_name: Cores to allocate for the Unsloth/Jupyter service.
+    uint_value: 2
+    display_category: Resources
+  - name: Memory
+    display_name: Amount of memory to allocate for the Unsloth/Jupyter service.
+    string_value: 16GiB
+    display_category: Resources
+  - name: NumGPUs
+    display_name: Number of GPU devices to request.
+    uint_value: 1
+    display_category: Resources
+  - name: ModelGPU
+    display_name: GPU model to request.
+    string_value: NVIDIA L4
+    display_category: Resources
+
+  - name: UnslothImage
+    display_name: Unsloth container image to use.
+    string_value: docker://unsloth/unsloth:2026.4.6-pt2.10.0-vllm-0.16.0-cu12.8-studio-release-v0.1.36-beta-fixes
+    display_category: Versions
