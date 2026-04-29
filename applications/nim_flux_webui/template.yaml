@@ -25,7 +25,7 @@ volumes:
   cache:
     reference: {{ .CacheVolume }}
   data:
-    reference: volume://user/ephemeral
+    reference: {{ .DataVolume }}
 
 services:
   nim:
@@ -35,21 +35,28 @@ services:
     env:
       - NGC_API_KEY={{ $ngc_secret }}
       - NIM_HTTP_API_PORT={{ $nim_port }}
-      - NIM_CACHE_PATH=/opt/nim/.cache
+      - NIM_CACHE_PATH=/nim-cache/{{ trimAll "/" (trim .NimCachePath) }}
       - NIM_IGNORE_MODEL_DOWNLOAD_FAIL=1
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
       - RUN_GUARDRAILS_ON_CPU=true
+      {{- if .VaeCpuOffload }}
       - VAE_CPU_OFFLOAD=true
+      {{- end }}
+      {{- if .DitLayerwiseOffload }}
       - DIT_LAYERWISE_OFFLOAD=true
+      {{- end }}
+      {{- if .TextEncoderCpuOffload }}
       - TEXT_ENCODER_CPU_OFFLOAD=true
+      {{- end }}
       - HF_TOKEN={{ $hf_token }}
     mounts:
       cache:
-        location: /opt/nim/.cache
+        location: /nim-cache
       data:
         location: /data
     script: |
       #!/bin/sh
+      mkdir -p "$NIM_CACHE_PATH"
       nvidia-smi
       start_server
     resource:
@@ -78,9 +85,6 @@ services:
       period-seconds: 30
       timeout-seconds: 10
       failure-threshold: 60
-    policy:
-      timeout:
-        execute: {{ .NimTimeout }}
     persist: true
 
   nim-stub:
@@ -148,7 +152,7 @@ services:
                   all_content = " ".join(m.get("content", "") for m in messages)
                   last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
                   if '"prompt": "Your detailed description here."' in all_content:
-                      matches = re.findall(r'USER: (.+?)(?:\n|</chat_history>)', all_content, re.DOTALL)
+                      matches = re.findall(r'USER: (.+?)</chat_history>', all_content, re.DOTALL)
                       user_prompt = matches[-1].strip() if matches else last_user
                       content = json.dumps({"prompt": user_prompt})
                   elif '"follow_ups"' in all_content:
@@ -176,7 +180,7 @@ services:
           def log_message(self, fmt, *a):
               print(f"[stub] {fmt % a}", flush=True)
 
-      http.server.HTTPServer(("0.0.0.0", {{ $stub_port }}), H).serve_forever()
+      http.server.ThreadingHTTPServer(("0.0.0.0", {{ $stub_port }}), H).serve_forever()
     resource:
       cpu:
         cores: 1
@@ -192,6 +196,15 @@ services:
         - name: http
           port: {{ $stub_port }}
           protocol: tcp
+    readiness-probe:
+      http-get:
+        path: /v1/models
+        port: {{ $stub_port }}
+        scheme: HTTP
+      initial-delay-seconds: 5
+      period-seconds: 5
+      timeout-seconds: 3
+      failure-threshold: 10
     persist: true
 
   open-webui:

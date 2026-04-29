@@ -44,6 +44,19 @@ values:
     string_value: "volume://user/persistent"
     display_category: Storage
 
+  - name: NimCachePath
+    display_name: >-
+      Subdirectory within the cache volume where NIM model weights are stored.
+      Use a relative path (e.g. nim/.cache) to keep files organized on a shared volume.
+    string_value: ".cache"
+    display_category: Storage
+
+  - name: DataVolume
+    display_name: >-
+      Ephemeral volume reference used for temporary workflow data.
+    string_value: "volume://user/ephemeral"
+    display_category: Storage
+
   - name: Cores
     display_name: Number of CPU cores to allocate for the NIM service.
     uint_value: 4
@@ -66,10 +79,20 @@ values:
     string_value: ""
     display_category: Resources
 
-  - name: NimTimeout
-    display_name: Maximum runtime for the NIM service before it is terminated.
-    string_value: "2h"
-    display_category: Execution
+  - name: VaeCpuOffload
+    display_name: Offload VAE to CPU to reduce GPU memory use (slower inference).
+    bool_value: false
+    display_category: Performance
+
+  - name: DitLayerwiseOffload
+    display_name: Offload DiT transformer layers to CPU (much slower inference).
+    bool_value: false
+    display_category: Performance
+
+  - name: TextEncoderCpuOffload
+    display_name: Offload text encoders to CPU to reduce GPU memory use.
+    bool_value: true
+    display_category: Performance
 
   - name: ServiceScope
     display_name: |
