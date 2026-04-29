@@ -1,0 +1,259 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $ngc_secret := trim .NgcApiKeySecret }}
+{{- if not $ngc_secret }}
+  {{- fail "NgcApiKeySecret is required" }}
+{{- end }}
+{{- $oci_secret := trim .NgcOciSecret }}
+{{- if not $oci_secret }}
+  {{- fail "NgcOciSecret is required" }}
+{{- end }}
+{{- $hf_token := trim .HuggingFaceTokenSecret }}
+{{- if not $hf_token }}
+  {{- fail "HuggingFaceTokenSecret is required — accept the model EULA on Hugging Face before running this workflow" }}
+{{- end }}
+
+{{- $model_name := trim .ModelName }}
+{{- $model_id := base $model_name }}
+{{- $nim_port := 8000 }}
+{{- $stub_port := 8001 }}
+{{- $ui_port := 8080 }}
+
+version: v1
+
+volumes:
+  cache:
+    reference: {{ .CacheVolume }}
+  data:
+    reference: {{ .DataVolume }}
+
+services:
+  nim:
+    image:
+      uri: {{ .NimImageUri }}
+      secret: {{ $oci_secret }}
+    env:
+      - NGC_API_KEY={{ $ngc_secret }}
+      - NIM_HTTP_API_PORT={{ $nim_port }}
+      - NIM_CACHE_PATH=/nim-cache/{{ trimAll "/" (trim .NimCachePath) }}
+      - NIM_IGNORE_MODEL_DOWNLOAD_FAIL=1
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+      - RUN_GUARDRAILS_ON_CPU=true
+      {{- if .VaeCpuOffload }}
+      - VAE_CPU_OFFLOAD=true
+      {{- end }}
+      {{- if .DitLayerwiseOffload }}
+      - DIT_LAYERWISE_OFFLOAD=true
+      {{- end }}
+      {{- if .TextEncoderCpuOffload }}
+      - TEXT_ENCODER_CPU_OFFLOAD=true
+      {{- end }}
+      - HF_TOKEN={{ $hf_token }}
+    mounts:
+      cache:
+        location: /nim-cache
+      data:
+        location: /data
+    script: |
+      #!/bin/sh
+      mkdir -p "$NIM_CACHE_PATH"
+      nvidia-smi
+      start_server
+    resource:
+      cpu:
+        cores: {{ .Cores }}
+        affinity: NUMA
+      memory:
+        size: {{ .Memory }}
+      devices:
+        nvidia.com/gpu: {{ .GPUs }}
+      {{- if trim .GPUModel }}
+      annotations:
+        nvidia.com/gpu.model: "{{ trim .GPUModel }}"
+      {{- end }}
+    network:
+      ports:
+        - name: http
+          port: {{ $nim_port }}
+          protocol: tcp
+    readiness-probe:
+      http-get:
+        path: /v1/health/ready
+        port: {{ $nim_port }}
+        scheme: HTTP
+      initial-delay-seconds: 60
+      period-seconds: 30
+      timeout-seconds: 10
+      failure-threshold: 60
+    persist: true
+
+  nim-stub:
+    image:
+      uri: docker://python:3.12-slim
+    script: |
+      #!/usr/bin/env python3
+      import http.server, json, time, urllib.request, urllib.error, sys
+
+      NIM = "http://nim.svc:{{ $nim_port }}"
+      MODELS = json.dumps({"object": "list", "data": [{"id": "{{ $model_id }}", "object": "model", "created": 0, "owned_by": "nvidia"}]}).encode()
+
+      class H(http.server.BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(200)
+              self.send_header("Content-Type", "application/json")
+              self.end_headers()
+              self.wfile.write(MODELS)
+
+          def do_POST(self):
+              try:
+                  raw = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                  body = json.loads(raw)
+              except (json.JSONDecodeError, ValueError) as e:
+                  self.send_response(400)
+                  self.send_header("Content-Type", "application/json")
+                  self.end_headers()
+                  self.wfile.write(json.dumps({"error": f"invalid JSON body: {e}"}).encode())
+                  return
+              if "images" in self.path:
+                  body["response_format"] = "b64_json"
+                  body["model"] = "{{ $model_name }}"
+                  auth = self.headers.get("Authorization", "")
+                  prompt = body.get('prompt', '')
+                  print(f"[stub] proxying {self.path} prompt_length={len(prompt)}", flush=True)
+                  req = urllib.request.Request(
+                      NIM + self.path,
+                      data=json.dumps(body).encode(),
+                      headers={"Content-Type": "application/json", "Authorization": auth},
+                      method="POST",
+                  )
+                  try:
+                      with urllib.request.urlopen(req, timeout=300) as r:
+                          data = r.read()
+                      print(f"[stub] NIM responded OK, {len(data)} bytes", flush=True)
+                      self.send_response(200)
+                      self.send_header("Content-Type", "application/json")
+                      self.end_headers()
+                      self.wfile.write(data)
+                  except urllib.error.HTTPError as e:
+                      err_body = e.read()
+                      print(f"[stub] NIM HTTP error {e.code}: {err_body[:500]}", file=sys.stderr, flush=True)
+                      self.send_response(e.code)
+                      self.send_header("Content-Type", "application/json")
+                      self.end_headers()
+                      self.wfile.write(err_body)
+                  except Exception as e:
+                      print(f"[stub] proxy error: {e}", file=sys.stderr, flush=True)
+                      self.send_response(502)
+                      self.send_header("Content-Type", "application/json")
+                      self.end_headers()
+                      self.wfile.write(json.dumps({"error": str(e)}).encode())
+              else:
+                  import re
+                  messages = body.get("messages", [])
+                  all_content = " ".join(m.get("content", "") for m in messages)
+                  last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+                  if '"prompt": "Your detailed description here."' in all_content:
+                      matches = re.findall(r'USER: (.+?)</chat_history>', all_content, re.DOTALL)
+                      user_prompt = matches[-1].strip() if matches else last_user
+                      content = json.dumps({"prompt": user_prompt})
+                  elif '"follow_ups"' in all_content:
+                      content = json.dumps({"follow_ups": []})
+                  elif '"title": "your concise title here"' in all_content:
+                      content = json.dumps({"title": "Image Generation"})
+                  elif '"tags": ["tag1"' in all_content:
+                      content = json.dumps({"tags": ["General"]})
+                  else:
+                      content = last_user
+                  print(f"[stub] chat completion generated, content_length={len(content)}", flush=True)
+                  resp = json.dumps({
+                      "id": "chatcmpl-stub",
+                      "object": "chat.completion",
+                      "created": int(time.time()),
+                      "model": "{{ $model_id }}",
+                      "choices": [{"index": 0, "message": {"role": "assistant", "content": content}, "finish_reason": "stop"}],
+                      "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20},
+                  }).encode()
+                  self.send_response(200)
+                  self.send_header("Content-Type", "application/json")
+                  self.end_headers()
+                  self.wfile.write(resp)
+
+          def log_message(self, fmt, *a):
+              print(f"[stub] {fmt % a}", flush=True)
+
+      http.server.ThreadingHTTPServer(("0.0.0.0", {{ $stub_port }}), H).serve_forever()
+    resource:
+      cpu:
+        cores: 1
+        affinity: NUMA
+      memory:
+        size: 256MiB
+    depends-on:
+      - name: nim
+        status: RUNNING
+        description: stub proxies to NIM so NIM must be ready first
+    network:
+      ports:
+        - name: http
+          port: {{ $stub_port }}
+          protocol: tcp
+    readiness-probe:
+      http-get:
+        path: /v1/models
+        port: {{ $stub_port }}
+        scheme: HTTP
+      initial-delay-seconds: 5
+      period-seconds: 5
+      timeout-seconds: 3
+      failure-threshold: 10
+    persist: true
+
+  open-webui:
+    image:
+      uri: docker://ghcr.io/open-webui/open-webui:{{ .OpenWebUIVersion }}
+    env:
+      - IMAGE_GENERATION_ENGINE=openai
+      - IMAGES_OPENAI_API_BASE_URL=http://nim-stub.svc:{{ $stub_port }}/v1
+      - IMAGES_OPENAI_API_KEY={{ $ngc_secret }}
+      - ENABLE_IMAGE_GENERATION=True
+      - IMAGE_GENERATION_MODEL={{ $model_name }}
+      - WEBUI_AUTH=False
+      - ENABLE_OLLAMA_API=false
+      - ENABLE_OPENAI_API=true
+      - OPENAI_API_BASE_URL=http://nim-stub.svc:{{ $stub_port }}/v1
+      - OPENAI_API_KEY={{ $ngc_secret }}
+    depends-on:
+      - name: nim-stub
+        status: RUNNING
+        description: stub must be ready before Open WebUI starts
+    script: |
+      #!/bin/sh
+      set -e
+      exec bash /app/backend/start.sh
+    resource:
+      cpu:
+        cores: 2
+        affinity: NUMA
+      memory:
+        size: 4GiB
+    network:
+      ports:
+        - name: http
+          port: {{ $ui_port }}
+          protocol: tcp
+      endpoints:
+        - name: ui
+          port-name: http
+          protocol: http
+          type: subdomain
+          scope: {{ .ServiceScope }}
+    readiness-probe:
+      http-get:
+        path: /health
+        port: {{ $ui_port }}
+        scheme: HTTP
+      initial-delay-seconds: 15
+      period-seconds: 10
+      timeout-seconds: 5
+      failure-threshold: 12
+    persist: true
