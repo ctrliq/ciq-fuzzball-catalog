@@ -1,0 +1,41 @@
+values:
+  - name: ProjectUrl
+    display_name: Blender Project ZIP URL
+    string_value: "https://download.blender.org/demo/test/BMW27_2.blend.zip"
+    display_category: "Input"
+  - name: BlenderFilePath
+    display_name: Path to .blend file (relative to ZIP root)
+    string_value: "bmw27/bmw27_cpu.blend"
+    display_category: "Input"
+  - name: StartFrame
+    display_name: Starting Frame
+    uint_value: 1
+    display_category: "Render Settings"
+  - name: EndFrame
+    display_name: Ending Frame
+    uint_value: 24
+    display_category: "Render Settings"
+  - name: Concurrency
+    display_name: Parallel Render Concurrency
+    uint_value: 12
+    display_category: "Resources"
+  - name: RenderCores
+    display_name: CPU Cores per Render Task
+    uint_value: 12
+    display_category: "Resources"
+  - name: RenderMemory
+    display_name: Memory per Render Task
+    string_value: "16GiB"
+    display_category: "Resources"
+  - name: OutputS3Uri
+    display_name: Destination S3 URI (Optional)
+    string_value: ""
+    display_category: "Storage"
+  - name: S3Secret
+    display_name: Fuzzball Secret for S3 Access (Optional)
+    string_value: ""
+    display_category: "Storage"
+  - name: BlenderImage
+    display_name: Blender Container Image
+    string_value: "docker://linuxserver/blender:latest"
+    display_category: "Container"
