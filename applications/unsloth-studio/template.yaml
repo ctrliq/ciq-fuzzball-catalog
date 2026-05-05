@@ -49,6 +49,9 @@ services:
 
         cd /workspace
 
+        # initialize writable directories on fresh volumes
+        mkdir -p "${HOME}" "${HOME}/.jupyter" "${UNSLOTH_STUDIO_HOME}"
+
         # environment variables
         echo "Exporting environment variables for terminal sessions..."
         printenv | grep -E '^HF_|^CUDA_|^NCCL_|^JUPYTER_|^SSH_|^PUBLIC_|^USER_|^UNSLOTH_|^PATH=' | \
@@ -57,7 +60,7 @@ services:
         grep "source /tmp/unsloth_environment" ${HOME}/.bashrc >/dev/null 2>&1 || echo 'source /tmp/unsloth_environment' >> ${HOME}/.bashrc
 
         # Use USER_PASSWORD from env, or default to 'unsloth'.
-        FINAL_PASSWORD="${USER_PASSWORD:-unsloth}"
+        export FINAL_PASSWORD="${USER_PASSWORD:-unsloth}"
 
         # Export variables for supervisor
         export JUPYTER_PASSWORD="${JUPYTER_PASSWORD:-${FINAL_PASSWORD}}"
@@ -65,24 +68,25 @@ services:
         # silence trl experimental warnings
         export TRL_EXPERIMENTAL_SILENCE=1
 
-        # Configure Jupyter ONCE if the config doesn't exist.
-        echo "Generating Jupyter configuration..."
+        # Configure Jupyter.
+        echo "Configuring Jupyter ..."
         rm -f ${HOME}/.jupyter/jupyter_lab_config.py
 
         jupyter lab --generate-config
 
         python3 -c "
+        import os
         import studio.backend.run
         from auth import storage
         storage.ensure_default_admin()
-        storage.update_password(storage.DEFAULT_ADMIN_USERNAME, '${FINAL_PASSWORD}')
+        storage.update_password(storage.DEFAULT_ADMIN_USERNAME, os.environ['FINAL_PASSWORD'])
         "
 
         python3 -c "
         from jupyter_server.auth import passwd
         import os
-        password_hash = passwd('${JUPYTER_PASSWORD}')
-        config_file = '${HOME}/.jupyter/jupyter_lab_config.py'
+        password_hash = passwd(os.environ['JUPYTER_PASSWORD'])
+        config_file = os.path.join(os.environ['HOME'], '.jupyter', 'jupyter_lab_config.py')
         config_content = ''
         if os.path.exists(config_file):
             with open(config_file, 'r') as f:
@@ -126,7 +130,7 @@ services:
         loglevel=info
 
         [program:jupyter]
-        command=jupyter lab --no-browser --ip="0.0.0.0" --port="{{ $jupyter_port }}" --ServerApp.allow_origin=*
+        command=jupyter lab --no-browser --ip="0.0.0.0" --port="{{ $jupyter_port }}"
         directory=/workspace
         autostart=true
         autorestart=true
@@ -148,17 +152,17 @@ services:
         stderr_logfile=/dev/stderr
         stdout_logfile_maxbytes=0
         stderr_logfile_maxbytes=0
-    command:
-      - /bin/bash
-      - /usr/local/bin/entrypoint.sh
+    script: |-
+      #!/bin/bash
+      exec /usr/local/bin/entrypoint.sh
     readiness-probe:
       http-get:
         path: /api/auth/status
         port: {{ $unsloth_port }}
         scheme: http
       initial-delay-seconds: 15
-      period-seconds: 10
-      timeout-seconds: 300
+      period-seconds: 15
+      timeout-seconds: 5
       success-threshold: 1
       failure-threshold: 30
     resource:
