@@ -1,7 +1,7 @@
 values:
   - name: UserPassword
     display_name: User password for accessing Unsloth/Jupyter frontends.
-    string_value: change-this-password-or-use-a-secret-reference
+    string_value: ""
     display_category: Configuration
 
   - name: UnslothVolume
