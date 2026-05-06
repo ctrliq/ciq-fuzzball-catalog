@@ -31,9 +31,10 @@ volumes:
     reference: {{ $volume }}
     ingress:
       - source:
-          uri: {{ .ProjectUrl }}
-        destination:
-          uri: file://project.zip
+          uri: {{ $project_uri }}
+          {{- if hasPrefix "s3://" $project_uri }}
+          secret: {{ $s3_secret }}
+          {{- end }}
     # The egress section is only rendered if OutputS3Uri is provided
     {{- if .OutputS3Uri }}
     egress:
