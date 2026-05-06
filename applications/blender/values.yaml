@@ -43,6 +43,10 @@ values:
     display_name: Fuzzball Secret for S3 Access (Optional)
     string_value: ""
     display_category: "Storage"
+  - name: Volume
+    display_name: Local ephemeral storage volume used for temporary data
+    string_value: volume://user/ephemeral
+    display_category: "Storage"
   - name: BlenderImage
     display_name: Blender Container Image
     string_value: "docker://linuxserver/blender:latest"
