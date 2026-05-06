@@ -25,7 +25,7 @@ values:
     display_category: "Resources"
   - name: RenderMemory
     display_name: Memory per Render Task
-    string_value: "16GiB"
+    string_value: "8GiB"
     display_category: "Resources"
   - name: OutputS3Uri
     display_name: Destination S3 URI (Optional)
