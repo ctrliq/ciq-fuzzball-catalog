@@ -1,3 +1,4 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
 ---
 id: blender-parallel-render
 name: Blender Render Pipeline
