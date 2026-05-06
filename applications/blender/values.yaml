@@ -49,5 +49,5 @@ values:
     display_category: "Storage"
   - name: BlenderImage
     display_name: Blender Container Image
-    string_value: "docker://linuxserver/blender:latest"
+    string_value: "docker://linuxserver/blender:5.1.0"
     display_category: "Container"
