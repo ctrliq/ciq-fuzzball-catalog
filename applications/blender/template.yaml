@@ -71,6 +71,7 @@ jobs:
         location: /scratch
     script: |
       #!/bin/sh
+      set -e
       echo "Assembling frames into video..."
       ffmpeg -y -framerate 24 -i /scratch/frames/frame_%05d.png -c:v libx264 -pix_fmt yuv420p /scratch/output.mp4
       echo "Video assembly complete!"
