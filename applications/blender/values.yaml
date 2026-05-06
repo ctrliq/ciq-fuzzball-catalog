@@ -27,6 +27,14 @@ values:
     display_name: Memory per Render Task
     string_value: "8GiB"
     display_category: "Resources"
+  - name: RenderTimeLimit
+    display_name: Time limit for render jobs
+    string_value: "20m"
+    display_category: "Resources"
+  - name: AssembleTimeLimit
+    display_name: Time limit for assembly of frames
+    string_value: "15m"
+    display_category: "Resources"
   - name: OutputS3Uri
     display_name: Destination S3 URI (Optional)
     string_value: ""
