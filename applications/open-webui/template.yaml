@@ -42,6 +42,12 @@ services:
       #!/bin/bash
       set -e
 
+      # Update ldconfig to know about gpu-libs
+      echo "/gpu-libs" > /etc/ld.so.conf.d/gpu-libs.conf
+      ldconfig
+      echo "ldconfig updated:"
+      ldconfig -p | grep -E 'libcuda|libnvidia' | head -10
+
       echo "Starting Ollama Service"
       echo "NVIDIA Driver Version: $(nvidia-smi --query-gpu=driver_version --format=csv,noheader || echo 'No GPU detected')"
       echo ""
