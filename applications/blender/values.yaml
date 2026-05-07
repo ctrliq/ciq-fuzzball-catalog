@@ -1,5 +1,5 @@
 values:
-  - name: ProjectUrl
+  - name: ProjectUri
     display_name: Blender Project ZIP URL
     string_value: "https://download.blender.org/demo/test/BMW27_2.blend.zip"
     display_category: "Input"
@@ -13,7 +13,7 @@ values:
     display_category: "Render Settings"
   - name: EndFrame
     display_name: Ending Frame
-    uint_value: 24
+    uint_value: 72
     display_category: "Render Settings"
   - name: Concurrency
     display_name: Parallel Render Concurrency
@@ -26,14 +26,6 @@ values:
   - name: RenderMemory
     display_name: Memory per Render Task
     string_value: "8GiB"
-    display_category: "Resources"
-  - name: RenderTimeLimit
-    display_name: Time limit for render jobs
-    string_value: "20m"
-    display_category: "Resources"
-  - name: AssembleTimeLimit
-    display_name: Time limit for assembly of frames
-    string_value: "15m"
     display_category: "Resources"
   - name: OutputS3Uri
     display_name: Destination S3 URI (Optional)

@@ -13,9 +13,9 @@ tags:
 This workflow provides a complete pipeline for rendering Blender animations in parallel.
 
 It performs the following steps:
-1. **Setup**: Downloads and extracts a Blender project zip file.
-2. **Render**: Uses a Fuzzball Task Array to render individual frames across multiple nodes/cores simultaneously.
-3. **Assemble**: Uses FFmpeg to combine the rendered frames into a single MP4 video.
-4. **Egress**: (Optional) Automatically uploads the final video to a specified S3 bucket if a destination is provided.
+1. Downloads and extracts a Blender project zip file.
+2. Uses a Fuzzball Task Array to render individual frames across multiple nodes/cores simultaneously.
+3. Uses FFmpeg to combine the rendered frames into a single MP4 video.
+4.(Optional) Automatically uploads the final video to a specified S3 bucket if a destination is provided.
 
 You can customize the project URL, the specific `.blend` file to render, the frame range, and the hardware resources allocated to the render jobs.
