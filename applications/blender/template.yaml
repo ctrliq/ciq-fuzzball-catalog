@@ -1,0 +1,176 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $output_s3_uri := trim .OutputS3Uri }}
+{{- if and $output_s3_uri (not (hasPrefix "s3://" $output_s3_uri)) }}
+  {{- fail "OutputS3Uri should be a S3 URI starting with s3://" }}
+{{- end }}
+{{- $s3_secret := trim .S3Secret }}
+{{- if and $output_s3_uri (not (hasPrefix "secret://" $s3_secret)) }}
+  {{- fail "A S3Secret is required for saving results to OutputS3Uri" }}
+{{- end }}
+
+{{- $project_uri := trim .ProjectUri }}
+{{- if hasPrefix "s3://" $project_uri -}}
+  {{- if not $s3_secret }}
+    {{- fail "A S3Secret is required for fetching ProjectUri from S3" }}
+  {{- end }}
+{{- else if not (hasPrefix "http" $project_uri) }}
+  {{- fail "ProjectUri has to be a http(s) or S3 URI" }}
+{{- end }}
+
+{{- $volume := trim .Volume }}
+{{- if not (hasPrefix "volume://" $volume) }}
+  {{- fail "Volume is not a volume reference starting with 'volume://'" }}
+{{- end }}
+
+version: v1
+volumes:
+  scratch:
+    reference: {{ $volume }}
+    ingress:
+      - source:
+          uri: {{ $project_uri }}
+          {{- if hasPrefix "s3://" $project_uri }}
+          secret: {{ $s3_secret }}
+          {{- end }}
+        destination:
+          uri: file://project.zip
+    # The egress section is only rendered if OutputS3Uri is provided
+    {{- if $output_s3_uri }}
+    egress:
+      - source:
+          uri: file://output.mp4
+        destination:
+          uri: {{ $output_s3_uri }}
+          secret: {{ $s3_secret }}
+    {{- end }}
+
+jobs:
+  setup:
+    files:
+      /tmp/animate_camera.py: file://animate_camera.py
+    image:
+      uri: docker://alpine:3.21
+    mounts:
+      scratch:
+        location: /scratch
+    script: |
+      #!/bin/sh
+      set -e
+      echo "Extracting project files..."
+      mkdir -p /scratch/frames
+      apk add --no-cache unzip
+      unzip -q -o /scratch/project.zip -d /scratch/
+      cp /tmp/animate_camera.py /scratch/animate_camera.py
+      echo "Setup complete."
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 1GiB
+
+  render-frames:
+    image:
+      uri: {{ .BlenderImage }}
+    mounts:
+      scratch:
+        location: /scratch
+    script: |
+      #!/bin/bash
+      set -e
+      echo "Rendering frame ${FB_TASK_ID}..."
+      blender -b /scratch/{{ .BlenderFilePath }} \
+        -P /scratch/animate_camera.py \
+        -o /scratch/frames/frame_##### \
+        -F PNG \
+        -f ${FB_TASK_ID}
+    resource:
+      cpu:
+        cores: {{ .RenderCores }}
+        affinity: CORE
+      memory:
+        size: {{ .RenderMemory }}
+    depends-on:
+      - name: setup
+        status: FINISHED
+    task-array:
+      start: {{ .StartFrame }}
+      end: {{ .EndFrame }}
+      concurrency: {{ .Concurrency }}
+
+  assemble-video:
+    image:
+      uri: docker://jrottenberg/ffmpeg:4.4-alpine
+    mounts:
+      scratch:
+        location: /scratch
+    script: |
+      #!/bin/sh
+      set -e
+      echo "Assembling frames into video..."
+      ffmpeg -y -framerate 24 -i /scratch/frames/frame_%05d.png \
+        -c:v libx264 -pix_fmt yuv420p /scratch/output.mp4
+      echo "Video assembly complete!"
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 4GiB
+    depends-on:
+      - name: render-frames
+        status: FINISHED
+
+files:
+  animate_camera.py: |
+    import bpy, math
+
+    scene = bpy.context.scene
+
+    START_FRAME = {{ .StartFrame }}
+    END_FRAME = {{ .EndFrame }}
+
+    # Delete any existing cameras
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in scene.objects:
+        if obj.type == 'CAMERA':
+            obj.select_set(True)
+    bpy.ops.object.delete()
+
+    # New keyframes will use LINEAR interpolation by default
+    # (replaces the legacy fcurves loop, which broke in Blender 4.4+)
+    bpy.context.preferences.edit.keyframe_new_interpolation_type = 'LINEAR'
+
+    # Create an empty at the center of the scene to rotate around
+    bpy.ops.object.empty_add(type='PLAIN_AXES', location=(0, 0, 0.8))
+    pivot = bpy.context.object
+    pivot.name = "Pivot"
+
+    # Create a new camera, offset from the pivot
+    bpy.ops.object.camera_add(location=(7, 0, 2.5))
+    cam = bpy.context.object
+    cam.name = "OrbitCam"
+
+    # Point camera at pivot
+    constraint = cam.constraints.new(type='TRACK_TO')
+    constraint.target = pivot
+    constraint.track_axis = 'TRACK_NEGATIVE_Z'
+    constraint.up_axis = 'UP_Y'
+
+    # Parent camera to pivot so the camera follows pivot rotation
+    cam.parent = pivot
+
+    # Set as active camera
+    scene.camera = cam
+
+    # Rotate the pivot 360 degrees from START_FRAME to END_FRAME
+    scene.frame_start = START_FRAME
+    scene.frame_end = END_FRAME
+    scene.render.fps = 24
+
+    pivot.rotation_euler = (0, 0, 0)
+    pivot.keyframe_insert(data_path="rotation_euler", frame=START_FRAME)
+
+    pivot.rotation_euler = (0, 0, math.radians(360))
+    pivot.keyframe_insert(data_path="rotation_euler", frame=END_FRAME)
+
+    print("Orbit camera setup complete.")
