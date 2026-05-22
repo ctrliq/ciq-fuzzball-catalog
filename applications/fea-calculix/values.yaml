@@ -1,0 +1,124 @@
+# ============================================================
+# FEA Material Sweep v3 — values.yaml
+# ============================================================
+
+values:
+
+  # ── Input File ───────────────────────────────────────────
+  - name: InputFile
+    display_name: "URI of your CalculiX input file (.inp)"
+    string_value: "https://gist.githubusercontent.com/your-gist-url/raw/beam_test.inp"
+    display_category: "Input"
+
+  - name: AppliedForceN
+    display_name: "Total applied force in Newtons (used to estimate force to yield)"
+    string_value: "2000"
+    display_category: "Input"
+
+  - name: Volume
+    display_name: "Fuzzball volume for input files and results"
+    string_value: "volume://user/ephemeral"
+    display_category: "Storage"
+
+  - name: CoresPerJob
+    display_name: "CPU cores per material solve job"
+    uint_value: 4
+    display_category: "Resources"
+
+  - name: Memory
+    display_name: "Memory per material solve job"
+    string_value: "8GiB"
+    display_category: "Resources"
+
+  - name: Timeout
+    display_name: "Max runtime per material job"
+    string_value: "2h"
+    display_category: "Resources"
+
+  # ════════════════════════════════════════════════════════
+  # MATERIAL 1
+  # ════════════════════════════════════════════════════════
+  - name: Mat1Name
+    display_name: "Material 1 — Name"
+    string_value: "Steel_A36"
+    display_category: "Material 1"
+
+  - name: Mat1YoungsMPa
+    display_name: "Material 1 — Young's Modulus (MPa) e.g. Steel=200000, Al=68900, Ti=113800"
+    string_value: "200000"
+    display_category: "Material 1"
+
+  - name: Mat1Poisson
+    display_name: "Material 1 — Poisson's Ratio e.g. Steel=0.26, Al=0.33, Ti=0.34"
+    string_value: "0.26"
+    display_category: "Material 1"
+
+  - name: Mat1DensityKgM3
+    display_name: "Material 1 — Density (kg/m3) e.g. Steel=7850, Al=2700, Ti=4430"
+    string_value: "7850"
+    display_category: "Material 1"
+
+  - name: Mat1YieldMPa
+    display_name: "Material 1 — Yield Strength (MPa) e.g. Steel=250, Al=276, Ti=880"
+    string_value: "250"
+    display_category: "Material 1"
+
+  - name: Mat1CostPerKg
+    display_name: "Material 1 — Cost per kg USD e.g. Steel=0.80, Al=2.00, Ti=35.00"
+    string_value: "0.80"
+    display_category: "Material 1"
+
+  # ════════════════════════════════════════════════════════
+  # MATERIAL 2
+  # ════════════════════════════════════════════════════════
+  - name: Mat2Name
+    display_name: "Material 2 — Name"
+    string_value: "Aluminum_6061"
+    display_category: "Material 2"
+
+  - name: Mat2YoungsMPa
+    display_name: "Material 2 — Young's Modulus (MPa) e.g. Steel=200000, Al=68900, Ti=113800"
+    string_value: "68900"
+    display_category: "Material 2"
+
+  - name: Mat2Poisson
+    display_name: "Material 2 — Poisson's Ratio e.g. Steel=0.26, Al=0.33, Ti=0.34"
+    string_value: "0.33"
+    display_category: "Material 2"
+
+  - name: Mat2DensityKgM3
+    display_name: "Material 2 — Density (kg/m3) e.g. Steel=7850, Al=2700, Ti=4430"
+    string_value: "2700"
+    display_category: "Material 2"
+
+  - name: Mat2YieldMPa
+    display_name: "Material 2 — Yield Strength (MPa) e.g. Steel=250, Al=276, Ti=880"
+    string_value: "276"
+    display_category: "Material 2"
+
+  - name: Mat2CostPerKg
+    display_name: "Material 2 — Cost per kg USD e.g. Steel=0.80, Al=2.00, Ti=35.00"
+    string_value: "2.00"
+    display_category: "Material 2"
+
+  # ════════════════════════════════════════════════════════
+  # MATERIAL 3 (uncomment to add, copy fea-mat3 job in template)
+  # ════════════════════════════════════════════════════════
+  # - name: Mat3Name
+  #   string_value: "Titanium_Ti6Al4V"
+  #   display_category: "Material 3"
+  # - name: Mat3YoungsMPa
+  #   string_value: "113800"
+  #   display_category: "Material 3"
+  # - name: Mat3Poisson
+  #   string_value: "0.342"
+  #   display_category: "Material 3"
+  # - name: Mat3DensityKgM3
+  #   string_value: "4430"
+  #   display_category: "Material 3"
+  # - name: Mat3YieldMPa
+  #   string_value: "880"
+  #   display_category: "Material 3"
+  # - name: Mat3CostPerKg
+  #   string_value: "35.00"
+  #   display_category: "Material 3"
