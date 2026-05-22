@@ -1,0 +1,340 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+version: v1
+
+{{- if .UseInlineAnimationScript }}
+files:
+  animate_cesm.py: |
+    """Animate CESM daily TS and PRECT into MP4 + GIF."""
+    import glob
+    import numpy as np
+    import xarray as xr
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.animation as animation
+    from matplotlib.colors import Normalize, LogNorm
+
+    import cartopy.crs as ccrs
+    import cartopy.feature as cfeature
+    from cartopy.util import add_cyclic_point
+
+    CASE = "{{.CaseName}}"
+    ARCHIVE = f"/home/user/archive/{CASE}/atm/hist"
+    files = sorted(glob.glob(f"{ARCHIVE}/{CASE}.cam.h1.*.nc"))
+    if not files:
+        raise SystemExit(f"No h1 history files found under {ARCHIVE}")
+    print(f"Found {len(files)} h1 file(s)")
+
+    ds = xr.open_mfdataset(files, combine="by_coords")
+
+    ts = ds["TS"] - 273.15
+    ts.attrs["units"] = "degC"
+    prect = ds["PRECT"] * 86400.0 * 1000.0
+    prect.attrs["units"] = "mm/day"
+
+    def cyclic(da):
+        data, lon = add_cyclic_point(da.values, coord=da["lon"].values, axis=-1)
+        return data, lon
+
+    ts_data,    lon_cyc = cyclic(ts)
+    prect_data, _       = cyclic(prect)
+    lat = ts["lat"].values
+    times = ts["time"].values
+
+    ts_vmin, ts_vmax = np.percentile(ts_data, [1, 99])
+    prect_vmin = 0.1
+    prect_vmax = np.percentile(prect_data[prect_data > 0.1], 99)
+
+    projection = ccrs.Robinson(central_longitude=180)
+    fig, (ax_ts, ax_pr) = plt.subplots(
+        nrows=2, ncols=1, figsize=(11, 9),
+        subplot_kw={"projection": projection},
+        constrained_layout=True,
+    )
+    fig.suptitle("CESM {{.Compset}} @ {{.Resolution}} — daily snapshots",
+                 fontsize=14, y=1.02)
+
+    def style_map(ax, title):
+        ax.set_global()
+        ax.coastlines(linewidth=0.5, color="black")
+        ax.add_feature(cfeature.BORDERS, linewidth=0.3, color="gray")
+        ax.gridlines(linewidth=0.3, color="gray", alpha=0.5)
+        ax.set_title(title, fontsize=11)
+
+    mesh_ts = ax_ts.pcolormesh(
+        lon_cyc, lat, ts_data[0],
+        transform=ccrs.PlateCarree(),
+        cmap="RdBu_r",
+        norm=Normalize(vmin=ts_vmin, vmax=ts_vmax),
+        shading="auto",
+    )
+    style_map(ax_ts, "Surface Temperature (degC)")
+    cb_ts = plt.colorbar(mesh_ts, ax=ax_ts, orientation="vertical",
+                         shrink=0.7, pad=0.02)
+    cb_ts.set_label("degC")
+
+    prect_frame0 = np.ma.masked_less(prect_data[0], prect_vmin)
+    mesh_pr = ax_pr.pcolormesh(
+        lon_cyc, lat, prect_frame0,
+        transform=ccrs.PlateCarree(),
+        cmap="YlGnBu",
+        norm=LogNorm(vmin=prect_vmin, vmax=prect_vmax),
+        shading="auto",
+    )
+    style_map(ax_pr, "Total Precipitation (mm/day)")
+    cb_pr = plt.colorbar(mesh_pr, ax=ax_pr, orientation="vertical",
+                         shrink=0.7, pad=0.02)
+    cb_pr.set_label("mm/day")
+
+    title_text = fig.text(0.5, 0.97, "", ha="center", fontsize=12,
+                          fontweight="bold")
+
+    def update(frame):
+        mesh_ts.set_array(ts_data[frame].ravel())
+        pr_masked = np.ma.masked_less(prect_data[frame], prect_vmin)
+        mesh_pr.set_array(pr_masked.ravel())
+        date_str = str(times[frame])[:10]
+        title_text.set_text(f"Simulated date: {date_str}")
+        return mesh_ts, mesh_pr, title_text
+
+    ani = animation.FuncAnimation(
+        fig, update, frames=ts_data.shape[0],
+        interval=200, blit=False,
+    )
+
+    try:
+        ani.save("/home/user/{{.VideoOutputName}}",
+                 writer=animation.FFMpegWriter(fps=6, bitrate=2400),
+                 dpi=120)
+        print(f"Wrote /home/user/{{.VideoOutputName}}")
+    except (FileNotFoundError, RuntimeError) as e:
+        print(f"WARN: ffmpeg unavailable, skipping MP4 ({e})")
+
+    ani.save("/home/user/{{.GifOutputName}}",
+             writer=animation.PillowWriter(fps=4),
+             dpi=80)
+    print(f"Wrote /home/user/{{.GifOutputName}}")
+
+    plt.close(fig)
+{{- end }}
+
+defaults:
+  job:
+    env:
+      - USER=user
+      - CESMDATAROOT=/home/user
+      - PATH=/opt/ncar/cesm2/cime/scripts:/srv/conda/bin:/usr/local/bin:/usr/bin:/bin
+    mounts:
+      workdir:
+        location: /home/user
+
+volumes:
+  workdir:
+    reference: {{.VolumeReference}}
+    {{- if not .UseInlineAnimationScript }}
+    ingress:
+      - source:
+          uri: {{.AnimationScriptURL}}
+        destination:
+          uri: file://animate_cesm.py
+    {{- end }}
+    {{- if or .VideoDestination .GifDestination }}
+    egress:
+      {{- if .VideoDestination }}
+      - source:
+          uri: file://{{.VideoOutputName}}
+        destination:
+          uri: {{.VideoDestination}}
+          {{- if .S3Secret }}
+          secret: {{.S3Secret}}
+          {{- end }}
+      {{- end }}
+      {{- if .GifDestination }}
+      - source:
+          uri: file://{{.GifOutputName}}
+        destination:
+          uri: {{.GifDestination}}
+          {{- if .S3Secret }}
+          secret: {{.S3Secret}}
+          {{- end }}
+      {{- end }}
+    {{- end }}
+
+jobs:
+
+  prefetch-inputdata:
+    image:
+      uri: {{.CESMContainer}}
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+
+      CASE={{.CaseName}}
+      CASEROOT=/home/user/cases/${CASE}
+
+      mkdir -p /home/user/cases /home/user/inputdata \
+               /home/user/archive /home/user/runs
+
+      rm -rf "${CASEROOT}" "/home/user/runs/${CASE}"
+
+      create_newcase \
+          --case    "${CASEROOT}" \
+          --compset {{.Compset}} \
+          --res     {{.Resolution}} \
+          --mach    container \
+          --run-unsupported
+
+      cd "${CASEROOT}"
+
+      # PE layout must match cesm-run (case.setup generates per-rank scaffolding)
+      ./xmlchange STOP_OPTION={{.StopOption}},STOP_N={{.StopN}}
+      ./xmlchange REST_OPTION={{.StopOption}},REST_N={{.StopN}}
+      ./xmlchange DOUT_S=TRUE
+      ./xmlchange NTASKS={{.SimCores}}
+      ./xmlchange NTHRDS=1
+      ./xmlchange ROOTPE=0
+      ./xmlchange PIO_TYPENAME=netcdf
+      ./xmlchange PIO_NUMTASKS=-1
+      ./xmlchange DEBUG=FALSE
+      ./xmlchange INFO_DBUG=1
+
+      ./case.setup
+
+      cat >> user_nl_cam <<'NL'
+      ! Stream 1 (h0) monthly mean; Stream 2 (h1) daily instantaneous
+      nhtfrq = 0, -24
+      mfilt  = 1, 31
+      fincl2 = 'TS:I', 'PRECT:I', 'PSL:I',
+               'U850:I', 'V850:I', 'U200:I', 'V200:I',
+               'T850:I', 'TMQ:I', 'CLDTOT:I', 'FLNT:I'
+      NL
+
+      echo "=== case.build ==="
+      ./case.build
+
+      echo "=== Download required input data ==="
+      ./check_input_data --download
+
+      du -sh /home/user/inputdata 2>/dev/null || true
+    resource:
+      cpu:
+        cores: {{.PrefetchCores}}
+        affinity: CORE
+      memory:
+        size: {{.PrefetchMemory}}
+    policy:
+      timeout:
+        execute: {{.PrefetchTimeout}}
+
+  cesm-run:
+    image:
+      uri: {{.CESMContainer}}
+    depends-on:
+      - name: prefetch-inputdata
+        status: FINISHED
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+
+      CASE={{.CaseName}}
+      CASEROOT=/home/user/cases/${CASE}
+
+      cd "${CASEROOT}"
+
+      ./xmlquery NTASKS,STOP_OPTION,STOP_N | head -10
+      test -f user_nl_cam || { echo "FAIL: user_nl_cam missing"; exit 1; }
+
+      echo "Cores visible to this job: $(nproc)"
+
+      echo "=== case.build (re-verify; near-no-op after prefetch) ==="
+      ./case.build
+
+      echo "=== case.submit ==="
+      set +e
+      ./case.submit
+      RC=$?
+      set -e
+
+      RUNDIR=/home/user/cases/${CASE}/run
+      LATEST_LIVE=$(ls -t "$RUNDIR"/cesm.log.* 2>/dev/null | head -1 || true)
+      if [ -n "$LATEST_LIVE" ] ; then
+        echo "=== Live cesm.log ==="; tail -100 "$LATEST_LIVE"
+      fi
+
+      ARCH_LOGS=/home/user/archive/${CASE}/logs
+      LATEST_ARCH=$(ls -t "$ARCH_LOGS"/cesm.log.*.gz 2>/dev/null | head -1 || true)
+      if [ -n "$LATEST_ARCH" ] ; then
+        echo "=== Archived cesm.log ==="; gunzip -c "$LATEST_ARCH" | tail -100
+      fi
+
+      if [ "$RC" -ne 0 ] ; then
+        echo "FAIL: case.submit exited $RC"
+        LATEST_CPL=$(ls -t "$ARCH_LOGS"/cpl.log.*.gz 2>/dev/null | head -1 || true)
+        if [ -n "$LATEST_CPL" ] ; then
+          gunzip -c "$LATEST_CPL" | tail -100
+        fi
+        exit "$RC"
+      fi
+
+      ARCHIVE_HIST=/home/user/archive/${CASE}/atm/hist
+      ls -lh "${ARCHIVE_HIST}/"
+      ls "${ARCHIVE_HIST}/${CASE}.cam.h1."*.nc > /dev/null || {
+        echo "FAIL: no h1 history files found"; exit 1; }
+      echo "OK — CESM run complete"
+    resource:
+      cpu:
+        cores: {{.SimCores}}
+        affinity: NUMA
+      memory:
+        size: {{.SimMemory}}
+    policy:
+      timeout:
+        execute: {{.SimTimeout}}
+
+  {{- if or .VideoDestination .GifDestination }}
+  visualize:
+    image:
+      uri: {{.AnimationContainer}}
+    depends-on:
+      - name: cesm-run
+        status: FINISHED
+    env:
+      - PATH=/srv/conda/envs/notebook/bin:/srv/conda/bin:/usr/local/bin:/usr/bin:/bin
+    {{- if .UseInlineAnimationScript }}
+    files:
+      /home/user/animate_cesm.py: file://animate_cesm.py
+    {{- end }}
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+
+      PY=/srv/conda/envs/notebook/bin/python
+
+      ls -la /home/user/archive/{{.CaseName}}/atm/hist/ || {
+        echo "FAIL: cesm-run output is missing"; exit 1; }
+
+      "$PY" -c "import xarray, cartopy, matplotlib, PIL; \
+        print(f'xarray={xarray.__version__} cartopy={cartopy.__version__} matplotlib={matplotlib.__version__}')"
+
+      if ! command -v ffmpeg &> /dev/null; then
+        echo "Installing ffmpeg into 'notebook' env..."
+        mamba install -y -n notebook -c conda-forge ffmpeg
+      else
+        echo "ffmpeg present: $(ffmpeg -version | head -1)"
+      fi
+
+      "$PY" /home/user/animate_cesm.py
+
+      ls -lh /home/user/{{.GifOutputName}} 2>/dev/null || true
+      ls -lh /home/user/{{.VideoOutputName}} 2>/dev/null || true
+    resource:
+      cpu:
+        cores: {{.AnimationCores}}
+        affinity: CORE
+      memory:
+        size: {{.AnimationMemory}}
+    policy:
+      timeout:
+        execute: {{.AnimationTimeout}}
+  {{- end }}
