@@ -36,15 +36,15 @@ jobs:
 {{- $command := index $commands (.BuilderType | default "antibody") | default "ABodyBuilder2" }}
 {{- $filename := .InputFasta | base }}
 {{- $filenameNoExt := $filename | trimSuffix ".fasta" }}
-        
+
         mkdir -p /data/immunebuilder/output
         sed -i 's/>.*[Hh]eavy [Cc]hain.*/>H/g; s/>.*[Ll]ight [Cc]hain.*/>L/g' /data/immunebuilder/input/{{ $filename }}
-        
+
         {{ $command }} \
           --fasta_file /data/immunebuilder/input/{{ $filename }} \
           -o /data/immunebuilder/output/{{ $filenameNoExt }}.pdb \
           --verbose
-        
+
         echo "Prediction completed"
     resource:
       cpu:
