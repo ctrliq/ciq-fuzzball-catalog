@@ -42,7 +42,7 @@ services:
           port-name: web
           type: subdomain
           protocol: http
-          scope: {{ .ServiceScope }}
+          scope: user
     mounts:
 {{- range $i, $v := $volumes }}
   {{- $parts := splitList ":" $v }}
@@ -61,12 +61,13 @@ services:
       DB="$(mktemp)"
 
       /bin/filebrowser config init \
-        --auth.method=noauth \
+        --auth.method=proxy \
+        --auth.header=X-Fuzzball-Account-ID \
         --database "${DB}" \
-        --branding.color "#12A66F" \
         --address ${BIND_ADDR} \
         --port {{ $port }} \
         --root {{ $root }} \
         --branding.disableUsedPercentage
+      /bin/filebrowser users add --database "${DB}" --lockPassword "${FB_ACCOUNT_ID}" {{ randInt 1 1000000000000 | toString | b64enc }}
 
       /bin/filebrowser --database "${DB}"

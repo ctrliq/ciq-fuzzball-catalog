@@ -13,11 +13,3 @@ values:
     display_name: FileBrowser container
     string_value: "docker://filebrowser/filebrowser:v2.63.5"
     display_category: Container
-
-  - name: "ServiceScope"
-    display_name: |
-      Who can access this FileBrowser instance. Defaults to 'user'.
-    string_value: user
-    options_input:
-      options: [user, group, organization]
-    display_category: "Access"
