@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "filebrowser/filebrowser"
+id: "ciq/utilities/filebrowser"
 name: "Filebrowser"
 category: "UTILITIES"
 tags:

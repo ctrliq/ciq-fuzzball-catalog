@@ -6,7 +6,15 @@
 {{- if not (trim .Volumes | hasPrefix "volume://") }}
   {{-  fail "At least one volume has to be specified in the Volumes field." }}
 {{- end }}
-{{- $volumes := splitList "," .Volumes }}
+{{- $volumes := list }}
+{{- range $raw := splitList "," .Volumes }}
+  {{- $volume := trim $raw }}
+  {{- if ne $volume "" }}
+    {{- $volumes = append $volumes $volume }}
+  {{- end }}
+{{- end }}
+
+
 
 version: v1
 volumes:
