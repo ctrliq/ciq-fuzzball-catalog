@@ -1,8 +1,30 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 # ============================================================
-# FEA Material Sweep Workflow Template v3
+# FEA Material Sweep Workflow Template v11
 # ============================================================
-
+# Changes from v10:
+# - Reaction forces: parsed from .dat REACTION FORCES section
+# - Safety margin map: per-element FoS, % above/below thresholds
+# - Stress gradient: rate of stress decay from hot spot
+# - Fatigue life: Goodman & Basquin estimates from stress range
+# - Buckling: load factor from *BUCKLE step added to .inp
+# - New bar charts, table columns, and report sections for all
+# ────────────────────────────────────────────────────────────
+# v10 changes (retained):
+# - Mass estimate: compute part volume from hex element Jacobians
+#   in .frd, multiply by density → mass per material in kg
+# - Strain energy / compliance: computed from stress tensor and
+#   Young's modulus (U = sum over elements of σ²V/2E), reported
+#   as total strain energy (J) and compliance index (J/N)
+# - Mesh quality flag: detects when top stress locations are
+#   suspiciously identical (coarse mesh warning)
+# - Comprehensive 3D diagrams: separate full-page figures for
+#   mesh+BCs, Von Mises, principal stress σ1, displacement mag
+# - Displacement heatmap on mesh geometry (not just bar chart)
+# - All new metrics have dedicated bar charts and appear in the
+#   full results table and engineering recommendations
+# ============================================================
+ 
 {{- $inputFile     := trim .InputFile }}
 {{- $inputFileName := base $inputFile }}
 {{- $volume        := trim .Volume }}
@@ -10,15 +32,15 @@
 {{- $memory        := trim .Memory }}
 {{- $timeout       := trim .Timeout }}
 {{- $appliedForceN := trim .AppliedForceN }}
-
+ 
 version: v1
-
+ 
 defaults:
   job:
     mounts:
       data:
         location: "/data"
-
+ 
 volumes:
   data:
     reference: {{ $volume }}
@@ -27,55 +49,159 @@ volumes:
           uri: file://{{ $inputFileName }}
         source:
           uri: {{ $inputFile }}
-
+ 
 jobs:
-
+ 
   # ════════════════════════════════════════════════════════════
-  # MATERIAL 1
-  # Copy this block and change fea-mat1 -> fea-mat2,
-  # Mat1 -> Mat2 everywhere, then add fea-mat2 to
-  # the report depends-on list below.
+  # PREPARE
   # ════════════════════════════════════════════════════════════
-  fea-mat1:
+  prepare:
     image:
-      uri: "docker://calculix/ccx:latest"
+      uri: "docker://python:3.12-slim"
     depends-on: []
     script: |
       #!/bin/sh
       set -e
-
-      # ── Material 1 Properties ────────────────────────────────
+      python3 - "/data/{{ $inputFileName }}" <<'PYEOF'
+      import re, sys, os
+ 
+      INPUT  = sys.argv[1]
+      OUTPUT = "/data/patched.inp"
+ 
+      with open(INPUT, errors="ignore") as f:
+          lines = f.readlines()
+ 
+      content = "".join(lines)
+ 
+      if "__YOUNGS__" in content:
+          print("Already has placeholders, copying as-is")
+          with open(OUTPUT, "w") as f:
+              f.write(content)
+          sys.exit(0)
+ 
+      out_lines   = []
+      i           = 0
+      patched     = False
+      has_density = any("*DENSITY" in l.upper() for l in lines)
+ 
+      while i < len(lines):
+          line     = lines[i]
+          stripped = line.strip()
+          if stripped.upper().startswith("*ELASTIC") and not patched:
+              out_lines.append(line)
+              i += 1
+              while i < len(lines):
+                  dl = lines[i]
+                  ds = dl.strip()
+                  if ds.startswith("**") or ds == "":
+                      out_lines.append(dl)
+                      i += 1
+                      continue
+                  vals = [v for v in re.split(r"[, \t]+", ds) if v]
+                  if len(vals) >= 2:
+                      print("Detected E=" + vals[0] + " nu=" + vals[1])
+                      out_lines.append("__YOUNGS__, __POISSON__\n")
+                      patched = True
+                      i += 1
+                      if not has_density:
+                          out_lines.append("*DENSITY\n")
+                          out_lines.append("__DENSITY__,\n")
+                          print("Added *DENSITY section")
+                  else:
+                      out_lines.append(dl)
+                      i += 1
+                  break
+          else:
+              out_lines.append(line)
+              i += 1
+ 
+      if not patched:
+          print("WARNING: No *ELASTIC section found, writing as-is")
+          with open(OUTPUT, "w") as f:
+              f.writelines(lines)
+      else:
+          with open(OUTPUT, "w") as f:
+              f.writelines(out_lines)
+          print("Patched OK: " + OUTPUT)
+ 
+      print("=== Material section preview ===")
+      with open(OUTPUT) as f:
+          out = f.read()
+      idx = out.upper().find("*MATERIAL")
+      if idx >= 0:
+          print(out[idx:idx+200])
+      PYEOF
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 512MiB
+ 
+  # ════════════════════════════════════════════════════════════
+  # MATERIAL 1
+  # ════════════════════════════════════════════════════════════
+  fea-mat1:
+    image:
+      uri: "docker://calculix/ccx:latest"
+    depends-on:
+      - name: prepare
+        status: FINISHED
+    script: |
+      #!/bin/sh
+      set -e
       MAT_NAME="{{ .Mat1Name }}"
-      YOUNGS_MODULUS="{{ .Mat1YoungsMPa }}"
-      POISSONS_RATIO="{{ .Mat1Poisson }}"
+      YOUNGS="{{ .Mat1YoungsMPa }}"
+      POISSON="{{ .Mat1Poisson }}"
       DENSITY="{{ .Mat1DensityKgM3 }}"
-      YIELD_STRENGTH="{{ .Mat1YieldMPa }}"
-      COST_PER_KG="{{ .Mat1CostPerKg }}"
-      # ────────────────────────────────────────────────────────
-
-      INPUT="/data/{{ $inputFileName }}"
+      YIELD="{{ .Mat1YieldMPa }}"
+      COST="{{ .Mat1CostPerKg }}"
       WORKDIR="/data/results/${MAT_NAME}"
       mkdir -p "${WORKDIR}"
-
-      sed "s/__YOUNGS__/${YOUNGS_MODULUS}/g;
-           s/__POISSON__/${POISSONS_RATIO}/g;
-           s/__DENSITY__/${DENSITY}/g" \
-           "${INPUT}" > "${WORKDIR}/job.inp"
-
+      sed "s/__YOUNGS__/${YOUNGS}/g; s/__POISSON__/${POISSON}/g; s/__DENSITY__/${DENSITY}/g" \
+          /data/patched.inp > "${WORKDIR}/job.inp"
       cd "${WORKDIR}"
       ccx job
-
+ 
+      # ── Add buckle step and rerun for buckling load factor ──
+      # Append a *BUCKLE step to the patched inp and run again
+      python3 - "${WORKDIR}/job.inp" "${WORKDIR}/job_buckle.inp" << 'BUCKLE_EOF'
+import sys
+with open(sys.argv[1]) as f:
+    lines = f.readlines()
+# Find *END STEP and insert *BUCKLE step before it
+out = []
+inserted = False
+for line in lines:
+    if line.strip().upper() == '*END STEP' and not inserted:
+        out.append('*STEP\n')
+        out.append('*BUCKLE\n')
+        out.append('4\n')
+        out.append('*BOUNDARY\n')
+        # Re-apply same boundary conditions by copying from original
+        in_bc = False
+        for l2 in lines:
+            if l2.strip().upper() == '*BOUNDARY':
+                in_bc = True
+                continue
+            if in_bc:
+                if l2.strip().startswith('*'):
+                    break
+                out.append(l2)
+        out.append('*NODE FILE, NSET=NALL\n')
+        out.append('U\n')
+        out.append('*END STEP\n')
+        inserted = True
+    out.append(line)
+with open(sys.argv[2], 'w') as f:
+    f.writelines(out)
+print('Buckle inp written')
+BUCKLE_EOF
+      ccx job_buckle 2>/dev/null || echo "Buckle step failed (non-critical)"
+ 
       cat > "${WORKDIR}/summary.json" << EOF
-      {
-        "material": "${MAT_NAME}",
-        "youngs_mpa": ${YOUNGS_MODULUS},
-        "poisson": ${POISSONS_RATIO},
-        "density_kg_m3": ${DENSITY},
-        "yield_mpa": ${YIELD_STRENGTH},
-        "cost_per_kg": ${COST_PER_KG}
-      }
+      {"material":"${MAT_NAME}","youngs_mpa":${YOUNGS},"poisson":${POISSON},"density_kg_m3":${DENSITY},"yield_mpa":${YIELD},"cost_per_kg":${COST}}
       EOF
-      echo "mat1 Done"
+      echo "mat1 done: ${MAT_NAME}"
     resource:
       cpu:
         cores: {{ $cores }}
@@ -85,50 +211,72 @@ jobs:
     policy:
       timeout:
         execute: {{ $timeout }}
-
+ 
   # ════════════════════════════════════════════════════════════
   # MATERIAL 2
   # ════════════════════════════════════════════════════════════
   fea-mat2:
     image:
       uri: "docker://calculix/ccx:latest"
-    depends-on: []
+    depends-on:
+      - name: prepare
+        status: FINISHED
     script: |
       #!/bin/sh
       set -e
-
-      # ── Material 2 Properties ────────────────────────────────
       MAT_NAME="{{ .Mat2Name }}"
-      YOUNGS_MODULUS="{{ .Mat2YoungsMPa }}"
-      POISSONS_RATIO="{{ .Mat2Poisson }}"
+      YOUNGS="{{ .Mat2YoungsMPa }}"
+      POISSON="{{ .Mat2Poisson }}"
       DENSITY="{{ .Mat2DensityKgM3 }}"
-      YIELD_STRENGTH="{{ .Mat2YieldMPa }}"
-      COST_PER_KG="{{ .Mat2CostPerKg }}"
-      # ────────────────────────────────────────────────────────
-
-      INPUT="/data/{{ $inputFileName }}"
+      YIELD="{{ .Mat2YieldMPa }}"
+      COST="{{ .Mat2CostPerKg }}"
       WORKDIR="/data/results/${MAT_NAME}"
       mkdir -p "${WORKDIR}"
-
-      sed "s/__YOUNGS__/${YOUNGS_MODULUS}/g;
-           s/__POISSON__/${POISSONS_RATIO}/g;
-           s/__DENSITY__/${DENSITY}/g" \
-           "${INPUT}" > "${WORKDIR}/job.inp"
-
+      sed "s/__YOUNGS__/${YOUNGS}/g; s/__POISSON__/${POISSON}/g; s/__DENSITY__/${DENSITY}/g" \
+          /data/patched.inp > "${WORKDIR}/job.inp"
       cd "${WORKDIR}"
       ccx job
-
+ 
+      # ── Add buckle step and rerun for buckling load factor ──
+      # Append a *BUCKLE step to the patched inp and run again
+      python3 - "${WORKDIR}/job.inp" "${WORKDIR}/job_buckle.inp" << 'BUCKLE_EOF'
+import sys
+with open(sys.argv[1]) as f:
+    lines = f.readlines()
+# Find *END STEP and insert *BUCKLE step before it
+out = []
+inserted = False
+for line in lines:
+    if line.strip().upper() == '*END STEP' and not inserted:
+        out.append('*STEP\n')
+        out.append('*BUCKLE\n')
+        out.append('4\n')
+        out.append('*BOUNDARY\n')
+        # Re-apply same boundary conditions by copying from original
+        in_bc = False
+        for l2 in lines:
+            if l2.strip().upper() == '*BOUNDARY':
+                in_bc = True
+                continue
+            if in_bc:
+                if l2.strip().startswith('*'):
+                    break
+                out.append(l2)
+        out.append('*NODE FILE, NSET=NALL\n')
+        out.append('U\n')
+        out.append('*END STEP\n')
+        inserted = True
+    out.append(line)
+with open(sys.argv[2], 'w') as f:
+    f.writelines(out)
+print('Buckle inp written')
+BUCKLE_EOF
+      ccx job_buckle 2>/dev/null || echo "Buckle step failed (non-critical)"
+ 
       cat > "${WORKDIR}/summary.json" << EOF
-      {
-        "material": "${MAT_NAME}",
-        "youngs_mpa": ${YOUNGS_MODULUS},
-        "poisson": ${POISSONS_RATIO},
-        "density_kg_m3": ${DENSITY},
-        "yield_mpa": ${YIELD_STRENGTH},
-        "cost_per_kg": ${COST_PER_KG}
-      }
+      {"material":"${MAT_NAME}","youngs_mpa":${YOUNGS},"poisson":${POISSON},"density_kg_m3":${DENSITY},"yield_mpa":${YIELD},"cost_per_kg":${COST}}
       EOF
-      echo "mat2 Done"
+      echo "mat2 done: ${MAT_NAME}"
     resource:
       cpu:
         cores: {{ $cores }}
@@ -138,7 +286,7 @@ jobs:
     policy:
       timeout:
         execute: {{ $timeout }}
-
+ 
   # ════════════════════════════════════════════════════════════
   # REPORT
   # ════════════════════════════════════════════════════════════
@@ -153,33 +301,78 @@ jobs:
     script: |
       #!/bin/sh
       set -e
-      pip install --quiet matplotlib
-
+      pip install --quiet matplotlib numpy
+ 
       python3 - <<'PYEOF'
       import json, os, glob, re, math
+      import numpy as np
       import matplotlib
       matplotlib.use('Agg')
       import matplotlib.pyplot as plt
-
+      import matplotlib.patches as mpatches
+      from mpl_toolkits.mplot3d import Axes3D
+      from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+      from matplotlib.colors import Normalize, TwoSlopeNorm
+      from matplotlib.cm import ScalarMappable
+      import matplotlib.cm as cm
+      import matplotlib.gridspec as gridspec
+ 
       APPLIED_FORCE_N = float("{{ $appliedForceN }}")
-
+      os.makedirs("/data/report", exist_ok=True)
+ 
+      # ════════════════════════════════════════════════════════
+      # UNIT DETECTION
+      # Sniffs .frd node coords + .dat stress magnitudes to
+      # determine SI (m/N/Pa) vs engineering (mm/N/MPa).
+      # Returns stress_scale, disp_scale, length_scale, unit_label
+      # ════════════════════════════════════════════════════════
+      def detect_units(dat_path, frd_path):
+          max_coord = 0.0
+          if os.path.exists(frd_path):
+              with open(frd_path, errors="ignore") as f:
+                  for line in f:
+                      l = line.strip()
+                      if l.startswith("-1") and len(l.split()) >= 5:
+                          try:
+                              v = l.split()
+                              max_coord = max(max_coord, max(abs(float(v[i])) for i in range(2,5)))
+                          except:
+                              pass
+          max_stress_raw = 0.0
+          if os.path.exists(dat_path):
+              with open(dat_path) as f:
+                  in_stress = False
+                  for line in f:
+                      l = line.strip()
+                      if "stress" in l.lower():
+                          in_stress = True
+                          continue
+                      if in_stress and l:
+                          for p in l.split():
+                              try:
+                                  v = abs(float(p))
+                                  if v > max_stress_raw:
+                                      max_stress_raw = v
+                              except:
+                                  pass
+          if max_coord < 5.0 and max_stress_raw > 1e5:
+              # SI: metres, Pascals
+              # stress_scale=1e6 → MPa, disp_scale=1000 → mm, length_scale=1000 → mm labels
+              return 1e6, 1000.0, 1000.0, "m/N/Pa"
+          else:
+              # Engineering: mm, MPa already
+              return 1.0, 1.0, 1.0, "mm/N/MPa"
+ 
+      # ════════════════════════════════════════════════════════
+      # PARSE .dat — displacements and stresses
+      # ════════════════════════════════════════════════════════
       def parse_dat(dat_path):
-          """
-          Parse CalculiX .dat file.
-          - Displacements: vx,vy,vz in meters
-          - Stresses: sxx,syy,szz,sxy,sxz,syz in Pa at each element integration point
-          Returns:
-            displacements: list of (node, vx, vy, vz)
-            stresses: list of (elem, pt, sxx, syy, szz, sxy, sxz, syz)
-          """
           displacements = []
           stresses      = []
           if not os.path.exists(dat_path):
               return displacements, stresses
-
           with open(dat_path) as f:
               lines = f.readlines()
-
           mode = None
           for line in lines:
               l = line.strip()
@@ -191,431 +384,1862 @@ jobs:
               if "stresses" in l.lower():
                   mode = "stress"
                   continue
-              # parse displacement line: node vx vy vz
               if mode == "disp":
                   parts = l.split()
                   if len(parts) == 4:
                       try:
-                          node = int(parts[0])
-                          vx, vy, vz = float(parts[1]), float(parts[2]), float(parts[3])
-                          displacements.append((node, vx, vy, vz))
+                          displacements.append((int(parts[0]),
+                              float(parts[1]), float(parts[2]), float(parts[3])))
                       except:
                           pass
-              # parse stress line: elem pt sxx syy szz sxy sxz syz
               elif mode == "stress":
                   parts = l.split()
                   if len(parts) == 8:
                       try:
-                          elem = int(parts[0])
-                          pt   = int(parts[1])
-                          sxx, syy, szz = float(parts[2]), float(parts[3]), float(parts[4])
-                          sxy, sxz, syz = float(parts[5]), float(parts[6]), float(parts[7])
-                          stresses.append((elem, pt, sxx, syy, szz, sxy, sxz, syz))
+                          stresses.append((int(parts[0]), int(parts[1]),
+                              float(parts[2]), float(parts[3]), float(parts[4]),
+                              float(parts[5]), float(parts[6]), float(parts[7])))
                       except:
                           pass
-
           return displacements, stresses
-
+ 
+      # ════════════════════════════════════════════════════════
+      # PARSE .frd — nodes and elements
+      # ════════════════════════════════════════════════════════
+      def parse_frd(frd_path):
+          nodes    = {}
+          elements = {}
+          if not os.path.exists(frd_path):
+              return nodes, elements
+          with open(frd_path, errors="ignore") as f:
+              lines = f.readlines()
+          mode = None
+          e_id = None
+          for line in lines:
+              l = line.strip()
+              if l.startswith("2C"):
+                  mode = "nodes"; continue
+              if l.startswith("3C"):
+                  mode = "elems"; continue
+              if l.startswith("-3"):
+                  mode = None;    continue
+              if mode == "nodes" and l.startswith("-1"):
+                  parts = l.split()
+                  if len(parts) >= 5:
+                      try:
+                          nodes[int(parts[1])] = (float(parts[2]), float(parts[3]), float(parts[4]))
+                      except:
+                          pass
+              elif mode == "elems":
+                  if l.startswith("-1"):
+                      parts = l.split()
+                      if len(parts) >= 3:
+                          try:
+                              e_id = int(parts[1]); elements[e_id] = []
+                          except:
+                              pass
+                  elif l.startswith("-2") and e_id is not None:
+                      parts = l.split()
+                      try:
+                          elements[e_id].extend([int(p) for p in parts[1:]])
+                      except:
+                          pass
+          return nodes, elements
+ 
+      # ════════════════════════════════════════════════════════
+      # PARSE boundary nodes from .inp
+      # ════════════════════════════════════════════════════════
+      def parse_boundary_nodes(inp_path):
+          fixed_nodes = []
+          load_nodes  = []
+          if not os.path.exists(inp_path):
+              return fixed_nodes, load_nodes
+          with open(inp_path) as f:
+              inp = f.read()
+          bm = re.search(r'\*BOUNDARY\s*\n([\s\S]*?)(?=\*)', inp, re.IGNORECASE)
+          if bm:
+              for line in bm.group(1).splitlines():
+                  parts = line.strip().split(",")
+                  if parts and parts[0].strip().isdigit():
+                      fixed_nodes.append(int(parts[0].strip()))
+          cm = re.search(r'\*CLOAD\s*\n([\s\S]*?)(?=\*)', inp, re.IGNORECASE)
+          if cm:
+              for line in cm.group(1).splitlines():
+                  parts = line.strip().split(",")
+                  if parts and parts[0].strip().isdigit():
+                      load_nodes.append(int(parts[0].strip()))
+          return list(set(fixed_nodes)), list(set(load_nodes))
+ 
+      # ════════════════════════════════════════════════════════
+      # STRESS HELPERS
+      # ════════════════════════════════════════════════════════
       def von_mises(sxx, syy, szz, sxy, sxz, syz):
           return math.sqrt(0.5 * (
               (sxx-syy)**2 + (syy-szz)**2 + (szz-sxx)**2
               + 6*(sxy**2 + sxz**2 + syz**2)
           ))
-
-      def parse_frd_nodes(frd_path):
-          """Parse node coordinates from .frd file."""
-          nodes = {}
-          if not os.path.exists(frd_path):
-              return nodes
-          with open(frd_path, "r", errors="ignore") as f:
+ 
+      def principal_stresses(sxx, syy, szz, sxy, sxz, syz):
+          """Return (sigma1, sigma2, sigma3) sorted descending."""
+          S = np.array([
+              [sxx, sxy, sxz],
+              [sxy, syy, syz],
+              [sxz, syz, szz]
+          ])
+          eigvals = np.linalg.eigvalsh(S)
+          return tuple(sorted(eigvals, reverse=True))
+ 
+      # ════════════════════════════════════════════════════════
+      # VOLUME & MASS from hex elements
+      # Uses the scalar triple product of edge vectors to get
+      # the volume of each hexahedral element via decomposition
+      # into 5 tetrahedra (robust, no Jacobian inversion needed).
+      # Returns total_volume_m3 (in model units^3 / length_scale^3)
+      # ════════════════════════════════════════════════════════
+      def tet_volume(a, b, c, d):
+          """Volume of tetrahedron with vertices a,b,c,d."""
+          ab = (b[0]-a[0], b[1]-a[1], b[2]-a[2])
+          ac = (c[0]-a[0], c[1]-a[1], c[2]-a[2])
+          ad = (d[0]-a[0], d[1]-a[1], d[2]-a[2])
+          cross = (
+              ac[1]*ad[2] - ac[2]*ad[1],
+              ac[2]*ad[0] - ac[0]*ad[2],
+              ac[0]*ad[1] - ac[1]*ad[0]
+          )
+          return abs(ab[0]*cross[0] + ab[1]*cross[1] + ab[2]*cross[2]) / 6.0
+ 
+      def elem_volume(conn, nodes):
+          """
+          Compute element volume for:
+            C3D4  (4-node linear tet)    — 1 tet directly
+            C3D10 (10-node quadratic tet)— use corner nodes only (first 4)
+            C3D8  (8-node linear hex)    — 5-tet decomposition
+            C3D20 (20-node quadratic hex)— use corner nodes only (first 8)
+          """
+          n = len(conn)
+          try:
+              if n == 4 or n == 10:
+                  # Tet: use first 4 nodes (corner nodes for C3D10)
+                  v = [nodes[conn[i]] for i in range(4)]
+                  return tet_volume(v[0], v[1], v[2], v[3])
+              elif n >= 8:
+                  # Hex: 5-tet decomposition of first 8 corner nodes
+                  v = [nodes[conn[i]] for i in range(8)]
+                  return (
+                      tet_volume(v[0], v[1], v[3], v[4]) +
+                      tet_volume(v[1], v[2], v[3], v[6]) +
+                      tet_volume(v[1], v[4], v[5], v[6]) +
+                      tet_volume(v[3], v[4], v[6], v[7]) +
+                      tet_volume(v[1], v[3], v[4], v[6])
+                  )
+              else:
+                  return 0.0
+          except KeyError:
+              return 0.0
+ 
+      def compute_mass(nodes, elements, density_kg_m3, length_scale):
+          """
+          Sum hex element volumes (in model units), convert to m³,
+          multiply by density to get mass in kg.
+          length_scale: multiply model coords by this to get mm,
+                        so divide by 1000 to get m.
+          """
+          total_vol_model = sum(
+              elem_volume(conn, nodes)
+              for conn in elements.values()
+          )
+          # Convert model units → m³
+          # If mm/N/MPa: length_scale=1, coords in mm → divide by 1000³
+          # If m/N/Pa:   length_scale=1000, coords already in m → no conversion needed
+          if length_scale == 1.0:
+              vol_m3 = total_vol_model / 1e9   # mm³ → m³
+          else:
+              vol_m3 = total_vol_model          # already m³
+          mass_kg = vol_m3 * density_kg_m3
+          return mass_kg, vol_m3
+ 
+      # ════════════════════════════════════════════════════════
+      # STRAIN ENERGY
+      # For linear elastic: U_elem = (σ_vm² / 2E) * V_elem
+      # Total compliance index C = U_total / F  (J/N = m)
+      # Lower C → stiffer structure for same load
+      # ════════════════════════════════════════════════════════
+      def compute_strain_energy(stresses, elements, nodes,
+                                youngs_mpa, stress_scale, length_scale):
+          """
+          Returns (total_strain_energy_J, compliance_index_m,
+                   elem_energy dict for heatmap)
+          """
+          E_pa = youngs_mpa * 1e6   # MPa → Pa
+          elem_vm2 = {}
+          for s in stresses:
+              eid = s[0]
+              vm  = von_mises(s[2], s[3], s[4], s[5], s[6], s[7]) / stress_scale  # MPa
+              elem_vm2.setdefault(eid, []).append(vm * vm)
+          elem_avg_vm2 = {eid: sum(v)/len(v) for eid, v in elem_vm2.items()}
+ 
+          total_U = 0.0
+          elem_energy = {}
+          for eid, conn in elements.items():
+              vol_model = elem_volume(conn, nodes)
+              if length_scale == 1.0:
+                  vol_m3 = vol_model / 1e9
+              else:
+                  vol_m3 = vol_model
+              vm2_mpa2 = elem_avg_vm2.get(eid, 0.0)
+              vm2_pa2  = vm2_mpa2 * 1e12    # MPa² → Pa²
+              U_elem   = (vm2_pa2 / (2.0 * E_pa)) * vol_m3   # J
+              total_U += U_elem
+              elem_energy[eid] = U_elem
+ 
+          compliance = total_U / APPLIED_FORCE_N if APPLIED_FORCE_N > 0 else None
+          return total_U, compliance, elem_energy
+ 
+      # ════════════════════════════════════════════════════════
+      # MESH QUALITY CHECK
+      # If the top-N Von Mises values are all identical (within
+      # 0.01%) the mesh is too coarse to resolve the gradient.
+      # ════════════════════════════════════════════════════════
+      def check_mesh_quality(top_locs, stresses, stress_scale):
+          flags = []
+          if len(top_locs) >= 3:
+              vals = [loc['mises_mpa'] for loc in top_locs]
+              spread = max(vals) - min(vals)
+              if max(vals) > 0 and spread / max(vals) < 0.0001:
+                  flags.append(
+                      'CAUTION: Top stress locations are identical — mesh may be too '
+                      'coarse to resolve stress gradient. Consider refining the mesh.'
+                  )
+          if stresses:
+              n_unique_elems = len(set(s[0] for s in stresses))
+              if n_unique_elems < 10:
+                  flags.append(
+                      'WARNING: Very few elements (' + str(n_unique_elems) +
+                      ') with stress data — results may not be reliable.'
+                  )
+          return flags
+ 
+      # ════════════════════════════════════════════════════════
+      # REACTION FORCES
+      # CalculiX writes reaction forces to .dat when *NODE PRINT
+      # includes RF. We also parse from the forces section.
+      # Returns dict: {node_id: (rx, ry, rz)} and sum vector
+      # ════════════════════════════════════════════════════════
+      def parse_reaction_forces(dat_path):
+          reactions = {}
+          if not os.path.exists(dat_path):
+              return reactions
+          with open(dat_path) as f:
               lines = f.readlines()
-          in_nodes = False
+          in_rf = False
           for line in lines:
               l = line.strip()
-              if l.startswith("2C"):
-                  in_nodes = True
+              if not l:
                   continue
-              if l.startswith("-3") and in_nodes:
-                  break
-              if in_nodes and l.startswith("-1"):
+              if 'reaction' in l.lower() and 'force' in l.lower():
+                  in_rf = True
+                  continue
+              if in_rf:
+                  if l.startswith('*') or (l and l[0].isalpha() and '=' not in l):
+                      in_rf = False
+                      continue
                   parts = l.split()
-                  if len(parts) >= 5:
+                  if len(parts) == 4:
                       try:
-                          nid = int(parts[1])
-                          x, y, z = float(parts[2]), float(parts[3]), float(parts[4])
-                          nodes[nid] = (x, y, z)
-                      except:
+                          nid = int(parts[0])
+                          reactions[nid] = (float(parts[1]),
+                                            float(parts[2]),
+                                            float(parts[3]))
+                      except ValueError:
                           pass
-          return nodes
-
-      # ── Collect results ──────────────────────────────────────
+          return reactions
+ 
+      def summarise_reactions(reactions, stress_scale, disp_scale):
+          """
+          Returns dict with total reaction force components,
+          magnitude, and per-axis breakdown.
+          Scales from model units to N.
+          """
+          if not reactions:
+              return None
+          # In mm/N/MPa: forces are already in N
+          # In m/N/Pa:   forces are in N (CCX always outputs in model force units)
+          rx = sum(v[0] for v in reactions.values())
+          ry = sum(v[1] for v in reactions.values())
+          rz = sum(v[2] for v in reactions.values())
+          mag = math.sqrt(rx**2 + ry**2 + rz**2)
+          return {
+              'rx': round(rx, 4), 'ry': round(ry, 4), 'rz': round(rz, 4),
+              'magnitude': round(mag, 4),
+              'n_nodes': len(reactions),
+              'max_node_force': round(max(
+                  math.sqrt(v[0]**2+v[1]**2+v[2]**2)
+                  for v in reactions.values()
+              ), 4) if reactions else 0
+          }
+ 
+      # ════════════════════════════════════════════════════════
+      # SAFETY MARGIN MAP
+      # Computes per-element FoS across the whole mesh.
+      # Returns: margin dict, percentage stats
+      # ════════════════════════════════════════════════════════
+      def compute_safety_margin_map(stresses, yield_mpa, stress_scale):
+          """
+          Per-element average Von Mises FoS.
+          Returns (elem_fos dict, stats dict)
+          """
+          elem_vm = {}
+          for s in stresses:
+              eid = s[0]
+              vm  = von_mises(s[2],s[3],s[4],s[5],s[6],s[7]) / stress_scale
+              elem_vm.setdefault(eid, []).append(vm)
+          elem_fos = {}
+          for eid, vms in elem_vm.items():
+              avg_vm = sum(vms) / len(vms)
+              elem_fos[eid] = yield_mpa / avg_vm if avg_vm > 0 else 999.0
+ 
+          total = len(elem_fos)
+          if total == 0:
+              return elem_fos, {}
+ 
+          n_critical = sum(1 for f in elem_fos.values() if f < 1.0)
+          n_warning  = sum(1 for f in elem_fos.values() if 1.0 <= f < 1.5)
+          n_caution  = sum(1 for f in elem_fos.values() if 1.5 <= f < 2.0)
+          n_safe     = sum(1 for f in elem_fos.values() if f >= 2.0)
+          avg_fos    = sum(elem_fos.values()) / total
+ 
+          stats = {
+              'total_elements':   total,
+              'pct_critical':     round(100*n_critical/total, 1),
+              'pct_warning':      round(100*n_warning/total,  1),
+              'pct_caution':      round(100*n_caution/total,  1),
+              'pct_safe':         round(100*n_safe/total,     1),
+              'avg_fos':          round(avg_fos, 3),
+              'min_fos':          round(min(elem_fos.values()), 3),
+          }
+          return elem_fos, stats
+ 
+      def plot_safety_margin_map(elem_fos, elements, nodes, mat_name, filename):
+          """Render a FoS heatmap on the mesh geometry."""
+          if not elem_fos or not nodes or not elements:
+              return False
+          aspect, fw, (x0,x1),(y0,y1),(z0,z1) = get_aspect_and_figsize(nodes)
+          fig = plt.figure(figsize=(fw, 6))
+          ax  = fig.add_subplot(111, projection='3d')
+ 
+          # Custom colormap: red<1.5, orange 1.5-2, green>=2
+          from matplotlib.colors import LinearSegmentedColormap, BoundaryNorm
+          cmap_sm = LinearSegmentedColormap.from_list(
+              'fos', ['#E74C3C','#E67E22','#F39C12','#27ae60','#1a7a3a'], N=256)
+          vals = list(elem_fos.values())
+          norm = Normalize(vmin=1.0, vmax=min(max(vals), 5.0))
+ 
+          for eid, conn in elements.items():
+              if len(conn) < 4:
+                  continue
+              fos_val = elem_fos.get(eid, 2.0)
+              color   = cmap_sm(norm(min(fos_val, 5.0)))
+              faces   = elem_faces(conn, nodes)
+              pc      = Poly3DCollection(faces, alpha=0.92)
+              pc.set_facecolor(color)
+              pc.set_edgecolor('k')
+              pc.set_linewidth(0.15)
+              ax.add_collection3d(pc)
+ 
+          setup_ax3d(ax, aspect, ((x0,x1),(y0,y1),(z0,z1)))
+          ax.set_title(mat_name + '\nSafety Margin Map (FoS per element)',
+                       fontsize=10, fontweight='bold')
+          sm2 = ScalarMappable(cmap=cmap_sm, norm=norm)
+          sm2.set_array([])
+          cb = fig.colorbar(sm2, ax=ax, shrink=0.5, pad=0.08)
+          cb.set_label('Factor of Safety', fontsize=8)
+          cb.ax.axhline(y=norm(1.5), color='orange', linewidth=2)
+          cb.ax.axhline(y=norm(2.0), color='green',  linewidth=2)
+          plt.tight_layout()
+          plt.savefig(filename, dpi=150, bbox_inches='tight')
+          plt.close()
+          return True
+ 
+      # ════════════════════════════════════════════════════════
+      # STRESS GRADIENT AT CONCENTRATION
+      # Measures how quickly stress decays from the hot spot.
+      # Uses the top stress elements sorted by distance from
+      # the peak element centroid.
+      # Returns gradient dict with decay rate in MPa/mm
+      # ════════════════════════════════════════════════════════
+      def compute_stress_gradient(stresses, elements, nodes, stress_scale):
+          """
+          Finds the hot spot element centroid, then for all other
+          elements computes (distance, avg_vm_stress).
+          Fits a linear decay rate in the near field (within 3x
+          element size of the hot spot).
+          Returns dict with gradient info.
+          """
+          if not stresses or not elements or not nodes:
+              return None
+ 
+          # Build element centroids
+          def elem_centroid(conn):
+              pts = [nodes[n] for n in conn[:min(len(conn),8)] if n in nodes]
+              if not pts: return None
+              return tuple(sum(p[i] for p in pts)/len(pts) for i in range(3))
+ 
+          elem_vm_avg = {}
+          for s in stresses:
+              eid = s[0]
+              vm  = von_mises(s[2],s[3],s[4],s[5],s[6],s[7]) / stress_scale
+              elem_vm_avg.setdefault(eid, []).append(vm)
+          elem_vm_avg = {eid: sum(v)/len(v) for eid, v in elem_vm_avg.items()}
+ 
+          if not elem_vm_avg:
+              return None
+ 
+          # Hot spot element
+          hot_eid  = max(elem_vm_avg, key=elem_vm_avg.get)
+          hot_vm   = elem_vm_avg[hot_eid]
+          hot_conn = elements.get(hot_eid, [])
+          hot_cen  = elem_centroid(hot_conn)
+          if not hot_cen:
+              return None
+ 
+          # Estimate element size from hot spot element
+          if len(hot_conn) >= 4:
+              pts = [nodes[n] for n in hot_conn[:4] if n in nodes]
+              if len(pts) >= 2:
+                  elem_size = max(
+                      math.sqrt(sum((pts[0][i]-pts[1][i])**2 for i in range(3))),
+                      1e-9
+                  )
+              else:
+                  elem_size = 5.0
+          else:
+              elem_size = 5.0
+ 
+          near_field_r = elem_size * 8   # look within 8 element sizes
+ 
+          # Collect (distance, stress) pairs in near field
+          pts_data = []
+          for eid, vm in elem_vm_avg.items():
+              if eid == hot_eid:
+                  continue
+              conn = elements.get(eid, [])
+              cen  = elem_centroid(conn)
+              if not cen:
+                  continue
+              dist = math.sqrt(sum((cen[i]-hot_cen[i])**2 for i in range(3)))
+              if dist <= near_field_r:
+                  pts_data.append((dist, vm))
+ 
+          if len(pts_data) < 3:
+              return {
+                  'hot_spot_mpa':  round(hot_vm, 4),
+                  'gradient_mpa_per_mm': None,
+                  'decay_length_mm': None,
+                  'near_field_elements': len(pts_data),
+                  'note': 'Insufficient near-field elements for gradient fit'
+              }
+ 
+          pts_data.sort(key=lambda x: x[0])
+ 
+          # Linear fit: stress = hot_vm - gradient * distance
+          dists  = [p[0] for p in pts_data]
+          strs   = [p[1] for p in pts_data]
+          n      = len(dists)
+          sum_d  = sum(dists)
+          sum_s  = sum(strs)
+          sum_ds = sum(d*s for d,s in zip(dists,strs))
+          sum_d2 = sum(d*d for d in dists)
+          denom  = n*sum_d2 - sum_d**2
+          if abs(denom) < 1e-12:
+              gradient = 0.0
+          else:
+              gradient = -(n*sum_ds - sum_d*sum_s) / denom  # MPa/mm, positive = decay
+ 
+          # Decay length: distance at which stress drops to 50% of hot spot
+          # stress(x) = hot_vm - gradient*x → x_50 = (hot_vm*0.5) / gradient
+          decay_length = (hot_vm * 0.5 / gradient) if gradient > 0 else None
+ 
+          # Characterise: steep (>5 MPa/mm) = localised; shallow (<1) = widespread
+          if gradient > 5.0:
+              character = 'Highly localised — stress confined to small zone near hot spot'
+          elif gradient > 1.0:
+              character = 'Moderately localised — stress gradient is healthy'
+          elif gradient > 0.1:
+              character = 'Shallow gradient — elevated stress over large volume'
+          else:
+              character = 'Very shallow — large portion of part under high stress'
+ 
+          return {
+              'hot_spot_mpa':         round(hot_vm, 4),
+              'gradient_mpa_per_mm':  round(gradient, 4) if gradient else None,
+              'decay_length_mm':      round(decay_length, 2) if decay_length else None,
+              'near_field_elements':  n,
+              'character':            character
+          }
+ 
+      # ════════════════════════════════════════════════════════
+      # FATIGUE LIFE ESTIMATE
+      # Uses Goodman mean stress correction and Basquin law.
+      # Inputs: max stress (from FEA), load ratio R (from values),
+      #         material UTS estimated as ~3.45 * yield (steel)
+      #         or ~3.0 * yield (aluminium) if not provided.
+      # Basquin: N = (sigma_f' / sigma_a)^(1/b)
+      #   sigma_f' ≈ UTS * 1.09 (fatigue strength coefficient)
+      #   b ≈ -0.085 (fatigue strength exponent, typical metals)
+      # Goodman: sigma_a / Se + sigma_m / UTS = 1
+      #   → Se_eff = sigma_a / (1 - sigma_m/UTS)
+      # ════════════════════════════════════════════════════════
+      def estimate_fatigue_life(max_stress_mpa, yield_mpa,
+                                load_ratio_r=0.1,
+                                b_exponent=-0.085):
+          """
+          Estimates fatigue life in cycles for fully-reversed
+          and pulsating loads.
+ 
+          load_ratio_r: min_stress / max_stress (0.1 = pulsating,
+                        -1 = fully reversed, 0 = zero-to-max)
+          Returns dict with fatigue results.
+          """
+          if not max_stress_mpa or max_stress_mpa <= 0:
+              return None
+ 
+          # Estimate UTS from yield (conservative)
+          # Steel: UTS ≈ 1.25 * yield; Al: ≈ 1.3 * yield
+          uts_mpa = yield_mpa * 1.3
+ 
+          # Stress amplitude and mean
+          sigma_max = max_stress_mpa
+          sigma_min = sigma_max * load_ratio_r
+          sigma_a   = (sigma_max - sigma_min) / 2.0
+          sigma_m   = (sigma_max + sigma_min) / 2.0
+ 
+          # Goodman correction — effective fully-reversed amplitude
+          if sigma_m >= uts_mpa:
+              return {
+                  'status': 'CRITICAL',
+                  'note': 'Mean stress exceeds UTS — static fracture before fatigue',
+                  'sigma_a_mpa': round(sigma_a, 2),
+                  'sigma_m_mpa': round(sigma_m, 2),
+                  'uts_est_mpa': round(uts_mpa, 1),
+              }
+ 
+          sigma_a_goodman = sigma_a / (1.0 - sigma_m / uts_mpa)
+ 
+          # Endurance limit estimate: Se ≈ 0.504 * UTS (for steels, Shigley)
+          # For aluminium: no true endurance limit, use Se at 5e8 cycles
+          Se = min(0.504 * uts_mpa, 700.0)   # cap at 700 MPa (steel limit)
+ 
+          # Basquin: N = (sigma_f' / sigma_a)^(1/b)
+          # sigma_f' ≈ 1.09 * UTS
+          sigma_f_prime = 1.09 * uts_mpa
+ 
+          if sigma_a_goodman <= 0:
+              life_cycles = float('inf')
+          else:
+              try:
+                  life_cycles = (sigma_f_prime / sigma_a_goodman) ** (1.0 / b_exponent)
+                  life_cycles = max(1.0, life_cycles)
+              except (ZeroDivisionError, ValueError):
+                  life_cycles = None
+ 
+          # Classify life
+          if life_cycles is None:
+              life_status = 'Unable to compute'
+          elif life_cycles < 1e3:
+              life_status = 'CRITICAL: Low-cycle fatigue regime (<1,000 cycles)'
+          elif life_cycles < 1e4:
+              life_status = 'WARNING: Short fatigue life (1K–10K cycles)'
+          elif life_cycles < 1e5:
+              life_status = 'CAUTION: Limited fatigue life (10K–100K cycles)'
+          elif life_cycles < 1e6:
+              life_status = 'Moderate fatigue life (100K–1M cycles)'
+          elif life_cycles < 5e8:
+              life_status = 'Good fatigue life (>1M cycles)'
+          else:
+              life_status = 'Below endurance limit — infinite life predicted'
+ 
+          # Safety factor against fatigue at this stress level
+          fos_fatigue = Se / sigma_a_goodman if sigma_a_goodman > 0 else None
+ 
+          return {
+              'status':            life_status,
+              'life_cycles':       life_cycles,
+              'sigma_a_mpa':       round(sigma_a, 3),
+              'sigma_m_mpa':       round(sigma_m, 3),
+              'sigma_a_goodman':   round(sigma_a_goodman, 3),
+              'uts_est_mpa':       round(uts_mpa, 1),
+              'Se_mpa':            round(Se, 1),
+              'fos_fatigue':       round(fos_fatigue, 3) if fos_fatigue else None,
+              'load_ratio_r':      load_ratio_r,
+          }
+ 
+      # ════════════════════════════════════════════════════════
+      # BUCKLING LOAD FACTOR
+      # Parses the eigenvalue from the buckle .dat file.
+      # CCX writes: "     1  <eigenvalue>" in the buckle output.
+      # Load factor = eigenvalue (multiply applied load by this
+      # to get the buckling load).
+      # ════════════════════════════════════════════════════════
+      def parse_buckling(dat_path):
+          """
+          Parse buckling eigenvalues from job_buckle.dat.
+          Returns list of (mode, load_factor) tuples.
+          """
+          buckle_dat = dat_path.replace('job.dat', 'job_buckle.dat')
+          if not os.path.exists(buckle_dat):
+              return []
+          results = []
+          with open(buckle_dat) as f:
+              lines = f.readlines()
+          in_buckle = False
+          for line in lines:
+              l = line.strip()
+              if 'eigenvalue' in l.lower() or 'buckling' in l.lower():
+                  in_buckle = True
+                  continue
+              if in_buckle and l:
+                  parts = l.split()
+                  if len(parts) == 2:
+                      try:
+                          mode = int(parts[0])
+                          lf   = float(parts[1])
+                          results.append((mode, round(lf, 4)))
+                      except ValueError:
+                          pass
+                  elif parts and parts[0].upper() in ('STEP', '*'):
+                      in_buckle = False
+          return results
+ 
+      # ════════════════════════════════════════════════════════
+      # GEOMETRY HELPERS
+      # ════════════════════════════════════════════════════════
+      def get_bounds(nodes):
+          xs = [c[0] for c in nodes.values()]
+          ys = [c[1] for c in nodes.values()]
+          zs = [c[2] for c in nodes.values()]
+          return (min(xs),max(xs)), (min(ys),max(ys)), (min(zs),max(zs))
+ 
+      def get_aspect_and_figsize(nodes):
+          (x0,x1),(y0,y1),(z0,z1) = get_bounds(nodes)
+          xr = max(x1-x0, 1e-9)
+          yr = max(y1-y0, 1e-9)
+          zr = max(z1-z0, 1e-9)
+          mr = max(xr, yr, zr)
+          aspect = [xr/mr, yr/mr, zr/mr]
+          ratio  = xr / max(yr, zr)
+          fw     = min(22, max(14, int(ratio*4+6)))
+          return aspect, fw, (x0,x1), (y0,y1), (z0,z1)
+ 
+      def elem_faces(conn, nodes):
+          """
+          Return renderable face lists for:
+            C3D4/C3D10 tet  — 4 triangular faces
+            C3D8/C3D20 hex  — 6 quad faces
+          Each face is a list of 3D coordinate tuples.
+          """
+          n = len(conn)
+          try:
+              if n == 4 or n == 10:
+                  # Tet: 4 triangular faces from corner nodes
+                  c = [conn[i] for i in range(4)]
+                  defs = [
+                      [c[0],c[1],c[2]],
+                      [c[0],c[1],c[3]],
+                      [c[1],c[2],c[3]],
+                      [c[0],c[2],c[3]],
+                  ]
+              else:
+                  # Hex: 6 quad faces from first 8 corner nodes
+                  c = [conn[i] for i in range(8)]
+                  defs = [
+                      [c[0],c[1],c[2],c[3]], [c[4],c[5],c[6],c[7]],
+                      [c[0],c[1],c[5],c[4]], [c[2],c[3],c[7],c[6]],
+                      [c[0],c[3],c[7],c[4]], [c[1],c[2],c[6],c[5]],
+                  ]
+              return [[nodes[nd] for nd in d if nd in nodes]
+                      for d in defs if all(nd in nodes for nd in d)]
+          except (KeyError, IndexError):
+              return []
+ 
+      def setup_ax3d(ax, aspect, bounds, elev=22, azim=-55):
+          (x0,x1),(y0,y1),(z0,z1) = bounds
+          ax.set_xlim(x0,x1); ax.set_ylim(y0,y1); ax.set_zlim(z0,z1)
+          ax.set_box_aspect(aspect)
+          ax.view_init(elev=elev, azim=azim)
+          ax.set_xlabel('X'); ax.set_ylabel('Y'); ax.set_zlabel('Z')
+ 
+      def draw_bcs(ax, nodes, fixed_nodes, load_nodes, max_r, applied_force_n):
+          for nid in fixed_nodes:
+              if nid in nodes:
+                  ax.scatter(*nodes[nid], c='blue', s=60, marker='^', zorder=5)
+          arrow = max_r * 0.22
+          for nid in load_nodes:
+              if nid in nodes:
+                  p = nodes[nid]
+                  ax.quiver(p[0], p[1], p[2]+arrow, 0, 0, -arrow,
+                            color='red', arrow_length_ratio=0.3, linewidth=1.2)
+          if load_nodes:
+              mid = load_nodes[len(load_nodes)//2]
+              if mid in nodes:
+                  p = nodes[mid]
+                  ax.text(p[0], p[1], p[2]+arrow*1.6,
+                          '{:,.0f} N'.format(applied_force_n),
+                          color='red', fontsize=7, ha='center', va='bottom')
+ 
+      def colormap_mesh(ax, elements, nodes, elem_scalar, cmap_name, norm):
+          cmap = cm.get_cmap(cmap_name)
+          for eid, conn in elements.items():
+              if len(conn) >= 4:
+                  val   = elem_scalar.get(eid, 0.0)
+                  color = cmap(norm(val))
+                  faces = elem_faces(conn, nodes)
+                  pc    = Poly3DCollection(faces, alpha=0.95)
+                  pc.set_facecolor(color)
+                  pc.set_edgecolor('k')
+                  pc.set_linewidth(0.2)
+                  ax.add_collection3d(pc)
+ 
+      def wire_mesh(ax, elements, nodes, alpha=0.18, fc='#4C72B0', ec='#1a237e'):
+          for eid, conn in elements.items():
+              if len(conn) >= 4:
+                  pc = Poly3DCollection(elem_faces(conn, nodes),
+                                        alpha=alpha, facecolor=fc,
+                                        edgecolor=ec, linewidth=0.5)
+                  ax.add_collection3d(pc)
+ 
+      def add_colorbar(fig, ax, cmap_name, norm, label):
+          sm = ScalarMappable(cmap=cm.get_cmap(cmap_name), norm=norm)
+          sm.set_array([])
+          cb = fig.colorbar(sm, ax=ax, shrink=0.5, pad=0.08)
+          cb.set_label(label, fontsize=8)
+          return cb
+ 
+      # ════════════════════════════════════════════════════════
+      # COMPREHENSIVE 3D FIGURE
+      # 4-panel figure per material:
+      #   Panel 1: Wireframe mesh + boundary conditions
+      #   Panel 2: Von Mises stress heatmap
+      #   Panel 3: Max principal stress σ1 heatmap
+      #   Panel 4: Displacement magnitude heatmap
+      # ════════════════════════════════════════════════════════
+      def make_comprehensive_diagram(nodes, elements, stresses, displacements,
+                                     fixed_nodes, load_nodes, applied_force_n,
+                                     mat_name, filename,
+                                     stress_scale, disp_scale, length_scale,
+                                     unit_label, elem_energy):
+          if not nodes or not elements:
+              return False
+ 
+          aspect, fw, (x0,x1), (y0,y1), (z0,z1) = get_aspect_and_figsize(nodes)
+          bounds = (x0,x1), (y0,y1), (z0,z1)
+          xr  = max(x1-x0, 1e-9)
+          yr  = max(y1-y0, 1e-9)
+          zr  = max(z1-z0, 1e-9)
+          max_r = max(xr, yr, zr)
+ 
+          fig = plt.figure(figsize=(fw*2, 10))
+          gs  = gridspec.GridSpec(2, 2, figure=fig,
+                                  hspace=0.35, wspace=0.25)
+ 
+          # ── Build per-element scalar maps ────────────────────
+          elem_vm   = {}
+          elem_sig1 = {}
+          for s in stresses:
+              eid = s[0]
+              vm  = von_mises(s[2],s[3],s[4],s[5],s[6],s[7]) / stress_scale
+              sig1, _, _ = principal_stresses(s[2],s[3],s[4],s[5],s[6],s[7])
+              sig1 /= stress_scale
+              elem_vm.setdefault(eid, []).append(vm)
+              elem_sig1.setdefault(eid, []).append(sig1)
+          elem_vm_avg   = {eid: sum(v)/len(v) for eid, v in elem_vm.items()}
+          elem_sig1_avg = {eid: sum(v)/len(v) for eid, v in elem_sig1.items()}
+ 
+          # Node displacement magnitudes
+          node_disp = {}
+          for nid, vx, vy, vz in displacements:
+              node_disp[nid] = math.sqrt(vx**2+vy**2+vz**2) * disp_scale
+          # Average disp per element from its nodes
+          elem_disp = {}
+          for eid, conn in elements.items():
+              vals = [node_disp[n] for n in conn if n in node_disp]
+              if vals:
+                  elem_disp[eid] = sum(vals)/len(vals)
+ 
+          def make_norm(d):
+              vals = list(d.values()) if d else [0.0, 1.0]
+              lo, hi = min(vals), max(vals)
+              if lo == hi:
+                  lo, hi = lo-0.5, hi+0.5
+              return Normalize(vmin=lo, vmax=hi)
+ 
+          norm_vm   = make_norm(elem_vm_avg)
+          norm_sig1 = make_norm(elem_sig1_avg)
+          norm_disp = make_norm(elem_disp)
+          norm_eng  = make_norm(elem_energy)
+ 
+          panel_data = [
+              (0, 0, 'BCs + Wireframe',    None,          None,       None),
+              (0, 1, 'Von Mises (MPa)',     elem_vm_avg,   'jet',      norm_vm),
+              (1, 0, 'σ1 Principal (MPa)',  elem_sig1_avg, 'RdBu_r',   norm_sig1),
+              (1, 1, 'Displacement (mm)',   elem_disp,     'plasma',   norm_disp),
+          ]
+ 
+          axes = []
+          for row, col, title, scalar, cmap_name, norm in panel_data:
+              ax = fig.add_subplot(gs[row, col], projection='3d')
+              axes.append(ax)
+              if scalar is None:
+                  wire_mesh(ax, elements, nodes)
+                  draw_bcs(ax, nodes, fixed_nodes, load_nodes, max_r, applied_force_n)
+                  ax.legend(
+                      handles=[mpatches.Patch(color='blue', label='Fixed'),
+                               mpatches.Patch(color='red',  label='Load')],
+                      fontsize=7, loc='upper left'
+                  )
+              else:
+                  colormap_mesh(ax, elements, nodes, scalar, cmap_name, norm)
+                  add_colorbar(fig, ax, cmap_name, norm,
+                               'MPa' if 'MPa' in title else 'mm')
+              setup_ax3d(ax, aspect, bounds)
+              ax.set_title(mat_name + '\n' + title, fontsize=9, fontweight='bold')
+ 
+          plt.suptitle('FEA Analysis — ' + mat_name + '  (' + unit_label + ')',
+                       fontsize=13, fontweight='bold', y=1.01)
+          plt.savefig(filename, dpi=150, bbox_inches='tight')
+          plt.close()
+          return True
+ 
+      # ════════════════════════════════════════════════════════
+      # BAR CHART HELPER
+      # ════════════════════════════════════════════════════════
+      def bar_chart(title, ylabel, values, names, filename,
+                    color, highlight_max=True, fmt='{:,.2f}'):
+          fig, ax = plt.subplots(figsize=(max(6, len(names)*1.8), 5))
+          best    = (values.index(max(values)) if highlight_max
+                     else values.index(min(values)))
+          colors  = ['#27ae60' if i == best else color
+                     for i in range(len(names))]
+          bars    = ax.bar(names, values, color=colors,
+                           edgecolor='black', linewidth=0.7)
+          ax.set_title(title, fontsize=13, fontweight='bold', pad=12)
+          ax.set_ylabel(ylabel)
+          ax.set_xlabel('Material')
+          ax.spines['top'].set_visible(False)
+          ax.spines['right'].set_visible(False)
+          for bar, val in zip(bars, values):
+              ax.text(bar.get_x() + bar.get_width()/2,
+                      bar.get_height()*1.01,
+                      fmt.format(val),
+                      ha='center', va='bottom',
+                      fontsize=9, fontweight='bold')
+          plt.tight_layout()
+          plt.savefig('/data/report/' + filename, dpi=150)
+          plt.close()
+ 
+      # ════════════════════════════════════════════════════════
+      # SPIDER / RADAR CHART — overall material comparison
+      # ════════════════════════════════════════════════════════
+      def radar_chart(names, metrics_dict, filename):
+          """
+          metrics_dict: {label: [val_mat1, val_mat2, ...]}
+          All values are normalised to [0,1] so high = better for all axes.
+          Axes where lower is better are inverted before normalisation.
+          """
+          labels = list(metrics_dict.keys())
+          N      = len(labels)
+          angles = [n/float(N)*2*math.pi for n in range(N)]
+          angles += angles[:1]
+ 
+          fig, ax = plt.subplots(figsize=(7, 7),
+                                  subplot_kw=dict(projection='polar'))
+          ax.set_theta_offset(math.pi/2)
+          ax.set_theta_direction(-1)
+          ax.set_thetagrids([a*180/math.pi for a in angles[:-1]], labels, fontsize=9)
+ 
+          palette = ['#1a237e', '#E74C3C', '#27ae60', '#E67E22',
+                     '#8172B2', '#64B5CD', '#F39C12']
+ 
+          for mi, name in enumerate(names):
+              vals = []
+              for label, series in metrics_dict.items():
+                  row = series[mi]
+                  all_v = series
+                  lo, hi = min(all_v), max(all_v)
+                  norm_v = (row - lo) / (hi - lo) if hi > lo else 0.5
+                  vals.append(norm_v)
+              vals += vals[:1]
+              color = palette[mi % len(palette)]
+              ax.plot(angles, vals, 'o-', linewidth=2, color=color, label=name)
+              ax.fill(angles, vals, alpha=0.15, color=color)
+ 
+          ax.set_ylim(0, 1)
+          ax.set_yticks([0.25, 0.5, 0.75, 1.0])
+          ax.set_yticklabels(['25%','50%','75%','100%'], fontsize=7)
+          ax.set_title('Material Comparison Radar\n(normalised, higher = better)',
+                       fontsize=12, fontweight='bold', pad=20)
+          ax.legend(loc='upper right', bbox_to_anchor=(1.35, 1.15), fontsize=9)
+          plt.tight_layout()
+          plt.savefig('/data/report/' + filename, dpi=150, bbox_inches='tight')
+          plt.close()
+ 
+      # ════════════════════════════════════════════════════════
+      # COLLECT AND ANALYSE RESULTS
+      # ════════════════════════════════════════════════════════
       results = []
-      for path in sorted(glob.glob("/data/results/*/summary.json")):
+      for path in sorted(glob.glob('/data/results/*/summary.json')):
           with open(path) as f:
               r = json.load(f)
-
+ 
           workdir  = os.path.dirname(path)
-          dat_path = os.path.join(workdir, "job.dat")
-          frd_path = os.path.join(workdir, "job.frd")
-
+          dat_path = os.path.join(workdir, 'job.dat')
+          frd_path = os.path.join(workdir, 'job.frd')
+          inp_path = os.path.join(workdir, 'job.inp')
+ 
+          stress_scale, disp_scale, length_scale, unit_label = \
+              detect_units(dat_path, frd_path)
+          print(r['material'] + ' units: ' + unit_label)
+ 
           displacements, stresses = parse_dat(dat_path)
-          nodes = parse_frd_nodes(frd_path)
-
-          max_stress_mpa  = None
-          max_disp_m      = None
-          failure_elem    = None
-          failure_pt      = None
-          top_stress_locs = []
-
+          nodes,         elements = parse_frd(frd_path)
+          fixed_nodes, load_nodes = parse_boundary_nodes(inp_path)
+ 
+          # ── Stress metrics ───────────────────────────────────
+          max_stress_mpa = None
+          max_sig1_mpa   = None
+          failure_elem   = None
+          failure_pt     = None
+          top_locs       = []
+ 
           if stresses:
-              # Calculate Von Mises for each integration point (stresses in Pa)
-              mises_list = []
-              for s in stresses:
-                  elem, pt, sxx, syy, szz, sxy, sxz, syz = s
-                  vm = von_mises(sxx, syy, szz, sxy, sxz, syz)
-                  mises_list.append((vm, elem, pt))
-
-              mises_list.sort(reverse=True)
-              max_vm_pa, failure_elem, failure_pt = mises_list[0]
-              max_stress_mpa = max_vm_pa / 1e6  # Pa to MPa
-
-              # Top 3 stress locations
-              for vm_pa, elem, pt in mises_list[:3]:
-                  top_stress_locs.append({
-                      "elem": elem,
-                      "integ_pt": pt,
-                      "mises_mpa": round(vm_pa / 1e6, 4),
-                  })
-
-          if displacements:
-              max_disp_m = max(
-                  math.sqrt(vx**2 + vy**2 + vz**2)
-                  for _, vx, vy, vz in displacements
+              mlist = sorted(
+                  [(von_mises(s[2],s[3],s[4],s[5],s[6],s[7]), s[0], s[1])
+                   for s in stresses],
+                  reverse=True
               )
-
-          # ── Derived metrics ──────────────────────────────────
-          fos              = None
-          force_to_yield_n = None
+              raw_vm, failure_elem, failure_pt = mlist[0]
+              max_stress_mpa = raw_vm / stress_scale
+              for raw, elem, pt in mlist[:3]:
+                  top_locs.append({'elem': elem, 'integ_pt': pt,
+                                   'mises_mpa': round(raw/stress_scale, 4)})
+              # Max principal stress
+              sig1_vals = [principal_stresses(s[2],s[3],s[4],s[5],s[6],s[7])[0]
+                           for s in stresses]
+              max_sig1_mpa = max(sig1_vals) / stress_scale
+ 
+          # ── Displacement metrics ─────────────────────────────
+          max_disp_mm = None
+          if displacements:
+              raw_disp    = max(math.sqrt(vx**2+vy**2+vz**2)
+                               for _,vx,vy,vz in displacements)
+              max_disp_mm = raw_disp * disp_scale
+ 
+          # ── FoS and Force to Yield ───────────────────────────
+          fos = None
+          ftf = None
           if max_stress_mpa and max_stress_mpa > 0:
-              fos = float(r["yield_mpa"]) / max_stress_mpa
-              force_to_yield_n = APPLIED_FORCE_N * fos
-
-          spec_stiff = float(r["youngs_mpa"]) / (float(r["density_kg_m3"]) / 1000)
-          swr        = float(r["yield_mpa"])  / (float(r["density_kg_m3"]) / 1000)
-          cost       = float(r["cost_per_kg"]) * float(r["density_kg_m3"])
-
+              fos = float(r['yield_mpa']) / max_stress_mpa
+              ftf = APPLIED_FORCE_N * fos
+ 
+          # ── Mass and Volume ──────────────────────────────────
+          mass_kg = None
+          vol_cm3 = None
+          if nodes and elements:
+              mass_kg, vol_m3 = compute_mass(
+                  nodes, elements,
+                  float(r['density_kg_m3']), length_scale
+              )
+              vol_cm3 = vol_m3 * 1e6   # m³ → cm³
+              print(r['material'] + ' volume=' + '{:.4f}'.format(vol_cm3)
+                    + ' cm3  mass=' + '{:.4f}'.format(mass_kg) + ' kg')
+ 
+          # ── Strain energy / compliance ───────────────────────
+          strain_energy_J  = None
+          compliance_mm    = None
+          elem_energy      = {}
+          if stresses and nodes and elements:
+              strain_energy_J, compliance_m, elem_energy = compute_strain_energy(
+                  stresses, elements, nodes,
+                  float(r['youngs_mpa']), stress_scale, length_scale
+              )
+              compliance_mm = compliance_m * 1000 if compliance_m is not None else None
+              print(r['material'] + ' strain_energy=' +
+                    '{:.6e}'.format(strain_energy_J) + ' J')
+ 
+          # ── Reaction forces ─────────────────────────────────
+          reactions    = parse_reaction_forces(dat_path)
+          reaction_sum = summarise_reactions(reactions, stress_scale, disp_scale)
+          if reaction_sum:
+              print(r['material'] + ' reactions: Rx=' +
+                    str(reaction_sum['rx']) + ' Ry=' + str(reaction_sum['ry']) +
+                    ' Rz=' + str(reaction_sum['rz']) + ' N')
+ 
+          # ── Safety margin map ────────────────────────────────
+          elem_fos_map, margin_stats = {}, {}
+          if stresses:
+              elem_fos_map, margin_stats = compute_safety_margin_map(
+                  stresses, float(r['yield_mpa']), stress_scale)
+              sm_file = '/data/report/sm_' + r['material'] + '.png'
+              plot_safety_margin_map(elem_fos_map, elements, nodes,
+                                     r['material'], sm_file)
+ 
+          # ── Stress gradient ──────────────────────────────────
+          stress_gradient = None
+          if stresses:
+              stress_gradient = compute_stress_gradient(
+                  stresses, elements, nodes, stress_scale)
+              if stress_gradient:
+                  print(r['material'] + ' gradient=' +
+                        str(stress_gradient.get('gradient_mpa_per_mm')) + ' MPa/mm')
+ 
+          # ── Fatigue life estimate ────────────────────────────
+          fatigue = None
+          if max_stress_mpa:
+              fatigue = estimate_fatigue_life(
+                  max_stress_mpa, float(r['yield_mpa']),
+                  load_ratio_r=0.1)   # pulsating load (0=zero-to-max, -1=fully reversed)
+              if fatigue:
+                  print(r['material'] + ' fatigue: ' + fatigue.get('status',''))
+ 
+          # ── Buckling load factor ─────────────────────────────
+          buckle_modes = parse_buckling(dat_path)
+          buckle_lf1   = buckle_modes[0][1] if buckle_modes else None
+          if buckle_lf1:
+              print(r['material'] + ' buckling LF1=' + str(buckle_lf1))
+ 
+          # ── Derived material indices ─────────────────────────
+          spec  = float(r['youngs_mpa'])  / (float(r['density_kg_m3'])/1000)
+          swr   = float(r['yield_mpa'])   / (float(r['density_kg_m3'])/1000)
+          cost  = float(r['cost_per_kg']) *  float(r['density_kg_m3'])
+          # Cost per kg for this part (if mass known)
+          part_cost = float(r['cost_per_kg']) * mass_kg if mass_kg else None
+ 
           # ── Structural flaw assessment ───────────────────────
           flaws = []
           if fos is not None:
-              if fos < 1.0:
-                  flaws.append("CRITICAL: Part already yielding under applied load (FoS < 1.0)")
-              elif fos < 1.5:
-                  flaws.append("WARNING: Factor of safety below minimum threshold of 1.5")
-              elif fos < 2.0:
-                  flaws.append("CAUTION: Factor of safety below recommended design target of 2.0")
-
-          if max_disp_m is not None:
-              disp_mm = max_disp_m * 1000
-              if disp_mm > 1.0:
-                  flaws.append("WARNING: Max displacement exceeds 1mm")
-              elif disp_mm > 0.5:
-                  flaws.append("CAUTION: Displacement approaching 0.5mm")
-
-          if len(top_stress_locs) > 1:
-              if top_stress_locs[0]["mises_mpa"] > 1.5 * top_stress_locs[1]["mises_mpa"]:
-                  flaws.append("Stress concentration detected at element " + str(top_stress_locs[0]["elem"]))
-
+              if   fos < 1.0: flaws.append('CRITICAL: Part yielding under load (FoS < 1.0)')
+              elif fos < 1.5: flaws.append('WARNING: FoS below minimum of 1.5')
+              elif fos < 2.0: flaws.append('CAUTION: FoS below target of 2.0')
+          if max_disp_mm is not None:
+              threshold = 10.0 if unit_label == 'mm/N/MPa' else 1.0
+              if   max_disp_mm > threshold*2: flaws.append('WARNING: Very large displacement')
+              elif max_disp_mm > threshold:   flaws.append('CAUTION: Large displacement')
+          if len(top_locs) > 1 and top_locs[0]['mises_mpa'] > 1.5*top_locs[1]['mises_mpa']:
+              flaws.append('Stress concentration at element ' + str(top_locs[0]['elem']))
+          # Mesh quality flags (new in v9)
+          flaws += check_mesh_quality(top_locs, stresses, stress_scale)
+      # ════════════════════════════════════════════════════════
+      # ANALYTICAL VALIDATION CHECK
+      # Compares FEA result against Euler-Bernoulli beam theory.
+      # Works for any model that has *VALIDATION comments in the
+      # .inp file specifying sigma_nom_mpa and kt.
+      # Also does a basic energy balance check.
+      # ════════════════════════════════════════════════════════
+      def run_validation(inp_path, max_stress_mpa, max_disp_mm,
+                         strain_energy_J, youngs_mpa, applied_force_n,
+                         stress_scale, disp_scale):
+          """
+          Parses analytical reference values from comments in the .inp file.
+          Expected comment format (anywhere in the file):
+            ** VALIDATION: sigma_nom=54.0 kt=2.12 sigma_peak=114.4
+            ** VALIDATION: tip_disp_steel=0.064
+          Returns a dict of validation results.
+          """
+          results = {}
+          if not os.path.exists(inp_path):
+              return results
+ 
+          sigma_nom_ref  = None
+          sigma_peak_ref = None
+          kt_ref         = None
+          tip_disp_ref   = None
+ 
+          with open(inp_path) as f:
+              for line in f:
+                  l = line.strip()
+                  if '** VALIDATION:' in l:
+                      # Parse key=value pairs
+                      parts = l.replace('** VALIDATION:', '').strip().split()
+                      for p in parts:
+                          if '=' in p:
+                              k, v = p.split('=', 1)
+                              try:
+                                  val = float(v)
+                                  if k == 'sigma_nom':   sigma_nom_ref  = val
+                                  if k == 'sigma_peak':  sigma_peak_ref = val
+                                  if k == 'kt':          kt_ref         = val
+                                  if k == 'tip_disp':    tip_disp_ref   = val
+                              except ValueError:
+                                  pass
+ 
+          checks = []
+ 
+          # Check 1: stress within expected range
+          if sigma_nom_ref and max_stress_mpa:
+              ratio = max_stress_mpa / sigma_nom_ref
+              if ratio < 0.8:
+                  checks.append({
+                      'name':   'Stress vs Nominal',
+                      'status': 'WARNING',
+                      'detail': f'FEA stress {max_stress_mpa:.1f} MPa is '
+                                f'{ratio:.2f}x nominal {sigma_nom_ref:.1f} MPa — '
+                                f'lower than expected, check BCs or mesh'
+                  })
+              elif sigma_peak_ref and max_stress_mpa < sigma_nom_ref * 0.9:
+                  checks.append({
+                      'name':   'Stress vs Nominal',
+                      'status': 'CAUTION',
+                      'detail': f'FEA stress {max_stress_mpa:.1f} MPa near nominal '
+                                f'{sigma_nom_ref:.1f} MPa — mesh may be too coarse '
+                                f'to capture stress concentration'
+                  })
+              elif sigma_peak_ref and max_stress_mpa > sigma_peak_ref * 1.5:
+                  checks.append({
+                      'name':   'Stress vs Peak',
+                      'status': 'CAUTION',
+                      'detail': f'FEA stress {max_stress_mpa:.1f} MPa exceeds '
+                                f'analytical peak {sigma_peak_ref:.1f} MPa by '
+                                f'{(max_stress_mpa/sigma_peak_ref-1)*100:.0f}% — '
+                                f'possible mesh singularity near boundary'
+                  })
+              else:
+                  lo = sigma_nom_ref
+                  hi = sigma_peak_ref if sigma_peak_ref else sigma_nom_ref * 3
+                  checks.append({
+                      'name':   'Stress range check',
+                      'status': 'PASS',
+                      'detail': f'FEA {max_stress_mpa:.1f} MPa within expected '
+                                f'range [{lo:.1f}, {hi:.1f}] MPa ✓'
+                  })
+ 
+          # Check 2: displacement sign and magnitude
+          if tip_disp_ref and max_disp_mm:
+              ratio = max_disp_mm / tip_disp_ref
+              if 0.5 <= ratio <= 2.0:
+                  checks.append({
+                      'name':   'Displacement check',
+                      'status': 'PASS',
+                      'detail': f'FEA {max_disp_mm:.4f} mm vs reference '
+                                f'{tip_disp_ref:.4f} mm (ratio {ratio:.2f}) ✓'
+                  })
+              else:
+                  checks.append({
+                      'name':   'Displacement check',
+                      'status': 'WARNING',
+                      'detail': f'FEA {max_disp_mm:.4f} mm vs reference '
+                                f'{tip_disp_ref:.4f} mm (ratio {ratio:.2f}) — '
+                                f'check applied force, BCs, and Young's modulus'
+                  })
+ 
+          # Check 3: energy balance — strain energy should be positive and physical
+          if strain_energy_J is not None:
+              if strain_energy_J <= 0:
+                  checks.append({
+                      'name':   'Energy balance',
+                      'status': 'WARNING',
+                      'detail': 'Strain energy is zero or negative — solver may not have converged'
+                  })
+              elif applied_force_n > 0 and max_disp_mm:
+                  # Upper bound: U ≤ 0.5 * F * δ_max (equality for single-point load)
+                  u_upper = 0.5 * applied_force_n * (max_disp_mm / 1000.0)
+                  if strain_energy_J > u_upper * 10:
+                      checks.append({
+                          'name':   'Energy balance',
+                          'status': 'CAUTION',
+                          'detail': f'Strain energy {strain_energy_J:.4e} J seems high '
+                                    f'vs work estimate {u_upper:.4e} J — check units'
+                      })
+                  else:
+                      checks.append({
+                          'name':   'Energy balance',
+                          'status': 'PASS',
+                          'detail': f'Strain energy {strain_energy_J:.4e} J '
+                                    f'consistent with applied work ✓'
+                      })
+ 
+          # Check 4: element type detected
+          if not checks:
+              checks.append({
+                  'name':   'No analytical reference',
+                  'status': 'INFO',
+                  'detail': 'Add ** VALIDATION: sigma_nom=X kt=Y tip_disp=Z '
+                            'comments to your .inp file to enable analytical checks'
+              })
+ 
+          return checks
+ 
           if not flaws:
-              flaws.append("No structural concerns detected under applied load")
-
-          r["max_stress_mpa"]    = round(max_stress_mpa, 4)  if max_stress_mpa  else None
-          r["max_disp_mm"]       = round(max_disp_m*1000, 4) if max_disp_m      else None
-          r["factor_of_safety"]  = round(fos, 3)             if fos             else None
-          r["force_to_yield_n"]  = round(force_to_yield_n)   if force_to_yield_n else None
-          r["failure_elem"]      = failure_elem
-          r["failure_pt"]        = failure_pt
-          r["top_stress_locs"]   = top_stress_locs
-          r["flaws"]             = flaws
-          r["spec_stiff"]        = round(spec_stiff, 1)
-          r["swr"]               = round(swr, 2)
-          r["relative_cost"]     = round(cost, 2)
+              flaws.append('No structural concerns under applied load')
+ 
+          # ── Analytical validation ────────────────────────────
+          validation_checks = run_validation(
+              inp_path, r.get('max_stress_mpa'), r.get('max_disp_mm'),
+              strain_energy_J, float(r['youngs_mpa']),
+              APPLIED_FORCE_N, stress_scale, disp_scale
+          )
+ 
+          # ── Comprehensive 4-panel diagram ────────────────────
+          diag_file = '/data/report/diag_' + r['material'] + '.png'
+          has_diag  = make_comprehensive_diagram(
+              nodes, elements, stresses, displacements,
+              fixed_nodes, load_nodes, APPLIED_FORCE_N,
+              r['material'], diag_file,
+              stress_scale, disp_scale, length_scale, unit_label,
+              elem_energy
+          )
+ 
+          # ── Store all results ─────────────────────────────────
+          r['max_stress_mpa']   = round(max_stress_mpa, 4)  if max_stress_mpa   else None
+          r['max_sig1_mpa']     = round(max_sig1_mpa,   4)  if max_sig1_mpa     else None
+          r['max_disp_mm']      = round(max_disp_mm,    4)  if max_disp_mm      else None
+          r['factor_of_safety'] = round(fos, 3)              if fos              else None
+          r['force_to_yield_n'] = round(ftf)                 if ftf              else None
+          r['mass_kg']          = round(mass_kg, 4)          if mass_kg          else None
+          r['vol_cm3']          = round(vol_cm3, 4)          if vol_cm3          else None
+          r['strain_energy_J']  = strain_energy_J
+          r['compliance_mm']    = round(compliance_mm, 6)    if compliance_mm    else None
+          r['part_cost_usd']    = round(part_cost, 4)        if part_cost        else None
+          r['failure_elem']     = failure_elem
+          r['failure_pt']       = failure_pt
+          r['top_locs']         = top_locs
+          r['flaws']            = flaws
+          r['spec_stiff']       = round(spec, 1)
+          r['swr']              = round(swr, 2)
+          r['cost']             = round(cost, 2)
+          r['unit_label']       = unit_label
+          r['has_diag']         = has_diag
+          r['reaction_sum']     = reaction_sum
+          r['margin_stats']     = margin_stats
+          r['stress_gradient']  = stress_gradient
+          r['fatigue']          = fatigue
+          r['buckle_modes']     = buckle_modes
+          r['buckle_lf1']       = buckle_lf1
+          r['validation']       = validation_checks
           results.append(r)
-
+ 
       if not results:
-          print("No results found.")
+          print('No results found')
           exit(1)
-
-      os.makedirs("/data/report", exist_ok=True)
-
-      names      = [r["material"]             for r in results]
-      youngs     = [float(r["youngs_mpa"])    for r in results]
-      poisson    = [float(r["poisson"])       for r in results]
-      density    = [float(r["density_kg_m3"]) for r in results]
-      yield_s    = [float(r["yield_mpa"])     for r in results]
-      spec_stiff = [r["spec_stiff"]           for r in results]
-      swr        = [r["swr"]                  for r in results]
-      cost       = [r["relative_cost"]        for r in results]
-
-      has_fea = all(r["max_stress_mpa"] is not None for r in results)
+ 
+      # ════════════════════════════════════════════════════════
+      # BUILD ALL BAR CHARTS
+      # ════════════════════════════════════════════════════════
+      names  = [r['material']             for r in results]
+      youngs = [float(r['youngs_mpa'])    for r in results]
+      poiss  = [float(r['poisson'])       for r in results]
+      dens   = [float(r['density_kg_m3']) for r in results]
+      ylds   = [float(r['yield_mpa'])     for r in results]
+      specs  = [r['spec_stiff']           for r in results]
+      swrs   = [r['swr']                  for r in results]
+      costs  = [r['cost']                 for r in results]
+ 
+      bar_chart("Young's Modulus",      'MPa',        youngs, names, 'youngs.png',  '#4C72B0')
+      bar_chart('Yield Strength',       'MPa',        ylds,   names, 'yield.png',   '#DD8452')
+      bar_chart('Density',              'kg/m3',      dens,   names, 'density.png', '#55A868', False)
+      bar_chart("Poisson's Ratio",      'ratio',      poiss,  names, 'poisson.png', '#C44E52', False, '{:.4f}')
+      bar_chart('Specific Stiffness',   'MPa·m3/kg',  specs,  names, 'spec.png',    '#8172B2')
+      bar_chart('Strength-to-Weight',   'MPa/(g/cc)', swrs,   names, 'swr.png',     '#64B5CD')
+      bar_chart('Relative Cost per m3', '$/m3',       costs,  names, 'cost.png',    '#E07B54', False)
+ 
+      # Mass chart
+      masses = [r['mass_kg'] for r in results]
+      if all(m is not None for m in masses):
+          bar_chart('Part Mass',          'kg',         masses, names, 'mass.png',    '#5DADE2', False, '{:,.4f}')
+ 
+      # Part cost chart
+      part_costs = [r['part_cost_usd'] for r in results]
+      if all(c is not None for c in part_costs):
+          bar_chart('Part Cost (material only)', 'USD', part_costs, names, 'partcost.png', '#E67E22', False, '{:,.4f}')
+ 
+      has_fea = all(r['max_stress_mpa'] is not None for r in results)
       if has_fea:
-          max_stress = [r["max_stress_mpa"]   for r in results]
-          max_disp   = [r["max_disp_mm"]      for r in results]
-          fos        = [r["factor_of_safety"] for r in results]
-          ftf        = [r["force_to_yield_n"] if r["force_to_yield_n"] else 0 for r in results]
-
-      def bar_chart(title, ylabel, values, filename, color, highlight_max=True):
-          fig, ax = plt.subplots(figsize=(max(6, len(names)*1.4), 5))
-          best_idx = values.index(max(values)) if highlight_max else values.index(min(values))
-          colors = ["#27ae60" if i == best_idx else color for i in range(len(names))]
-          bars = ax.bar(names, values, color=colors, edgecolor="black", linewidth=0.7)
-          ax.set_title(title, fontsize=13, fontweight="bold", pad=12)
-          ax.set_ylabel(ylabel)
-          ax.set_xlabel("Material")
-          ax.spines["top"].set_visible(False)
-          ax.spines["right"].set_visible(False)
-          for bar, val in zip(bars, values):
-              ax.text(bar.get_x() + bar.get_width()/2,
-                      bar.get_height() * 1.01,
-                      "{:,.4f}".format(val),
-                      ha="center", va="bottom", fontsize=9, fontweight="bold")
-          plt.tight_layout()
-          plt.savefig("/data/report/" + filename, dpi=150)
-          plt.close()
-
-      bar_chart("Young's Modulus",          "MPa",        youngs,     "youngs.png",     "#4C72B0")
-      bar_chart("Yield Strength",           "MPa",        yield_s,    "yield.png",      "#DD8452")
-      bar_chart("Density",                  "kg/m3",      density,    "density.png",    "#55A868", highlight_max=False)
-      bar_chart("Poisson's Ratio",          "ratio",      poisson,    "poisson.png",    "#C44E52", highlight_max=False)
-      bar_chart("Specific Stiffness E/rho", "MPa*m3/kg",  spec_stiff, "spec_stiff.png", "#8172B2")
-      bar_chart("Strength-to-Weight",       "MPa/(g/cc)", swr,        "swr.png",        "#64B5CD")
-      bar_chart("Relative Cost per m3",     "$/m3",       cost,       "cost.png",       "#E07B54", highlight_max=False)
-
-      if has_fea:
-          bar_chart("Max Von Mises Stress", "MPa",  max_stress, "max_stress.png", "#E74C3C", highlight_max=False)
-          bar_chart("Max Displacement",     "mm",   max_disp,   "max_disp.png",   "#E67E22", highlight_max=False)
-          bar_chart("Factor of Safety",     "FoS",  fos,        "fos.png",        "#2ECC71")
-          bar_chart("Force to Yield",       "N",    ftf,        "ftf.png",        "#9B59B6")
-
+          mstress  = [r['max_stress_mpa']   for r in results]
+          msig1    = [r['max_sig1_mpa']      for r in results]
+          mdisp    = [r['max_disp_mm']       for r in results]
+          foss     = [r['factor_of_safety']  for r in results]
+          ftfs     = [r['force_to_yield_n'] if r['force_to_yield_n'] else 0 for r in results]
+          bar_chart('Max Von Mises Stress',   'MPa', mstress, names, 'mstress.png', '#E74C3C', False, '{:,.4f}')
+          bar_chart('Max Principal Stress σ1','MPa', msig1,   names, 'msig1.png',   '#C0392B', False, '{:,.4f}')
+          bar_chart('Max Displacement',       'mm',  mdisp,   names, 'mdisp.png',   '#E67E22', False, '{:,.4f}')
+          bar_chart('Factor of Safety',       'FoS', foss,    names, 'fos.png',     '#2ECC71')
+          bar_chart('Force to Yield',         'N',   ftfs,    names, 'ftf.png',     '#9B59B6')
+ 
+          # Strain energy chart
+          se_vals = [r['strain_energy_J'] for r in results]
+          if all(v is not None for v in se_vals):
+              bar_chart('Total Strain Energy', 'J', se_vals, names, 'se.png', '#1ABC9C', False, '{:,.6f}')
+ 
+          # Compliance chart
+          comp_vals = [r['compliance_mm'] for r in results]
+          if all(v is not None for v in comp_vals):
+              bar_chart('Compliance Index (lower=stiffer)', 'mm/N·1e-3',
+                        comp_vals, names, 'compliance.png', '#8E44AD', False, '{:,.6f}')
+ 
+          # Buckling load factor chart
+          buckle_lfs = [r['buckle_lf1'] for r in results]
+          if all(b is not None for b in buckle_lfs):
+              bar_chart('Buckling Load Factor',
+                        'LF (multiply applied load to get buckling load)',
+                        buckle_lfs, names, 'buckle.png', '#16A085')
+ 
+          # Fatigue FoS chart
+          fat_fos = [r['fatigue']['fos_fatigue'] if r['fatigue'] and r['fatigue'].get('fos_fatigue') else 0
+                     for r in results]
+          if any(f > 0 for f in fat_fos):
+              bar_chart('Fatigue Safety Factor',
+                        'Se / sigma_a_Goodman  (>1 = infinite life)',
+                        fat_fos, names, 'fatigue_fos.png', '#8E44AD')
+ 
+          # Stress vs FoS scatter
           fig, ax = plt.subplots(figsize=(7, 5))
-          scatter_colors = ["#27ae60" if f == max(fos) else "#E74C3C" for f in fos]
-          ax.scatter(max_stress, fos, c=scatter_colors, s=200, zorder=5, edgecolors="black")
-          for i, name in enumerate(names):
-              ax.annotate(name, (max_stress[i], fos[i]),
-                          textcoords="offset points", xytext=(8, 4), fontsize=9)
-          ax.axhline(y=1.5, color="orange", linestyle="--", linewidth=1.5, label="Min FoS = 1.5")
-          ax.axhline(y=2.0, color="green",  linestyle="--", linewidth=1.5, label="Target FoS = 2.0")
-          ax.set_xlabel("Max Von Mises Stress (MPa)")
-          ax.set_ylabel("Factor of Safety")
-          ax.set_title("Stress vs Factor of Safety", fontsize=13, fontweight="bold")
+          colors  = ['#27ae60' if f == max(foss) else '#E74C3C' for f in foss]
+          ax.scatter(mstress, foss, c=colors, s=180, zorder=5, edgecolors='black')
+          for i, n in enumerate(names):
+              ax.annotate(n, (mstress[i], foss[i]),
+                          textcoords='offset points', xytext=(8,4), fontsize=9)
+          ax.axhline(1.5, color='orange', linestyle='--', linewidth=1.5, label='Min FoS=1.5')
+          ax.axhline(2.0, color='green',  linestyle='--', linewidth=1.5, label='Target FoS=2.0')
+          ax.set_xlabel('Max Von Mises Stress (MPa)')
+          ax.set_ylabel('Factor of Safety')
+          ax.set_title('Stress vs Factor of Safety', fontsize=13, fontweight='bold')
           ax.legend()
-          ax.spines["top"].set_visible(False)
-          ax.spines["right"].set_visible(False)
+          ax.spines['top'].set_visible(False)
+          ax.spines['right'].set_visible(False)
           plt.tight_layout()
-          plt.savefig("/data/report/stress_fos.png", dpi=150)
+          plt.savefig('/data/report/fos_scatter.png', dpi=150)
           plt.close()
-
-      def flaw_badge(f):
-          if f.startswith("CRITICAL"):
-              return "<span class='badge badge-red'>" + f + "</span>"
-          elif f.startswith("WARNING"):
-              return "<span class='badge badge-orange'>" + f + "</span>"
-          elif f.startswith("CAUTION"):
-              return "<span class='badge badge-yellow'>" + f + "</span>"
-          return "<span class='badge badge-green'>" + f + "</span>"
-
+ 
+          # Mass vs FoS scatter (new in v9)
+          if all(r['mass_kg'] is not None for r in results):
+              fig, ax = plt.subplots(figsize=(7, 5))
+              ax.scatter(masses, foss, c=colors, s=180, zorder=5, edgecolors='black')
+              for i, n in enumerate(names):
+                  ax.annotate(n, (masses[i], foss[i]),
+                              textcoords='offset points', xytext=(8,4), fontsize=9)
+              ax.axhline(2.0, color='green', linestyle='--', linewidth=1.5, label='Target FoS=2.0')
+              ax.set_xlabel('Part Mass (kg)')
+              ax.set_ylabel('Factor of Safety')
+              ax.set_title('Mass vs Factor of Safety\n(upper-left = lightest and safest)',
+                           fontsize=12, fontweight='bold')
+              ax.legend()
+              ax.spines['top'].set_visible(False)
+              ax.spines['right'].set_visible(False)
+              plt.tight_layout()
+              plt.savefig('/data/report/mass_fos.png', dpi=150)
+              plt.close()
+ 
+          # Strain energy vs compliance bubble chart (new in v9)
+          if all(r['strain_energy_J'] is not None for r in results):
+              fig, ax = plt.subplots(figsize=(7, 5))
+              for i, r in enumerate(results):
+                  sz = (r['mass_kg'] or 0.01) * 3000
+                  ax.scatter(r['compliance_mm'], r['strain_energy_J'],
+                             s=sz, color=colors[i], edgecolors='black',
+                             alpha=0.8, zorder=5)
+                  ax.annotate(r['material'],
+                              (r['compliance_mm'], r['strain_energy_J']),
+                              textcoords='offset points', xytext=(8,4), fontsize=9)
+              ax.set_xlabel('Compliance Index (mm/N · 1e-3)  — lower = stiffer')
+              ax.set_ylabel('Total Strain Energy (J)  — lower = more efficient')
+              ax.set_title('Structural Efficiency\n(bubble size ∝ mass)',
+                           fontsize=12, fontweight='bold')
+              ax.spines['top'].set_visible(False)
+              ax.spines['right'].set_visible(False)
+              plt.tight_layout()
+              plt.savefig('/data/report/efficiency.png', dpi=150)
+              plt.close()
+ 
+      # Radar chart — only if we have FEA data for all metrics
+      if has_fea and all(r['mass_kg'] is not None for r in results):
+          radar_metrics = {
+              "Stiffness (E)":      youngs,
+              "Yield Str.":         ylds,
+              "Spec. Stiffness":    specs,
+              "Str/Weight":         swrs,
+              "FoS":                foss,
+              # Invert these so radar logic works (higher normalised = better)
+              "Low Stress":         [1/v if v else 0 for v in mstress],
+              "Low Disp.":          [1/v if v else 0 for v in mdisp],
+              "Low Mass":           [1/v if v else 0 for v in masses],
+              "Low Cost/m3":        [1/v if v else 0 for v in costs],
+          }
+          radar_chart(names, radar_metrics, 'radar.png')
+ 
+      # ════════════════════════════════════════════════════════
+      # HTML REPORT
+      # ════════════════════════════════════════════════════════
       def fos_color(f):
-          if f is None: return "#888"
-          if f >= 2.0:  return "#27ae60"
-          if f >= 1.5:  return "#E67E22"
-          return "#E74C3C"
-
-      rows_html = ""
+          if f is None: return '#888'
+          if f >= 2.0:  return '#27ae60'
+          if f >= 1.5:  return '#E67E22'
+          return '#E74C3C'
+ 
+      def badge(txt):
+          if txt.startswith('CRITICAL'): return "<span class='badge br'>" + txt + '</span>'
+          if txt.startswith('WARNING'):  return "<span class='badge bo'>" + txt + '</span>'
+          if txt.startswith('CAUTION'):  return "<span class='badge by'>" + txt + '</span>'
+          return "<span class='badge bg'>" + txt + '</span>'
+ 
+      def fmt_or_na(val, fmt):
+          return fmt.format(val) if val is not None else 'N/A'
+ 
+      # Full results table rows
+      rows = ''
       for r in results:
-          fos_val    = "{:.3f}".format(r["factor_of_safety"]) if r["factor_of_safety"] else "N/A"
-          stress_val = "{:,.4f}".format(r["max_stress_mpa"])  if r["max_stress_mpa"]   else "N/A"
-          disp_val   = "{:,.4f}".format(r["max_disp_mm"])     if r["max_disp_mm"]      else "N/A"
-          ftf_val    = "{:,.0f} N".format(r["force_to_yield_n"]) if r["force_to_yield_n"] else "N/A"
-          fc         = fos_color(r["factor_of_safety"])
-          rows_html += (
-              "<tr>"
-              + "<td><strong>" + r["material"] + "</strong></td>"
-              + "<td>" + "{:,.0f}".format(float(r["youngs_mpa"])) + "</td>"
-              + "<td>" + "{:,.0f}".format(float(r["yield_mpa"])) + "</td>"
-              + "<td>" + "{:,.0f}".format(float(r["density_kg_m3"])) + "</td>"
-              + "<td>" + stress_val + "</td>"
-              + "<td>" + disp_val + "</td>"
-              + "<td style='color:" + fc + ";font-weight:bold'>" + fos_val + "</td>"
-              + "<td style='color:" + fc + ";font-weight:bold'>" + ftf_val + "</td>"
-              + "</tr>\n"
+          fc    = fos_color(r['factor_of_safety'])
+          rows += (
+              '<tr>'
+              + '<td><strong>' + r['material'] + '</strong></td>'
+              + '<td>' + '{:,.0f}'.format(float(r['youngs_mpa']))    + '</td>'
+              + '<td>' + '{:,.0f}'.format(float(r['yield_mpa']))     + '</td>'
+              + '<td>' + '{:,.0f}'.format(float(r['density_kg_m3'])) + '</td>'
+              + '<td>' + fmt_or_na(r['mass_kg'],       '{:,.4f}')    + '</td>'
+              + '<td>' + fmt_or_na(r['vol_cm3'],        '{:,.4f}')   + '</td>'
+              + '<td>' + fmt_or_na(r['max_stress_mpa'], '{:,.4f}')   + '</td>'
+              + '<td>' + fmt_or_na(r['max_sig1_mpa'],   '{:,.4f}')   + '</td>'
+              + '<td>' + fmt_or_na(r['max_disp_mm'],    '{:,.4f}')   + '</td>'
+              + "<td style='color:" + fc + ";font-weight:bold'>"
+              + fmt_or_na(r['factor_of_safety'], '{:.3f}') + '</td>'
+              + "<td style='color:" + fc + ";font-weight:bold'>"
+              + fmt_or_na(r['force_to_yield_n'], '{:,.0f}') + '</td>'
+              + '<td>' + fmt_or_na(r['strain_energy_J'], '{:.4e}')   + '</td>'
+              + '<td>' + fmt_or_na(r['compliance_mm'],   '{:.4e}')   + '</td>'
+              + '<td>' + fmt_or_na(r['part_cost_usd'],   '{:,.4f}')  + '</td>'
+              + '</tr>\n'
           )
-
-      failure_sections = ""
+ 
+      # Per-material failure analysis cards
+      failure_html = ''
       for r in results:
-          fe     = r["failure_elem"]
-          fp     = r["failure_pt"]
-          fs     = r["max_stress_mpa"]
-          fd     = r["max_disp_mm"]
-          ftf_v  = r["force_to_yield_n"]
-          flaws  = r["flaws"]
-          tsl    = r["top_stress_locs"]
-
-          elem_str   = "Element " + str(fe) + ", Integration Point " + str(fp) if fe else "N/A"
-          stress_str = "{:,.4f} MPa".format(fs) if fs else "N/A"
-          disp_str   = "{:,.4f} mm".format(fd)  if fd else "N/A"
-          ftf_str    = "{:,.0f} N ({:,.2f} kN)".format(ftf_v, ftf_v/1000) if ftf_v else "N/A"
-          fc         = fos_color(r["factor_of_safety"])
-          fos_str    = "{:.3f}".format(r["factor_of_safety"]) if r["factor_of_safety"] else "N/A"
-
-          top_html = ""
-          if tsl:
-              top_html = (
-                  "<table class='inner-table'>"
-                  + "<tr><th>Rank</th><th>Element</th><th>Integration Point</th><th>Von Mises (MPa)</th></tr>"
+          fc  = fos_color(r['factor_of_safety'])
+          el  = ('Element ' + str(r['failure_elem']) + ', Int.Pt ' + str(r['failure_pt'])
+                 if r['failure_elem'] else 'N/A')
+ 
+          stats = [
+              ('Failure Location',         el,                                         None),
+              ('Max Von Mises Stress',      fmt_or_na(r['max_stress_mpa'],'{:,.4f} MPa'), '#E74C3C'),
+              ('Max Principal Stress σ1',  fmt_or_na(r['max_sig1_mpa'],  '{:,.4f} MPa'), '#C0392B'),
+              ('Max Displacement',          fmt_or_na(r['max_disp_mm'],   '{:,.4f} mm'),  None),
+              ('Factor of Safety',          fmt_or_na(r['factor_of_safety'],'{:.3f}'),     fc),
+              ('Force to Yield',            fmt_or_na(r['force_to_yield_n'],'{:,.0f} N'),  fc),
+              ('Part Mass',                 fmt_or_na(r['mass_kg'],        '{:,.4f} kg'),  None),
+              ('Part Volume',               fmt_or_na(r['vol_cm3'],        '{:,.4f} cm³'), None),
+              ('Total Strain Energy',       fmt_or_na(r['strain_energy_J'],'{:.4e} J'),    None),
+              ('Compliance Index',          fmt_or_na(r['compliance_mm'],  '{:.4e} mm/N'), None),
+              ('Part Material Cost',        fmt_or_na(r['part_cost_usd'],  '${:,.4f}'),    None),
+          ]
+ 
+          stat_html = ''
+          for label, val, color in stats:
+              style = " style='color:" + color + "'" if color else ''
+              stat_html += (
+                  "<div class='fs'><div class='sl'>" + label + "</div>"
+                  + "<div class='sv'" + style + '>' + val + '</div></div>'
               )
-              for rank, n in enumerate(tsl, 1):
-                  top_html += (
-                      "<tr><td>" + str(rank) + "</td>"
-                      + "<td>" + str(n["elem"]) + "</td>"
-                      + "<td>" + str(n["integ_pt"]) + "</td>"
-                      + "<td style='color:#E74C3C;font-weight:bold'>" + "{:,.4f}".format(n["mises_mpa"]) + "</td></tr>"
+ 
+          # Safety margin map stats
+          margin_html = ''
+          ms = r.get('margin_stats', {})
+          if ms:
+              def pct_bar(pct, color):
+                  return ("<div style='display:inline-block;width:" +
+                          str(max(int(pct*2), 2)) + "px;height:14px;background:" +
+                          color + ";border-radius:2px;margin:1px'></div>")
+              margin_html = (
+                  "<h4>Safety Margin Distribution</h4>"
+                  "<p class='sub'>Per-element FoS across all " +
+                  str(ms.get('total_elements',0)) + " elements — "
+                  "avg FoS=" + str(ms.get('avg_fos','')) + "  min FoS=" +
+                  str(ms.get('min_fos','')) + "</p>"
+                  "<div style='margin:8px 0'>"
+                  + pct_bar(ms.get('pct_critical',0), '#E74C3C')
+                  + pct_bar(ms.get('pct_warning',0),  '#E67E22')
+                  + pct_bar(ms.get('pct_caution',0),  '#F39C12')
+                  + pct_bar(ms.get('pct_safe',0),     '#27ae60')
+                  + "</div>"
+                  "<small>"
+                  "<span style='color:#E74C3C'>■</span> Critical FoS&lt;1.0: " +
+                  str(ms.get('pct_critical',0)) + "%  "
+                  "<span style='color:#E67E22'>■</span> Warning 1.0–1.5: " +
+                  str(ms.get('pct_warning',0)) + "%  "
+                  "<span style='color:#F39C12'>■</span> Caution 1.5–2.0: " +
+                  str(ms.get('pct_caution',0)) + "%  "
+                  "<span style='color:#27ae60'>■</span> Safe &gt;2.0: " +
+                  str(ms.get('pct_safe',0)) + "%"
+                  "</small>"
+                  "<br><img src='sm_" + r['material'] + ".png' style='margin-top:10px'>"
+              )
+ 
+          # Stress gradient summary
+          gradient_html = ''
+          sg = r.get('stress_gradient')
+          if sg:
+              gc = sg.get('gradient_mpa_per_mm')
+              dl = sg.get('decay_length_mm')
+              gradient_html = (
+                  "<h4>Stress Gradient at Hot Spot</h4>"
+                  "<table class='it'><tr><th>Metric</th><th>Value</th></tr>"
+                  "<tr><td>Peak stress</td><td>" + str(sg.get('hot_spot_mpa','')) + " MPa</td></tr>"
+                  "<tr><td>Decay rate</td><td>" + (str(gc) + " MPa/mm" if gc else "N/A") + "</td></tr>"
+                  "<tr><td>50% decay distance</td><td>" + (str(dl) + " mm" if dl else "N/A") + "</td></tr>"
+                  "<tr><td>Near-field elements</td><td>" + str(sg.get('near_field_elements','')) + "</td></tr>"
+                  "<tr><td>Character</td><td>" + sg.get('character','') + "</td></tr>"
+                  "</table>"
+              )
+ 
+          # Fatigue summary
+          fatigue_html = ''
+          ft = r.get('fatigue')
+          if ft:
+              lc = ft.get('life_cycles')
+              lc_str = ('{:,.0f}'.format(lc) if lc and lc < 1e15 else '∞') if lc else 'N/A'
+              st = ft.get('status','')
+              st_color = ('#E74C3C' if 'CRITICAL' in st else
+                          '#E67E22' if 'WARNING' in st else
+                          '#F39C12' if 'CAUTION' in st else '#27ae60')
+              fatigue_html = (
+                  "<h4>Fatigue Life Estimate (Goodman + Basquin, R=" +
+                  str(ft.get('load_ratio_r',0.1)) + ")</h4>"
+                  "<table class='it'><tr><th>Metric</th><th>Value</th></tr>"
+                  "<tr><td>Status</td><td style='color:" + st_color + ";font-weight:bold'>" +
+                  st + "</td></tr>"
+                  "<tr><td>Estimated life</td><td>" + lc_str + " cycles</td></tr>"
+                  "<tr><td>Stress amplitude σa</td><td>" +
+                  str(ft.get('sigma_a_mpa','')) + " MPa</td></tr>"
+                  "<tr><td>Mean stress σm</td><td>" +
+                  str(ft.get('sigma_m_mpa','')) + " MPa</td></tr>"
+                  "<tr><td>Goodman-corrected σa</td><td>" +
+                  str(ft.get('sigma_a_goodman','')) + " MPa</td></tr>"
+                  "<tr><td>Est. UTS</td><td>" +
+                  str(ft.get('uts_est_mpa','')) + " MPa</td></tr>"
+                  "<tr><td>Endurance limit Se</td><td>" +
+                  str(ft.get('Se_mpa','')) + " MPa</td></tr>"
+                  "<tr><td>Fatigue FoS</td><td>" +
+                  str(ft.get('fos_fatigue','')) + "</td></tr>"
+                  "</table>"
+              )
+ 
+          # Reaction forces summary
+          reaction_html = ''
+          rf = r.get('reaction_sum')
+          if rf:
+              reaction_html = (
+                  "<h4>Reaction Forces at Fixed Supports</h4>"
+                  "<table class='it'><tr><th>Component</th><th>Value</th></tr>"
+                  "<tr><td>Rx</td><td>" + str(rf.get('rx','')) + " N</td></tr>"
+                  "<tr><td>Ry</td><td>" + str(rf.get('ry','')) + " N</td></tr>"
+                  "<tr><td>Rz</td><td>" + str(rf.get('rz','')) + " N</td></tr>"
+                  "<tr><td>Resultant</td><td><strong>" +
+                  str(rf.get('magnitude','')) + " N</strong></td></tr>"
+                  "<tr><td>Peak node force</td><td>" +
+                  str(rf.get('max_node_force','')) + " N</td></tr>"
+                  "<tr><td>Fixed nodes</td><td>" +
+                  str(rf.get('n_nodes','')) + "</td></tr>"
+                  "</table>"
+              )
+ 
+          # Buckling summary
+          buckle_html = ''
+          bm = r.get('buckle_modes', [])
+          if bm:
+              lf1 = bm[0][1]
+              lf_color = '#E74C3C' if lf1 < 3 else '#E67E22' if lf1 < 10 else '#27ae60'
+              buckle_html = (
+                  "<h4>Buckling Analysis</h4>"
+                  "<table class='it'><tr><th>Mode</th><th>Load Factor</th>"
+                  "<th>Buckling Load (N)</th><th>Status</th></tr>"
+              )
+              for mode, lf in bm[:4]:
+                  bl = round(APPLIED_FORCE_N * lf, 1)
+                  st = ('CRITICAL' if lf < 3 else 'CAUTION' if lf < 10 else 'Safe')
+                  sc = '#E74C3C' if lf < 3 else '#E67E22' if lf < 10 else '#27ae60'
+                  buckle_html += (
+                      "<tr><td>" + str(mode) + "</td>"
+                      "<td style='color:" + sc + ";font-weight:bold'>" +
+                      str(lf) + "</td>"
+                      "<td>" + '{:,.1f}'.format(bl) + " N</td>"
+                      "<td style='color:" + sc + "'>" + st + "</td></tr>"
                   )
-              top_html += "</table>"
-
-          flaw_html = "".join("<li>" + flaw_badge(f) + "</li>" for f in flaws)
-
-          failure_sections += (
-              "<div class='card failure-card'>"
-              + "<h3>" + r["material"] + " — Failure Analysis</h3>"
-              + "<div class='failure-grid'>"
-              + "<div class='failure-stat'><div class='stat-label'>Primary Failure Location</div><div class='stat-val'>" + elem_str + "</div></div>"
-              + "<div class='failure-stat'><div class='stat-label'>Max Von Mises Stress</div><div class='stat-val' style='color:#E74C3C'>" + stress_str + "</div></div>"
-              + "<div class='failure-stat'><div class='stat-label'>Max Displacement</div><div class='stat-val'>" + disp_str + "</div></div>"
-              + "<div class='failure-stat'><div class='stat-label'>Factor of Safety</div><div class='stat-val' style='color:" + fc + ";font-size:1.3em'>" + fos_str + "</div></div>"
-              + "<div class='failure-stat'><div class='stat-label'>Estimated Force to Yield</div><div class='stat-val' style='color:" + fc + ";font-size:1.2em'>" + ftf_str + "</div></div>"
-              + "</div>"
-              + "<h4>Top 3 Highest Stress Locations</h4>" + top_html
-              + "<h4>Structural Flaw Assessment</h4>"
-              + "<ul class='flaw-list'>" + flaw_html + "</ul>"
-              + "</div>"
+              buckle_html += "</table>"
+              buckle_html += ("<p class='sub'>Load Factor &lt;3 = CRITICAL (buckles near "
+                              "operating load). &gt;10 = safe against buckling.</p>")
+ 
+          top_html = ''
+          if r['top_locs']:
+              top_html = ("<table class='it'><tr>"
+                          "<th>Rank</th><th>Element</th><th>Int.Pt</th>"
+                          "<th>Von Mises (MPa)</th></tr>")
+              for i, loc in enumerate(r['top_locs'], 1):
+                  top_html += (
+                      '<tr><td>' + str(i) + '</td><td>' + str(loc['elem'])
+                      + '</td><td>' + str(loc['integ_pt'])
+                      + "</td><td style='color:#E74C3C;font-weight:bold'>"
+                      + '{:,.4f}'.format(loc['mises_mpa']) + '</td></tr>'
+                  )
+              top_html += '</table>'
+ 
+          diag_html = ''
+          if r.get('has_diag'):
+              diag_html = (
+                  "<h4>4-Panel FEA Visualization (Units: " + r['unit_label'] + ")</h4>"
+                  "<p class='sub'>"
+                  "Top-left: wireframe mesh with boundary conditions (blue=fixed, red=load). "
+                  "Top-right: Von Mises stress heatmap. "
+                  "Bottom-left: Max principal stress σ1. "
+                  "Bottom-right: Displacement magnitude.</p>"
+                  "<img src='diag_" + r['material'] + ".png'>"
+              )
+ 
+      def validation_html(checks):
+          if not checks:
+              return ''
+          rows = ''
+          for c in checks:
+              color = {'PASS':'#27ae60','WARNING':'#E74C3C',
+                       'CAUTION':'#E67E22','INFO':'#3498db'}.get(c['status'],'#888')
+              rows += (
+                  "<tr><td style='color:" + color + ";font-weight:bold'>"
+                  + c['status'] + '</td><td>' + c['name']
+                  + '</td><td>' + c['detail'] + '</td></tr>'
+              )
+          return (
+              "<h4>Analytical Validation</h4>"
+              "<table class='it'><tr>"
+              "<th>Status</th><th>Check</th><th>Detail</th>"
+              "</tr>" + rows + "</table>"
           )
-
-      best_stiff_idx = youngs.index(max(youngs))
-      best_yield_idx = yield_s.index(max(yield_s))
-      lightest_idx   = density.index(min(density))
-      best_spec_idx  = spec_stiff.index(max(spec_stiff))
-      best_swr_idx   = swr.index(max(swr))
-      cheapest_idx   = cost.index(min(cost))
-
-      fea_section = ""
-      rec_fea     = ""
+ 
+          failure_html += (
+              "<div class='card fc'>"
+              + '<h3>' + r['material'] + ' — Detailed Analysis</h3>'
+              + diag_html
+              + "<div class='fg'>" + stat_html + '</div>'
+              + '<h4>Top 3 Highest Stress Locations</h4>' + top_html
+              + '<h4>Structural Assessment</h4>'
+              + "<ul class='fl'>"
+              + ''.join('<li>' + badge(f) + '</li>' for f in r['flaws'])
+              + '</ul>'
+              + margin_html
+              + gradient_html
+              + reaction_html
+              + fatigue_html
+              + buckle_html
+              + validation_html(r.get('validation', []))
+              + '</div>'
+          )
+ 
+      # Index picks for recommendations
+      bi  = youngs.index(max(youngs))
+      yi  = ylds.index(max(ylds))
+      li  = dens.index(min(dens))
+      si  = specs.index(max(specs))
+      wi  = swrs.index(max(swrs))
+      ci  = costs.index(min(costs))
+ 
+      fea_sec = ''
+      rec_fea = ''
+      rec_mass = ''
+      rec_eff  = ''
       if has_fea:
-          best_fos_idx = fos.index(max(fos))
-          safest_idx   = max_stress.index(min(max_stress))
-          best_ftf_idx = ftf.index(max(ftf))
-          fea_section = (
-              "<div class='section'>"
-              + "<h2>FEA Solver Results</h2>"
+          fi   = foss.index(max(foss))
+          sfi  = mstress.index(min(mstress))
+          ti   = ftfs.index(max(ftfs))
+ 
+          # FEA section HTML
+          se_row = ''
+          if all(r['strain_energy_J'] is not None for r in results):
+              se_row = (
+                  "<div class='card wide'><h3>Strain Energy &amp; Compliance</h3>"
+                  "<p class='sub'>Lower strain energy = less elastic deformation stored. "
+                  "Lower compliance = stiffer structure per unit load.</p>"
+                  "<div class='grid'>"
+                  "<div><img src='se.png'></div>"
+                  "<div><img src='compliance.png'></div>"
+                  "</div></div>"
+                  "<div class='card wide'><h3>Structural Efficiency</h3>"
+                  "<p class='sub'>Bubble size ∝ mass. Lower-left = lighter AND stiffer.</p>"
+                  "<img src='efficiency.png'></div>"
+              )
+ 
+          mass_row = ''
+          if all(r['mass_kg'] is not None for r in results):
+              mass_row = (
+                  "<div class='grid'>"
+                  "<div class='card'><h3>Part Mass</h3><p class='sub'>Lower is better for weight-sensitive designs</p><img src='mass.png'></div>"
+                  "<div class='card'><h3>Part Material Cost</h3><p class='sub'>Density × cost/kg × volume</p><img src='partcost.png'></div>"
+                  "</div>"
+                  "<div class='card wide'><h3>Mass vs Factor of Safety</h3>"
+                  "<p class='sub'>Upper-left = safest and lightest</p>"
+                  "<img src='mass_fos.png'></div>"
+              )
+ 
+          radar_row = ''
+          if all(r['mass_kg'] is not None for r in results):
+              radar_row = (
+                  "<div class='card wide'><h3>Overall Material Comparison Radar</h3>"
+                  "<p class='sub'>All axes normalised. Larger area = better overall performance.</p>"
+                  "<img src='radar.png'></div>"
+              )
+ 
+          fea_sec = (
+              "<div class='sec'><h2>FEA Solver Results</h2>"
               + "<div class='grid'>"
-              + "<div class='card'><h3>Max Von Mises Stress</h3><p class='sub'>Lower is better — less stress in the part</p><img src='max_stress.png'></div>"
-              + "<div class='card'><h3>Max Displacement</h3><p class='sub'>Lower is better — less deformation under load</p><img src='max_disp.png'></div>"
+              + "<div class='card'><h3>Max Von Mises Stress</h3><p class='sub'>Lower is better</p><img src='mstress.png'></div>"
+              + "<div class='card'><h3>Max Principal Stress σ1</h3><p class='sub'>Tensile driving force for fracture</p><img src='msig1.png'></div>"
+              + "<div class='card'><h3>Max Displacement</h3><p class='sub'>Lower is better</p><img src='mdisp.png'></div>"
+              + "<div class='card'><h3>Factor of Safety</h3><p class='sub'>Green≥2.0, Orange 1.5–2.0, Red&lt;1.5</p><img src='fos.png'></div>"
               + "</div>"
-              + "<div class='card wide'><h3>Factor of Safety</h3><p class='sub'>Green = safe (FoS >= 2.0), Orange = marginal (1.5-2.0), Red = unsafe (< 1.5)</p><img src='fos.png'></div>"
-              + "<div class='card wide'><h3>Force Required to Yield Part</h3><p class='sub'>Estimated from applied load scaled by factor of safety</p><img src='ftf.png'></div>"
-              + "<div class='card wide'><h3>Stress vs Factor of Safety</h3><p class='sub'>Green dot = safest material. Dashed lines show safety thresholds.</p><img src='stress_fos.png'></div>"
-              + "</div>"
+              + "<div class='card wide'><h3>Force to Yield</h3><p class='sub'>Higher = more load capacity before permanent deformation</p><img src='ftf.png'></div>"
+              + "<div class='card wide'><h3>Stress vs Factor of Safety</h3><img src='fos_scatter.png'></div>"
+              + se_row
+              + mass_row
+              + radar_row
+              + "<div class='card wide'><h3>Buckling Load Factor</h3>"
+                "<p class='sub'>Multiplier on applied load before buckling occurs. "
+                "&gt;10 = safe, &lt;3 = critical.</p>"
+                "<img src='buckle.png'></div>"
+              + "<div class='card wide'><h3>Fatigue Safety Factor</h3>"
+                "<p class='sub'>Goodman-corrected Se/σa. &gt;1 = infinite life "
+                "predicted at this stress level (R=0.1 pulsating load).</p>"
+                "<img src='fatigue_fos.png'></div>"
+              + '</div>'
           )
+ 
           rec_fea = (
-              "<li><strong>Lowest stress under load:</strong> <span class='best'>" + names[safest_idx] + "</span>"
-              + " (" + "{:,.4f}".format(max_stress[safest_idx]) + " MPa)</li>"
-              + "<li><strong>Highest factor of safety:</strong> <span class='best'>" + names[best_fos_idx] + "</span>"
-              + " (FoS = " + "{:.3f}".format(fos[best_fos_idx]) + ")</li>"
-              + "<li><strong>Highest force to yield:</strong> <span class='best'>" + names[best_ftf_idx] + "</span>"
-              + " (" + "{:,.0f}".format(ftf[best_ftf_idx]) + " N)</li>"
+              "<li><strong>Lowest stress:</strong> <span class='best'>" + names[sfi]
+              + '</span> (' + '{:,.4f}'.format(mstress[sfi]) + ' MPa)</li>'
+              + "<li><strong>Highest FoS:</strong> <span class='best'>" + names[fi]
+              + '</span> (FoS=' + '{:.3f}'.format(foss[fi]) + ')</li>'
+              + "<li><strong>Highest force to yield:</strong> <span class='best'>" + names[ti]
+              + '</span> (' + '{:,.0f}'.format(ftfs[ti]) + ' N)</li>'
           )
-
+ 
+          if all(r['mass_kg'] is not None for r in results):
+              mi_best = masses.index(min(masses))
+              rec_mass = (
+                  "<li><strong>Lightest part:</strong> <span class='best'>" + names[mi_best]
+                  + '</span> (' + '{:,.4f}'.format(masses[mi_best]) + ' kg)</li>'
+              )
+              if all(r['part_cost_usd'] is not None for r in results):
+                  pc_best = part_costs.index(min(part_costs))
+                  rec_mass += (
+                      "<li><strong>Lowest part cost:</strong> <span class='best'>" + names[pc_best]
+                      + '</span> ($' + '{:,.4f}'.format(part_costs[pc_best]) + ')</li>'
+                  )
+ 
+          if all(r['strain_energy_J'] is not None for r in results):
+              se_best   = se_vals.index(min(se_vals))
+              comp_best = comp_vals.index(min(comp_vals))
+              rec_eff = (
+                  "<li><strong>Most efficient (lowest strain energy):</strong> "
+                  "<span class='best'>" + names[se_best]
+                  + '</span> (' + '{:.4e}'.format(se_vals[se_best]) + ' J)</li>'
+                  + "<li><strong>Stiffest (lowest compliance):</strong> "
+                  "<span class='best'>" + names[comp_best]
+                  + '</span> (' + '{:.4e}'.format(comp_vals[comp_best]) + ' mm/N)</li>'
+              )
+ 
       css = (
-          "body{font-family:Arial,sans-serif;margin:0;background:#f0f2f5;color:#2c3e50}"
-          ".header{background:linear-gradient(135deg,#1a237e,#0d47a1);color:white;padding:40px;margin-bottom:30px}"
-          ".header h1{margin:0;font-size:2em;font-weight:700}"
-          ".header p{margin:8px 0 0;opacity:0.85;font-size:1.05em}"
-          ".section{padding:0 40px 30px}"
-          "h2{color:#1a237e;border-left:4px solid #1a237e;padding-left:12px;margin-bottom:20px;margin-top:30px}"
-          "h3{margin:0 0 4px;font-size:1em;color:#34495e}"
-          "h4{color:#555;margin:16px 0 8px;font-size:0.95em}"
-          ".grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}"
-          ".card{background:white;border-radius:10px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}"
-          ".card.wide{grid-column:1/-1}"
-          ".failure-card{background:white;border-radius:10px;padding:24px;box-shadow:0 2px 8px rgba(0,0,0,0.08);margin-bottom:20px;border-left:4px solid #E74C3C}"
-          ".failure-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin:16px 0}"
-          ".failure-stat{background:#f8f9ff;border-radius:8px;padding:14px}"
-          ".stat-label{font-size:0.78em;color:#888;text-transform:uppercase;font-weight:600;margin-bottom:4px}"
-          ".stat-val{font-size:1.1em;font-weight:700;color:#2c3e50}"
-          ".sub{color:#888;font-size:0.82em;margin:0 0 12px}"
-          "img{width:100%;border-radius:6px}"
-          "table{border-collapse:collapse;width:100%;font-size:0.88em}"
-          "th{background:#1a237e;color:white;padding:10px 12px;text-align:left;font-weight:600}"
-          "td{padding:9px 12px;border-bottom:1px solid #eee}"
-          "tr:hover td{background:#f8f9ff}"
-          ".inner-table th{background:#34495e;font-size:0.85em;padding:7px 10px}"
-          ".inner-table td{padding:6px 10px;font-size:0.85em}"
+          'body{font-family:Arial,sans-serif;margin:0;background:#f0f2f5;color:#2c3e50}'
+          '.hdr{background:linear-gradient(135deg,#1a237e,#0d47a1);color:white;padding:40px;margin-bottom:30px}'
+          '.hdr h1{margin:0;font-size:2em;font-weight:700}'
+          '.hdr p{margin:8px 0 0;opacity:.85}'
+          '.sec{padding:0 40px 30px}'
+          'h2{color:#1a237e;border-left:4px solid #1a237e;padding-left:12px;margin:30px 0 20px}'
+          'h3{margin:0 0 4px;font-size:1em;color:#34495e}'
+          'h4{color:#555;margin:16px 0 8px;font-size:.95em}'
+          '.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}'
+          '.card{background:white;border-radius:10px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.08)}'
+          '.card.wide{grid-column:1/-1}'
+          '.fc{background:white;border-radius:10px;padding:24px;'
+          'box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:20px;'
+          'border-left:4px solid #E74C3C}'
+          '.fg{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:16px 0}'
+          '.fs{background:#f8f9ff;border-radius:8px;padding:12px}'
+          '.sl{font-size:.72em;color:#888;text-transform:uppercase;'
+          'font-weight:600;margin-bottom:3px}'
+          '.sv{font-size:1em;font-weight:700}'
+          ".sub{color:#888;font-size:.82em;margin:0 0 10px}"
+          'img{width:100%;border-radius:6px}'
+          'table{border-collapse:collapse;width:100%;font-size:.82em}'
+          'th{background:#1a237e;color:white;padding:8px 10px;text-align:left}'
+          'td{padding:7px 10px;border-bottom:1px solid #eee}'
+          'tr:hover td{background:#f8f9ff}'
+          '.it th{background:#34495e;font-size:.8em;padding:5px 8px}'
+          '.it td{padding:5px 8px;font-size:.8em}'
           ".best{font-weight:bold;color:#27ae60}"
-          "ul li{margin-bottom:8px;line-height:1.6;list-style:none}"
-          ".flaw-list{padding:0}"
-          ".badge{display:inline-block;padding:4px 10px;border-radius:12px;font-size:0.85em;font-weight:600}"
-          ".badge-green{background:#e8f5e9;color:#27ae60}"
-          ".badge-orange{background:#fff3e0;color:#E67E22}"
-          ".badge-yellow{background:#fffde7;color:#F39C12}"
-          ".badge-red{background:#fce4ec;color:#E74C3C}"
-          ".footer{text-align:center;padding:30px;color:#aaa;font-size:0.8em;border-top:1px solid #ddd;margin-top:20px}"
+          'ul li{margin-bottom:7px;list-style:none}'
+          '.fl{padding:0}'
+          '.badge{display:inline-block;padding:4px 10px;border-radius:12px;'
+          'font-size:.84em;font-weight:600}'
+          '.bg{background:#e8f5e9;color:#27ae60}'
+          '.bo{background:#fff3e0;color:#E67E22}'
+          '.by{background:#fffde7;color:#F39C12}'
+          '.br{background:#fce4ec;color:#E74C3C}'
+          '.footer{text-align:center;padding:30px;color:#aaa;'
+          'font-size:.8em;border-top:1px solid #ddd;margin-top:20px}'
       )
-
+ 
       html = (
-          "<!DOCTYPE html><html><head>"
-          + "<meta charset='utf-8'><title>FEA Material Sweep Report v3</title>"
-          + "<style>" + css + "</style></head><body>"
-          + "<div class='header'>"
-          + "<h1>FEA Material Sweep Report</h1>"
-          + "<p>" + str(len(results)) + " materials analyzed in parallel"
-          + " &nbsp;|&nbsp; Applied load: " + "{:,.0f}".format(APPLIED_FORCE_N) + " N</p>"
-          + "</div>"
-          + "<div class='section'><h2>Material Properties</h2>"
-          + "<div class='grid'>"
-          + "<div class='card'><h3>Young's Modulus</h3><p class='sub'>Stiffness — resistance to elastic deformation</p><img src='youngs.png'></div>"
-          + "<div class='card'><h3>Yield Strength</h3><p class='sub'>Max stress before permanent deformation</p><img src='yield.png'></div>"
-          + "<div class='card'><h3>Density</h3><p class='sub'>Mass per unit volume</p><img src='density.png'></div>"
-          + "<div class='card'><h3>Poisson's Ratio</h3><p class='sub'>Lateral strain under axial load</p><img src='poisson.png'></div>"
-          + "</div>"
-          + "<div class='grid'>"
-          + "<div class='card'><h3>Specific Stiffness (E/rho)</h3><p class='sub'>Stiffness per unit weight</p><img src='spec_stiff.png'></div>"
-          + "<div class='card'><h3>Strength-to-Weight</h3><p class='sub'>Yield strength per unit density</p><img src='swr.png'></div>"
-          + "</div>"
-          + "<div class='card wide'><h3>Relative Material Cost per m3</h3><p class='sub'>Based on density and market price per kg</p><img src='cost.png'></div>"
-          + "</div>"
-          + fea_section
-          + "<div class='section'><h2>Failure Analysis</h2>" + failure_sections + "</div>"
-          + "<div class='section'><h2>Full Results Table</h2>"
-          + "<div class='card'><table><tr>"
-          + "<th>Material</th><th>E (MPa)</th><th>Yield (MPa)</th><th>Density (kg/m3)</th>"
-          + "<th>Max Stress (MPa)</th><th>Max Disp (mm)</th><th>Factor of Safety</th><th>Force to Yield</th>"
-          + "</tr>" + rows_html + "</table></div></div>"
-          + "<div class='section'><h2>Engineering Recommendations</h2>"
-          + "<div class='card'><ul>"
-          + "<li><strong>Highest stiffness:</strong> <span class='best'>" + names[best_stiff_idx] + "</span> (E = " + "{:,.0f}".format(youngs[best_stiff_idx]) + " MPa)</li>"
-          + "<li><strong>Highest yield strength:</strong> <span class='best'>" + names[best_yield_idx] + "</span> (" + "{:,.0f}".format(yield_s[best_yield_idx]) + " MPa)</li>"
-          + "<li><strong>Lightest:</strong> <span class='best'>" + names[lightest_idx] + "</span> (" + "{:,.0f}".format(density[lightest_idx]) + " kg/m3)</li>"
-          + "<li><strong>Best specific stiffness:</strong> <span class='best'>" + names[best_spec_idx] + "</span></li>"
-          + "<li><strong>Best strength-to-weight:</strong> <span class='best'>" + names[best_swr_idx] + "</span></li>"
-          + "<li><strong>Most cost effective:</strong> <span class='best'>" + names[cheapest_idx] + "</span></li>"
+          '<!DOCTYPE html><html><head><meta charset=utf-8>'
+          + '<title>FEA Material Sweep Report v11</title>'
+          + '<style>' + css + '</style></head><body>'
+          + '<div class=hdr><h1>FEA Material Sweep Report</h1>'
+          + '<p>' + str(len(results)) + ' materials analyzed in parallel | Load: '
+          + '{:,.0f}'.format(APPLIED_FORCE_N) + ' N</p></div>'
+ 
+          # Material properties section
+          + '<div class=sec><h2>Material Properties</h2><div class=grid>'
+          + "<div class=card><h3>Young's Modulus</h3><p class=sub>Stiffness</p><img src=youngs.png></div>"
+          + '<div class=card><h3>Yield Strength</h3><p class=sub>Max stress before permanent deformation</p><img src=yield.png></div>'
+          + '<div class=card><h3>Density</h3><p class=sub>Mass per unit volume</p><img src=density.png></div>'
+          + "<div class=card><h3>Poisson's Ratio</h3><p class=sub>Lateral strain under axial load</p><img src=poisson.png></div>"
+          + '</div><div class=grid>'
+          + '<div class=card><h3>Specific Stiffness</h3><p class=sub>Stiffness per unit weight (E/ρ)</p><img src=spec.png></div>'
+          + '<div class=card><h3>Strength-to-Weight</h3><p class=sub>Yield per unit density</p><img src=swr.png></div>'
+          + '</div>'
+          + "<div class='card wide'><h3>Relative Cost per m3</h3><p class=sub>Density × cost/kg</p><img src=cost.png></div>"
+          + '</div>'
+ 
+          # FEA section
+          + fea_sec
+ 
+          # Failure analysis
+          + '<div class=sec><h2>Detailed Analysis per Material</h2>'
+          + failure_html + '</div>'
+ 
+          # Full results table
+          + '<div class=sec><h2>Full Results Table</h2><div class=card>'
+          + '<table><tr>'
+          + '<th>Material</th><th>E (MPa)</th><th>Yield (MPa)</th>'
+          + '<th>Density (kg/m3)</th><th>Mass (kg)</th><th>Volume (cm³)</th>'
+          + '<th>VM Stress (MPa)</th><th>σ1 (MPa)</th><th>Disp (mm)</th>'
+          + '<th>FoS</th><th>Yield Force (N)</th>'
+          + '<th>Strain Energy (J)</th><th>Compliance (mm/N)</th>'
+          + '<th>Part Cost ($)</th>'
+          + '</tr>' + rows + '</table></div></div>'
+ 
+          # Recommendations
+          + '<div class=sec><h2>Engineering Recommendations</h2><div class=card><ul>'
+          + "<li><strong>Highest stiffness:</strong> <span class='best'>" + names[bi]
+          + '</span> (E=' + '{:,.0f}'.format(youngs[bi]) + ' MPa)</li>'
+          + "<li><strong>Highest yield strength:</strong> <span class='best'>" + names[yi]
+          + '</span> (' + '{:,.0f}'.format(ylds[yi]) + ' MPa)</li>'
+          + "<li><strong>Lowest density:</strong> <span class='best'>" + names[li]
+          + '</span> (' + '{:,.0f}'.format(dens[li]) + ' kg/m3)</li>'
+          + "<li><strong>Best specific stiffness (E/ρ):</strong> <span class='best'>" + names[si] + '</span></li>'
+          + "<li><strong>Best strength-to-weight:</strong> <span class='best'>" + names[wi] + '</span></li>'
+          + "<li><strong>Lowest cost per m3:</strong> <span class='best'>" + names[ci] + '</span></li>'
           + rec_fea
-          + "</ul></div></div>"
-          + "<div class='footer'>Generated by Fuzzball FEA Material Sweep Workflow v3</div>"
-          + "</body></html>"
+          + rec_mass
+          + rec_eff
+          + '</ul></div></div>'
+          + '<div class=footer>Generated by Fuzzball FEA Material Sweep Workflow v11</div>'
+          + '</body></html>'
       )
-
-      with open("/data/report/index.html", "w") as f:
+ 
+      with open('/data/report/index.html', 'w') as f:
           f.write(html)
-
-      print("Report written to /data/report/index.html")
+      print('Report written to /data/report/index.html')
       PYEOF
     resource:
       cpu:
@@ -625,9 +2249,12 @@ jobs:
     policy:
       timeout:
         execute: 15m
-
+ 
   # ════════════════════════════════════════════════════════════
   # SERVE
+  # Exposes a public HTTP endpoint so that
+  # `fuzzball workflow connect` (or --connect on start)
+  # opens the report in your browser automatically.
   # ════════════════════════════════════════════════════════════
   serve:
     image:
@@ -639,6 +2266,25 @@ jobs:
       #!/bin/sh
       cd /data/report
       python3 -m http.server 8080
+    network:
+      isolated: true
+      ports:
+        - name: http
+          port: 8080
+          protocol: tcp
+      endpoints:
+        - name: report
+          port-name: http
+          protocol: https
+          type: path
+          scope: user
+    readiness-probe:
+      tcp-socket:
+        port: 8080
+      initial-delay-seconds: 2
+      period-seconds: 3
+      failure-threshold: 20
+      success-threshold: 1
     resource:
       cpu:
         cores: 1
