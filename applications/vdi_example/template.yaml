@@ -66,6 +66,8 @@ services:
       uri: {{ .Container }}
     script: |
       #!/bin/sh
+      mkdir -p "${HOME}"
+      cd "${HOME}"
       echo "Starting desktop and vnc"
       /usr/local/bin/start-vncserver.sh {{ $port }}
     resource:
