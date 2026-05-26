@@ -1,6 +1,6 @@
-# Copyright 2025 CIQ, Inc. All rights reservned.
+# Copyright 2025 CIQ, Inc. All rights reserved.
 # ============================================================
-# FEA Material Sweep Workflow Template v11
+# FEA Material Sweep Workflow Template v13
 # ============================================================
 # Changes from v10:
 # - Reaction forces: parsed from .dat REACTION FORCES section
