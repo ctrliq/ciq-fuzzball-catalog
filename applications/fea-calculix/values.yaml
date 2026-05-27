@@ -1,23 +1,43 @@
 # ============================================================
-# FEA Material Sweep v3 — values.yaml
+# FEA Material Sweep — values.yaml
+# ============================================================
+# Edit this file to change your model, load, and materials.
+# Then run:  fuzzball workflow start template_v9.yaml --values values_v5.yaml
 # ============================================================
 
 values:
 
   # ── Input File ───────────────────────────────────────────
+  # Paste your GitHub Gist raw URL here.
+  # See the README for instructions on creating a Gist.
   - name: InputFile
-    display_name: "URI of your CalculiX input file (.inp)"
-    string_value: "https://gist.githubusercontent.com/your-gist-url/raw/beam_test.inp"
+    display_name: "Raw URL of your CalculiX .inp file"
+    string_value: "https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/main/fea-material-sweep/data/cantilever_beam_500x20x10.inp"
     display_category: "Input"
 
   - name: AppliedForceN
-    display_name: "Total applied force in Newtons (used to estimate force to yield)"
-    string_value: "2000"
+    display_name: "Total applied force in Newtons"
+    string_value: "100"
+    display_category: "Input"
+
+  # ── Prepare job settings ─────────────────────────────────
+  # These must match the hardcoded values in your .inp file.
+  # The prepare job will replace them with placeholders.
+  # If your file already has __YOUNGS__ placeholders,
+  # set both of these to match those placeholder strings.
+  - name: OriginalYoungs
+    display_name: "Young's modulus hardcoded in your .inp file"
+    string_value: "210000."
+    display_category: "Input"
+
+  - name: OriginalPoisson
+    display_name: "Poisson's ratio hardcoded in your .inp file"
+    string_value: ".3"
     display_category: "Input"
 
   - name: Volume
     display_name: "Fuzzball volume for input files and results"
-    string_value: "volume://user/ephemeral"
+    string_value: "volume://user/FEA_RESULTS"
     display_category: "Storage"
 
   - name: CoresPerJob
@@ -44,27 +64,27 @@ values:
     display_category: "Material 1"
 
   - name: Mat1YoungsMPa
-    display_name: "Material 1 — Young's Modulus (MPa) e.g. Steel=200000, Al=68900, Ti=113800"
+    display_name: "Material 1 — Young's Modulus (MPa)"
     string_value: "200000"
     display_category: "Material 1"
 
   - name: Mat1Poisson
-    display_name: "Material 1 — Poisson's Ratio e.g. Steel=0.26, Al=0.33, Ti=0.34"
+    display_name: "Material 1 — Poisson's Ratio"
     string_value: "0.26"
     display_category: "Material 1"
 
   - name: Mat1DensityKgM3
-    display_name: "Material 1 — Density (kg/m3) e.g. Steel=7850, Al=2700, Ti=4430"
+    display_name: "Material 1 — Density (kg/m3)"
     string_value: "7850"
     display_category: "Material 1"
 
   - name: Mat1YieldMPa
-    display_name: "Material 1 — Yield Strength (MPa) e.g. Steel=250, Al=276, Ti=880"
+    display_name: "Material 1 — Yield Strength (MPa)"
     string_value: "250"
     display_category: "Material 1"
 
   - name: Mat1CostPerKg
-    display_name: "Material 1 — Cost per kg USD e.g. Steel=0.80, Al=2.00, Ti=35.00"
+    display_name: "Material 1 — Cost per kg USD"
     string_value: "0.80"
     display_category: "Material 1"
 
@@ -77,48 +97,26 @@ values:
     display_category: "Material 2"
 
   - name: Mat2YoungsMPa
-    display_name: "Material 2 — Young's Modulus (MPa) e.g. Steel=200000, Al=68900, Ti=113800"
+    display_name: "Material 2 — Young's Modulus (MPa)"
     string_value: "68900"
     display_category: "Material 2"
 
   - name: Mat2Poisson
-    display_name: "Material 2 — Poisson's Ratio e.g. Steel=0.26, Al=0.33, Ti=0.34"
+    display_name: "Material 2 — Poisson's Ratio"
     string_value: "0.33"
     display_category: "Material 2"
 
   - name: Mat2DensityKgM3
-    display_name: "Material 2 — Density (kg/m3) e.g. Steel=7850, Al=2700, Ti=4430"
+    display_name: "Material 2 — Density (kg/m3)"
     string_value: "2700"
     display_category: "Material 2"
 
   - name: Mat2YieldMPa
-    display_name: "Material 2 — Yield Strength (MPa) e.g. Steel=250, Al=276, Ti=880"
+    display_name: "Material 2 — Yield Strength (MPa)"
     string_value: "276"
     display_category: "Material 2"
 
   - name: Mat2CostPerKg
-    display_name: "Material 2 — Cost per kg USD e.g. Steel=0.80, Al=2.00, Ti=35.00"
+    display_name: "Material 2 — Cost per kg USD"
     string_value: "2.00"
     display_category: "Material 2"
-
-  # ════════════════════════════════════════════════════════
-  # MATERIAL 3 (uncomment to add, copy fea-mat3 job in template)
-  # ════════════════════════════════════════════════════════
-  # - name: Mat3Name
-  #   string_value: "Titanium_Ti6Al4V"
-  #   display_category: "Material 3"
-  # - name: Mat3YoungsMPa
-  #   string_value: "113800"
-  #   display_category: "Material 3"
-  # - name: Mat3Poisson
-  #   string_value: "0.342"
-  #   display_category: "Material 3"
-  # - name: Mat3DensityKgM3
-  #   string_value: "4430"
-  #   display_category: "Material 3"
-  # - name: Mat3YieldMPa
-  #   string_value: "880"
-  #   display_category: "Material 3"
-  # - name: Mat3CostPerKg
-  #   string_value: "35.00"
-  #   display_category: "Material 3"

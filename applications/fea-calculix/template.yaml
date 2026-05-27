@@ -1,0 +1,246 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+# ============================================================
+# FEA Material Sweep Workflow Template v11
+# ============================================================
+# Changes from v10:
+# - Reaction forces: parsed from .dat REACTION FORCES section
+# - Safety margin map: per-element FoS, % above/below thresholds
+# - Stress gradient: rate of stress decay from hot spot
+# - Fatigue life: Goodman & Basquin estimates from stress range
+# - Buckling: load factor from *BUCKLE step added to .inp
+# - New bar charts, table columns, and report sections for all
+# ────────────────────────────────────────────────────────────
+# v10 changes (retained):
+# - Mass estimate: compute part volume from hex element Jacobians
+#   in .frd, multiply by density → mass per material in kg
+# - Strain energy / compliance: computed from stress tensor and
+#   Young's modulus (U = sum over elements of σ²V/2E), reported
+#   as total strain energy (J) and compliance index (J/N)
+# - Mesh quality flag: detects when top stress locations are
+#   suspiciously identical (coarse mesh warning)
+# - Comprehensive 3D diagrams: separate full-page figures for
+#   mesh+BCs, Von Mises, principal stress σ1, displacement mag
+# - Displacement heatmap on mesh geometry (not just bar chart)
+# - All new metrics have dedicated bar charts and appear in the
+#   full results table and engineering recommendations
+# ============================================================
+
+{{- $inputFile     := trim .InputFile }}
+{{- $inputFileName := base $inputFile }}
+{{- $volume        := trim .Volume }}
+{{- $cores         := .CoresPerJob }}
+{{- $memory        := trim .Memory }}
+{{- $timeout       := trim .Timeout }}
+{{- $appliedForceN := trim .AppliedForceN }}
+
+version: v1
+
+defaults:
+  job:
+    mounts:
+      data:
+        location: "/data"
+
+volumes:
+  data:
+    reference: {{ $volume }}
+    ingress:
+      - destination:
+          uri: file://{{ $inputFileName }}
+        source:
+          uri: {{ $inputFile }}
+      - destination:
+          uri: file://prepare.py
+        source:
+          uri: https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/main/fea-material-sweep/scripts/prepare.py
+      - destination:
+          uri: file://report.py
+        source:
+          uri: https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/main/fea-material-sweep/scripts/report.py
+
+jobs:
+
+  # ════════════════════════════════════════════════════════════
+  # PREPARE
+  # ════════════════════════════════════════════════════════════
+  prepare:
+    image:
+      uri: "docker://python:3.12-slim"
+    depends-on: []
+    script: |
+      #!/bin/sh
+      set -e
+      python3 /data/prepare.py "/data/{{ $inputFileName }}"
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 512MiB
+
+  # ════════════════════════════════════════════════════════════
+  # MATERIAL 1
+  # ════════════════════════════════════════════════════════════
+  fea-mat1:
+    image:
+      uri: "docker://calculix/ccx:latest"
+    depends-on:
+      - name: prepare
+        status: FINISHED
+    script: |
+      #!/bin/sh
+      set -e
+      MAT_NAME="{{ .Mat1Name }}"
+      YOUNGS="{{ .Mat1YoungsMPa }}"
+      POISSON="{{ .Mat1Poisson }}"
+      DENSITY="{{ .Mat1DensityKgM3 }}"
+      YIELD="{{ .Mat1YieldMPa }}"
+      COST="{{ .Mat1CostPerKg }}"
+      WORKDIR="/data/results/${MAT_NAME}"
+      mkdir -p "${WORKDIR}"
+      sed "s/__YOUNGS__/${YOUNGS}/g; s/__POISSON__/${POISSON}/g; s/__DENSITY__/${DENSITY}/g" \
+          /data/patched.inp > "${WORKDIR}/job.inp"
+      cd "${WORKDIR}"
+      ccx job
+
+      # ── Add buckle step and rerun for buckling load factor ──
+      # Script is base64-encoded to avoid YAML heredoc conflicts
+      echo "aW1wb3J0IHN5cwp3aXRoIG9wZW4oc3lzLmFyZ3ZbMV0pIGFzIGY6CiAgICBsaW5lcyA9IGYucmVhZGxpbmVzKCkKCiMgQ29sbGVjdCBib3VuZGFyeSBjb25kaXRpb24gbGluZXMgZnJvbSB0aGUgc3RhdGljIHN0ZXAKYmNfbGluZXMgPSBbXQppbl9iYyA9IEZhbHNlCmZvciBsaW5lIGluIGxpbmVzOgogICAgaWYgbGluZS5zdHJpcCgpLnVwcGVyKCkgPT0gJypCT1VOREFSWSc6CiAgICAgICAgaW5fYmMgPSBUcnVlCiAgICAgICAgY29udGludWUKICAgIGlmIGluX2JjOgogICAgICAgIGlmIGxpbmUuc3RyaXAoKS5zdGFydHN3aXRoKCcqJyk6CiAgICAgICAgICAgIGluX2JjID0gRmFsc2UKICAgICAgICBlbHNlOgogICAgICAgICAgICBiY19saW5lcy5hcHBlbmQobGluZSkKCiMgQXBwZW5kIGJ1Y2tsZSBzdGVwIEFGVEVSIHRoZSBsYXN0ICpFTkQgU1RFUApvdXQgPSBsaXN0KGxpbmVzKQojIFJlbW92ZSB0cmFpbGluZyBuZXdsaW5lL3doaXRlc3BhY2UgbGluZXMsIHRoZW4gYXBwZW5kCndoaWxlIG91dCBhbmQgbm90IG91dFstMV0uc3RyaXAoKToKICAgIG91dC5wb3AoKQoKb3V0LmFwcGVuZCgnXG4nKQpvdXQuYXBwZW5kKCcqU1RFUFxuJykKb3V0LmFwcGVuZCgnKkJVQ0tMRVxuJykKb3V0LmFwcGVuZCgnNFxuJykKb3V0LmFwcGVuZCgnKkJPVU5EQVJZXG4nKQpvdXQuZXh0ZW5kKGJjX2xpbmVzKQpvdXQuYXBwZW5kKCcqTk9ERSBGSUxFLCBOU0VUPU5BTExcbicpCm91dC5hcHBlbmQoJ1VcbicpCm91dC5hcHBlbmQoJypFTkQgU1RFUFxuJykKCndpdGggb3BlbihzeXMuYXJndlsyXSwgJ3cnKSBhcyBmOgogICAgZi53cml0ZWxpbmVzKG91dCkKcHJpbnQoJ0J1Y2tsZSBpbnAgd3JpdHRlbiBPSycpCg==" | base64 -d > /tmp/make_buckle.py
+      python3 /tmp/make_buckle.py "${WORKDIR}/job.inp" "${WORKDIR}/job_buckle.inp"
+      ccx job_buckle > "${WORKDIR}/buckle_ccx.log" 2>&1 || echo "Buckle step failed (non-critical)"
+      echo "=== Buckle files in WORKDIR ==="
+      ls -la "${WORKDIR}/"
+      echo "=== Buckle log tail ==="
+      tail -20 "${WORKDIR}/buckle_ccx.log" 2>/dev/null || true
+
+      cat > "${WORKDIR}/summary.json" << EOF
+      {"material":"${MAT_NAME}","youngs_mpa":${YOUNGS},"poisson":${POISSON},"density_kg_m3":${DENSITY},"yield_mpa":${YIELD},"cost_per_kg":${COST}}
+      EOF
+      echo "mat1 done: ${MAT_NAME}"
+    resource:
+      cpu:
+        cores: {{ $cores }}
+        affinity: NUMA
+      memory:
+        size: {{ $memory }}
+    policy:
+      timeout:
+        execute: {{ $timeout }}
+
+  # ════════════════════════════════════════════════════════════
+  # MATERIAL 2
+  # ════════════════════════════════════════════════════════════
+  fea-mat2:
+    image:
+      uri: "docker://calculix/ccx:latest"
+    depends-on:
+      - name: prepare
+        status: FINISHED
+    script: |
+      #!/bin/sh
+      set -e
+      MAT_NAME="{{ .Mat2Name }}"
+      YOUNGS="{{ .Mat2YoungsMPa }}"
+      POISSON="{{ .Mat2Poisson }}"
+      DENSITY="{{ .Mat2DensityKgM3 }}"
+      YIELD="{{ .Mat2YieldMPa }}"
+      COST="{{ .Mat2CostPerKg }}"
+      WORKDIR="/data/results/${MAT_NAME}"
+      mkdir -p "${WORKDIR}"
+      sed "s/__YOUNGS__/${YOUNGS}/g; s/__POISSON__/${POISSON}/g; s/__DENSITY__/${DENSITY}/g" \
+          /data/patched.inp > "${WORKDIR}/job.inp"
+      cd "${WORKDIR}"
+      ccx job
+
+      # ── Add buckle step and rerun for buckling load factor ──
+      # Script is base64-encoded to avoid YAML heredoc conflicts
+      echo "aW1wb3J0IHN5cwp3aXRoIG9wZW4oc3lzLmFyZ3ZbMV0pIGFzIGY6CiAgICBsaW5lcyA9IGYucmVhZGxpbmVzKCkKCiMgQ29sbGVjdCBib3VuZGFyeSBjb25kaXRpb24gbGluZXMgZnJvbSB0aGUgc3RhdGljIHN0ZXAKYmNfbGluZXMgPSBbXQppbl9iYyA9IEZhbHNlCmZvciBsaW5lIGluIGxpbmVzOgogICAgaWYgbGluZS5zdHJpcCgpLnVwcGVyKCkgPT0gJypCT1VOREFSWSc6CiAgICAgICAgaW5fYmMgPSBUcnVlCiAgICAgICAgY29udGludWUKICAgIGlmIGluX2JjOgogICAgICAgIGlmIGxpbmUuc3RyaXAoKS5zdGFydHN3aXRoKCcqJyk6CiAgICAgICAgICAgIGluX2JjID0gRmFsc2UKICAgICAgICBlbHNlOgogICAgICAgICAgICBiY19saW5lcy5hcHBlbmQobGluZSkKCiMgQXBwZW5kIGJ1Y2tsZSBzdGVwIEFGVEVSIHRoZSBsYXN0ICpFTkQgU1RFUApvdXQgPSBsaXN0KGxpbmVzKQojIFJlbW92ZSB0cmFpbGluZyBuZXdsaW5lL3doaXRlc3BhY2UgbGluZXMsIHRoZW4gYXBwZW5kCndoaWxlIG91dCBhbmQgbm90IG91dFstMV0uc3RyaXAoKToKICAgIG91dC5wb3AoKQoKb3V0LmFwcGVuZCgnXG4nKQpvdXQuYXBwZW5kKCcqU1RFUFxuJykKb3V0LmFwcGVuZCgnKkJVQ0tMRVxuJykKb3V0LmFwcGVuZCgnNFxuJykKb3V0LmFwcGVuZCgnKkJPVU5EQVJZXG4nKQpvdXQuZXh0ZW5kKGJjX2xpbmVzKQpvdXQuYXBwZW5kKCcqTk9ERSBGSUxFLCBOU0VUPU5BTExcbicpCm91dC5hcHBlbmQoJ1VcbicpCm91dC5hcHBlbmQoJypFTkQgU1RFUFxuJykKCndpdGggb3BlbihzeXMuYXJndlsyXSwgJ3cnKSBhcyBmOgogICAgZi53cml0ZWxpbmVzKG91dCkKcHJpbnQoJ0J1Y2tsZSBpbnAgd3JpdHRlbiBPSycpCg==" | base64 -d > /tmp/make_buckle.py
+      python3 /tmp/make_buckle.py "${WORKDIR}/job.inp" "${WORKDIR}/job_buckle.inp"
+      ccx job_buckle > "${WORKDIR}/buckle_ccx.log" 2>&1 || echo "Buckle step failed (non-critical)"
+      echo "=== Buckle files in WORKDIR ==="
+      ls -la "${WORKDIR}/"
+      echo "=== Buckle log tail ==="
+      tail -20 "${WORKDIR}/buckle_ccx.log" 2>/dev/null || true
+
+      cat > "${WORKDIR}/summary.json" << EOF
+      {"material":"${MAT_NAME}","youngs_mpa":${YOUNGS},"poisson":${POISSON},"density_kg_m3":${DENSITY},"yield_mpa":${YIELD},"cost_per_kg":${COST}}
+      EOF
+      echo "mat2 done: ${MAT_NAME}"
+    resource:
+      cpu:
+        cores: {{ $cores }}
+        affinity: NUMA
+      memory:
+        size: {{ $memory }}
+    policy:
+      timeout:
+        execute: {{ $timeout }}
+
+  # ════════════════════════════════════════════════════════════
+  # REPORT
+  # ════════════════════════════════════════════════════════════
+  report:
+    image:
+      uri: "docker://python:3.12-slim"
+    depends-on:
+      - name: fea-mat1
+        status: FINISHED
+      - name: fea-mat2
+        status: FINISHED
+    script: |
+      #!/bin/sh
+      set -e
+      pip install --quiet matplotlib numpy
+
+      python3 /data/report.py
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 2GiB
+    policy:
+      timeout:
+        execute: 15m
+
+  # ════════════════════════════════════════════════════════════
+  # SERVE
+  # Exposes a public HTTP endpoint so that
+  # `fuzzball workflow connect` (or --connect on start)
+  # opens the report in your browser automatically.
+  # ════════════════════════════════════════════════════════════
+  serve:
+    image:
+      uri: "docker://python:3.12-slim"
+    depends-on:
+      - name: report
+        status: FINISHED
+    script: |
+      #!/bin/sh
+      cd /data/report
+      python3 -m http.server 8080
+    network:
+      isolated: true
+      ports:
+        - name: http
+          port: 8080
+          protocol: tcp
+      endpoints:
+        - name: report
+          port-name: http
+          protocol: https
+          type: path
+          scope: user
+    readiness-probe:
+      tcp-socket:
+        port: 8080
+      initial-delay-seconds: 2
+      period-seconds: 3
+      failure-threshold: 20
+      success-threshold: 1
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 1GiB
+    policy:
+      timeout:
+        execute: 30m
