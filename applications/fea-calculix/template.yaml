@@ -2318,24 +2318,30 @@ jobs:
       timeout:
         execute: 15m
 
+services:
+
   # ════════════════════════════════════════════════════════════
   # SERVE
-  # Exposes a public HTTP endpoint so that
-  # `fuzzball workflow connect` (or --connect on start)
-  # opens the report in your browser automatically.
+  # No depends-on — services start immediately.
+  # Wait loop holds until report is ready, then starts server.
+  # Readiness probe ensures endpoint only activates when live.
   # ════════════════════════════════════════════════════════════
   serve:
     image:
       uri: "docker://python:3.12-slim"
-    depends-on:
-      - name: report
-        status: FINISHED
+    persist: true
+    mounts:
+      data:
+        location: "/data"
     script: |
       #!/bin/sh
-      cd /data/report
-      python3 -m http.server 8080
+      echo "Waiting for report..."
+      while [ ! -f /data/report/index.html ]; do
+        sleep 3
+      done
+      echo "Report found. Starting server on port 8080..."
+      exec python3 -m http.server 8080 --directory /data/report
     network:
-      isolated: true
       ports:
         - name: http
           port: 8080
@@ -2343,15 +2349,16 @@ jobs:
       endpoints:
         - name: report
           port-name: http
-          protocol: https
-          type: path
+          protocol: http
+          type: subdomain
           scope: user
     readiness-probe:
-      tcp-socket:
+      http-get:
+        path: /
         port: 8080
-      initial-delay-seconds: 2
-      period-seconds: 3
-      failure-threshold: 20
+      initial-delay-seconds: 5
+      period-seconds: 5
+      failure-threshold: 60
       success-threshold: 1
     resource:
       cpu:
@@ -2360,4 +2367,4 @@ jobs:
         size: 1GiB
     policy:
       timeout:
-        execute: 30m
+        execute: 2h
