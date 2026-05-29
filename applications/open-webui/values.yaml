@@ -34,10 +34,10 @@ values:
 
   - name: "OllamaVersion"
     display_name: "Ollama Container Version"
-    string_value: "0.15.0"
+    string_value: "0.24.0"
     display_category: "Container Versions"
 
   - name: "OpenWebUIVersion"
     display_name: "Open WebUI Container Version"
-    string_value: "v0.7.2"
+    string_value: "v0.9.5"
     display_category: "Container Versions"
