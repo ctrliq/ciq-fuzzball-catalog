@@ -1,4 +1,4 @@
-# tag: 1.3-1
+# tag: 1.4-1
 
 Bootstrap: docker
 From: rockylinux/rockylinux:9
@@ -128,19 +128,25 @@ cat >/etc/xdg/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml <<__EOF__
 __EOF__
 
 # make novnc default to using remote resize
-sed -E "s/UI.initSetting\('resize',[[:space:]]*'off'\)/UI.initSetting('resize', 'remote')/" \
-  /usr/share/novnc/app/ui.js > /tmp/ui.js && mv /tmp/ui.js /usr/share/novnc/app/ui.js
+sed -i -E "s/UI.initSetting\('resize',[[:space:]]*'off'\)/UI.initSetting('resize', 'remote')/" \
+  /usr/share/novnc/app/ui.js
 
+# Move TurboVNC's runtime state off $HOME so a persistent home volume can be
+# mounted on $HOME without colliding with vncserver's strict type/ownership
+# check on $HOME/.vnc (which fails on persistent volume backends that don't
+# present the on-disk uid as the running uid). Putting vncUserDir under
+# /tmp/ also relocates the Xauthority file there (see the
+# $vncUserDirUnderTmp branch in /opt/TurboVNC/bin/vncserver).
+cat >/etc/turbovncserver.conf <<'__EOF__'
+$vncUserDir = "/tmp/vnc";
+__EOF__
 
 # script used by workflow
 cat >/usr/local/bin/start-vncserver.sh <<'__EOF__'
 #!/bin/sh
-(
-mkdir -p "${HOME}/.vnc"
-chown -R $(whoami) "${HOME}/.vnc"
-chmod 700 "${HOME}/.vnc"
-) >/dev/null 2>&1
-umask 007
+umask 077
+mkdir -p /tmp/vnc
+chmod 700 /tmp/vnc
 export USER=$(whoami)
 
 /usr/bin/novnc_proxy --vnc localhost:5900 --listen ${1:-6080} &
