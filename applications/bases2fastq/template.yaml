@@ -68,9 +68,11 @@ jobs:
       timeout:
         execute: {{ .Timeout }}
     mounts:
-      {{ $scratch_mount }}: scratch
+      {{ $scratch_mount }}:
+        volume: scratch
       {{- if $local }}
-      {{ $data_mount }}: data
+      {{ $data_mount }}:
+        volume: data
       {{- end }}
     cwd: {{ $scratch_mount }}
     env:
