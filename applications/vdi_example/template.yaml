@@ -15,7 +15,7 @@
 {{- end }}
 {{- $port := randInt 10000 32000 }}
 
-version: v1
+version: v4
 
 {{- if (or $datavol $homevol) }}
 volumes:
@@ -34,12 +34,12 @@ services:
 {{- if (or $datavol $homevol) }}
     mounts:
   {{- if $datavol }}
-      data:
-        location: {{ $datamount }}
+      {{ $datamount }}:
+        volume: data
   {{- end }}
   {{- if $homevol }}
-      home:
-        location: {{ $home }}
+      {{ $home }}:
+        volume: {{ home }}
   {{- end }}
 {{- end }}
     persist: true
