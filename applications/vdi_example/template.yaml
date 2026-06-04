@@ -39,7 +39,7 @@ services:
   {{- end }}
   {{- if $homevol }}
       {{ $home }}:
-        volume: {{ home }}
+        volume: home
   {{- end }}
 {{- end }}
     persist: true
