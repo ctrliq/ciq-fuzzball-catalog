@@ -17,11 +17,9 @@ values:
     display_category: "Scheduling"
   - name: "DataVolume"
     display_name: "Where to store data."
-    volume_value:
-      reference: "volume://user/ephemeral"
+    string_value: "volume://userephemeral"
     display_category: "Storage"
   - name: "HomeVolume"
     display_name: "Volume to use as your home directory"
-    volume_value:
-      reference: ""
+    string_value: ""
     display_category: "Storage"
