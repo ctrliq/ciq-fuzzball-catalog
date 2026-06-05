@@ -1,19 +1,12 @@
 values:
-  - name: ScratchVolumeProvisioner
+  - name: ScratchVolume
     display_name: Ephemeral storage provisioner for temporary data.
-    string_value: ephemeral
+    string_value: volume://user/ephemeral
     display_category: Storage
-  - name: DataVolumeProvisioner
+  - name: DataVolume
     display_name: >-
       [optional] Persistent storage provisioner to use. If neither InputPath nor
       OutputPath are local paths, or the DataVolumeName is unique this can be omitted.
-    string_value: persistent
-    display_category: Storage
-  - name: DataVolumeName
-    display_name: >-
-      [optional] Persistent storage provisioner. Can be omitted if DataVolumeName
-      alone is sufficient to identify the volume, or if neither InputPath nor OutputPath
-      is a local path.
     string_value: ""
     display_category: Storage
 

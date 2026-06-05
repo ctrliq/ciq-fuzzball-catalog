@@ -39,7 +39,7 @@
 version: v4
 volumes:
   scratch:
-    use: {{ .ScratchVolumeProvisioner }}
+    reference: {{ .ScratchVolume }}
 {{- if (eq $input_is "http") }}
     ingress:
       - source:
@@ -49,10 +49,7 @@ volumes:
 {{- end }}
 {{- if $local }}
   data:
-    name: {{ .DataVolumeName }}
-    {{- if (trim .DataVolumeProvisioner) }}
-    use: {{ .DataVolumeProvisioner }}
-    {{- end }}
+    reference: {{ .DataVolume }}
 {{- end }}
 jobs:
   bases2fastq:
