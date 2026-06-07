@@ -6,7 +6,7 @@
 
 {{- $data_mount := "/data" }}
 
-version: v1
+version: v4
 volumes:
   data:
     reference: {{ .ModelVolume }}
@@ -21,8 +21,8 @@ services:
     image:
       uri: docker://vllm/vllm-openai:{{ .VllmVersion }}
     mounts:
-      data:
-        location: {{ $data_mount }}
+      {{ $data_mount }}:
+        volume: {{ data }}
     resource:
       cpu:
         cores: {{ .ServerCores }}
