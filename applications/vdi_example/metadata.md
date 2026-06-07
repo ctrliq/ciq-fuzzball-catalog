@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "ciq/utilities/virtual_desktop_application"changing results in a new application
+id: "ciq/utilities/virtual_desktop_application"
 name: "Virtual Desktop (VDI)"
 category: "UTILITIES"
 featured: true
