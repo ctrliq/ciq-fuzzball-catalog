@@ -2,7 +2,7 @@
 
 {{- $mount := "/data" }}
 {{- $port := (randInt 10000 30000) }}
-{{- $volume := trim .Volume }}
+{{- $volume := trim .VolumeVolume }}
 {{- if not (hasPrefix "volume://" $volume) }}
   {{- fail "A Volume has to be specified" }}
 {{- end }}
