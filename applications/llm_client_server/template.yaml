@@ -22,7 +22,7 @@ services:
       uri: docker://vllm/vllm-openai:{{ .VllmVersion }}
     mounts:
       {{ $data_mount }}:
-        volume: {{ data }}
+        volume: data
     resource:
       cpu:
         cores: {{ .ServerCores }}
