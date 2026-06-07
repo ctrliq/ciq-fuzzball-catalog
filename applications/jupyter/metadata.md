@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "ciq/utilitiese/jupyter-server"
+id: "ciq/utilities/jupyter-server"
 name: "Jupyter Server"
 category: "UTILITIES"
 featured: true

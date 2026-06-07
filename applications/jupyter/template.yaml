@@ -8,7 +8,7 @@
 {{- end }}
 {{- $container_type := default "r" (trim .Type) }}
 
-version: v1
+version: v4
 
 volumes:
   data:
@@ -50,8 +50,8 @@ services:
       {{- end }}
       exclusive: {{ .Exclusive }}
     mounts:
-      data:
-        location: {{ $mount }}
+      {{ $mount }}:
+        volume: data
     env:
       - NB_USER=jovyan
       - HOME=/home/jovyan
