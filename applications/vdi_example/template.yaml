@@ -12,7 +12,7 @@
 {{- $home := "/tmp/fbhome" }}
 {{- if $homevol }}
   {{- if (trim .HomeDir) }}
-    {{- $home = printf "/home/%s" (trim .HomeDir) }}
+    {{- $home = trim .HomeDir }}
   {{- else }}
     {{- fail "HomeDir is required when specifying HomeVolume" }}
   {{- end }}
