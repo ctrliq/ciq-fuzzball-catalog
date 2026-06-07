@@ -32,8 +32,8 @@
   {{- if not .AWSRegion }}{{- fail "AWSRegion is required when using S3" }}{{- end }}
 {{- end }}
 
-{{- if (and (not (trim .DataVolumeName)) $local) }}
-  {{- fail "DataVolumeName is required when InputPath or OutputPath is a local path" }}
+{{- if (and (not (trim .DataVolume)) $local) }}
+  {{- fail "DataVolume is required when InputPath or OutputPath is a local path" }}
 {{- end }}
 
 version: v4
