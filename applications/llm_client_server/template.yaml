@@ -34,7 +34,7 @@ services:
         nvidia.com/gpu.model: "{{ .ServerGPUModel }}"
     script: |
       #!/bin/sh
-      HF_HUB_CACHE="{{ $data_mount }}/{{ .HuggingfaceCache }}"
+      HF_HUB_CACHE="{{ .HuggingfaceCache }}"
       export HF_HUB_CACHE
       mkdir -p "$HF_HUB_CACHE" || exit 1
       vllm serve --port={{ $vllm_api_port }} --api-key="{{ $vllm_api_key }}" --max-model-len {{ .MaxContextSize }} "{{ .ModelName }}"
