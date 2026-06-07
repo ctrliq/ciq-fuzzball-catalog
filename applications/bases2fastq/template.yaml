@@ -7,9 +7,8 @@
 {{- $input_is := "local" }}
 {{- $output_is := "local" }}
 
-{{- $bases := printf "%s/%s/%s" $data_mount (trim .InputPath) (trim .RunName) }}
+{{- $bases := printf "%s/%s" (trim .InputPath) (trim .RunName) }}
 {{- if (hasPrefix "s3://" (trim .InputPath)) }}
-  {{- $bases = printf "%s/%s" (trim .InputPath) (trim .RunName) }}
   {{- $input_is = "s3" }}
 {{- end }}
 {{- if (or (hasPrefix "https://" (trim .InputPath)) (hasPrefix "http://" (trim .InputPath))) }}
@@ -17,9 +16,8 @@
   {{- $input_is = "http" }}
 {{- end }}
 
-{{- $fastq := printf "%s/%s/%s" $data_mount (trim .OutputPath) (trim .RunName) }}
+{{- $fastq := printf "%s/%s" (trim .OutputPath) (trim .RunName) }}
 {{- if (hasPrefix "s3://" (trim .OutputPath)) }}
-  {{- $fastq = printf "%s/%s" (trim .OutputPath) (trim .RunName) }}
   {{- $output_is = "s3" }}
 {{- end }}
 

@@ -8,7 +8,7 @@ values:
       [optional] Persistent storage provisioner to use. If neither InputPath nor
       OutputPath are local paths, or the DataVolumeName is unique this can be omitted.
       Will be mounted at /data
-    string_value: ""
+    string_value: "volume://user/ephemeral"
     display_category: Storage
 
   - name: Bases2FastqContainer
