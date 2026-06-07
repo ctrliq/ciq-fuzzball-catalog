@@ -38,7 +38,7 @@ services:
       timeout-seconds: 5
       initial-delay-seconds: 10
     image:
-      uri: docker://quay.io/jupyter/{{ $container_type }}-notebook:latest
+      uri: docker://quay.io/jupyter/{{ $container_type }}-notebook:2026-06-05
     resource:
       cpu:
         cores: {{ .Cores }}
@@ -68,6 +68,7 @@ services:
       c.PasswordIdentityProvider.password_required = False
       c.ServerApp.root_dir = "{{ $mount }}"
       c.ServerApp.allow_credentials = False
+      c.ServerApp.allow_origin = '*'
       c.ServerApp.default_url = '/lab'
       c.ServerApp.base_url = "${FB_ENDPOINT_PATH_JUPYTER}"
       c.Application.log_level = "INFO"
