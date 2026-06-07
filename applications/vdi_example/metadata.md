@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "virtual_desktop_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/utilities/virtual_desktop_application"changing results in a new application
 name: "Virtual Desktop (VDI)"
 category: "UTILITIES"
 featured: true
