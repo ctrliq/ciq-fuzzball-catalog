@@ -66,6 +66,7 @@ services:
       initial-delay-seconds: 10
     env:
       - HOME={{ $home }}
+    cwd: {{ $home }}
     image:
       uri: {{ .Container }}
     script: |
