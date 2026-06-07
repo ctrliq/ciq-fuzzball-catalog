@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "mpi_hello_world_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/examples/mpi_hello_world_application"
 name: "MPI Hello, World"
 category: "EXAMPLES"
 tags:
