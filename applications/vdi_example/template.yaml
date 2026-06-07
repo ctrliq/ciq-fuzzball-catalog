@@ -9,9 +9,13 @@
 {{- end }}
 
 {{- $datamount := "/data" }}
-{{- $home := "/home/fb" }}
-{{- if not $homevol }}
-  {{ $home = "/tmp/homefb" }}
+{{- $home := "/tmp/fbhome" }}
+{{- if $homevol }}
+  {{- if (trim .HomeDir) }}
+    {{- $home = printf "/home/%s" (trim .HomeDir) }}
+  {{- else }}
+    {{- fail "HomeDir is required when specifying HomeVolume" }}
+  {{- end }}
 {{- end }}
 {{- $port := randInt 10000 32000 }}
 
