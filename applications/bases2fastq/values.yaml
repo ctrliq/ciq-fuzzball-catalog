@@ -7,6 +7,7 @@ values:
     display_name: >-
       [optional] Persistent storage provisioner to use. If neither InputPath nor
       OutputPath are local paths, or the DataVolumeName is unique this can be omitted.
+      Will be mounted at /data
     string_value: ""
     display_category: Storage
 
@@ -28,10 +29,9 @@ values:
     display_category: I/O
   - name: OutputPath
     display_name: >-
-      This is either a local path relative to the (persistent) data volume root
-      or a s3:// path. If an s3:// path is used the optional AWS parameters must
+      This is either a local path or a s3:// path. If an s3:// path is used the optional AWS parameters must
       be set.
-    string_value: results/aviti_out
+    string_value: /data/results/aviti_out
     display_category: I/O
   - name: RunName
     display_name: >-
