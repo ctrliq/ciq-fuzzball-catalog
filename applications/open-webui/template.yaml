@@ -1,9 +1,5 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
-version: v1
-
-annotations:
-  description: "Modern GPU-accelerated AI platform with Ollama"
-  stack: "Open WebUI + Ollama"
+version: v4
 
 volumes:
   # Persistent storage for Ollama models and Open WebUI data
@@ -12,9 +8,9 @@ volumes:
     reference: {{ .DataVolume }}
 
   # Ephemeral volume for document ingestion (optional)
+{{ if .DocumentSource }}
   docs-to-ingest:
     reference: volume://user/ephemeral
-{{ if .DocumentSource }}
     ingress:
       - destination:
           uri: file://{{ .DocumentSource | base }}
@@ -29,14 +25,14 @@ services:
 
     env:
       - OLLAMA_HOST=0.0.0.0:11434
-      - OLLAMA_MODELS=/data/ollama
+      - OLLAMA_MODELS={{ .OllamaModelsDir }}
       - OLLAMA_KEEP_ALIVE=24h
       - OLLAMA_MAX_LOADED_MODELS=2
       - OLLAMA_NUM_PARALLEL=2
 
     mounts:
-      data:
-        location: /data
+      /data:
+        volume: data
 
     script: |
       #!/bin/bash
@@ -53,7 +49,7 @@ services:
       echo ""
 
       # Ensure data directory exists
-      mkdir -p /data/ollama
+      mkdir -p "$OLLAMA_MODELS"
 
       # Start Ollama in background
       ollama serve &
@@ -123,7 +119,7 @@ services:
     env:
       - WEBUI_AUTH=False
       - ENABLE_PERSISTENT_CONFIG=False
-      - DATA_DIR=/data/open-webui
+      - DATA_DIR={{ .OpenWebuiDir }}
 
       - OLLAMA_BASE_URL=http://ollama.svc:11434
 
@@ -140,8 +136,8 @@ services:
       - ENABLE_OPENAI_API=false
 
     mounts:
-      data:
-        location: /data
+      /data:
+        volume: data
 
     network:
       ports:
@@ -158,7 +154,7 @@ services:
     script: |
       #!/bin/sh
       set -e
-      mkdir -p /data/open-webui
+      mkdir -p "{{ .OpenWebuiDir }}"
       export WEBUI_URL=${FB_ENDPOINT_URL_WEB}
       exec /bin/bash start.sh
 
@@ -194,11 +190,11 @@ jobs:
 
     env:
       - OLLAMA_HOST=0.0.0.0:11434
-      - OLLAMA_MODELS=/data/ollama
+      - OLLAMA_MODELS={{ .OllamaModelsDir }}
 
     mounts:
-      data:
-        location: /data
+      /data:
+        volume: data
 
     script: |
       #!/bin/bash
@@ -207,7 +203,7 @@ jobs:
       echo "Downloading Ollama Models"
 
       # Ensure data directory exists
-      mkdir -p /data/ollama
+      mkdir -p "$OLLAMA_MODELS"
 
       # Start Ollama temporarily (CPU-only mode for downloads)
       ollama serve &
@@ -278,8 +274,8 @@ jobs:
       - KNOWLEDGE_BASE_NAME={{ .KnowledgeBaseName | default "Imported Documents" }}
 
     mounts:
-      docs-to-ingest:
-        location: /input_docs
+      /input_docs:
+        volume: docs-to-ingest
 
     script: |
       #!/usr/bin/env python3
