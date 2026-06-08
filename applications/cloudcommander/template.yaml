@@ -90,7 +90,7 @@ services:
       }
       __EOF__
 
-      /usr/src/app/bin/cloudcmd.mjs \
+      /usr/src/cloudcmd/bin/cloudcmd.js \
         --port {{ $port }} \
         --prefix "${FB_ENDPOINT_PATH}" \
         --name "Fuzzball Cloud Commander" \
