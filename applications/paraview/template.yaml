@@ -21,13 +21,18 @@
 {{- end }}
 
 {{- $datamount := "/data" }}
-{{- $home := "/home/fb" }}
-{{- if not $homevol }}
-  {{ $home = "/tmp/homefb" }}
+{{- $home := "/tmp/fbhome" }}
+{{- if $homevol }}
+  {{- if (trim .HomeDir) }}
+    {{- $home = trim .HomeDir }}
+  {{- else }}
+    {{- fail "HomeDir is required when specifying HomeVolume" }}
+  {{- end }}
 {{- end }}
 {{- $port := randInt 10000 32000 }}
 
-version: v1
+
+version: v4
 
 {{- if (or $datavol $homevol) }}
 volumes:
@@ -56,12 +61,12 @@ services:
 {{- if (or $datavol $homevol) }}
     mounts:
   {{- if $datavol }}
-      data:
-        location: {{ $datamount }}
+      {{ $datamount }}:
+        volume: data
   {{- end }}
   {{- if $homevol }}
-      home:
-        location: {{ $home }}
+      {{ $homevol }}:
+        volume: home
   {{- end }}
 {{- end }}
     persist: true
@@ -84,6 +89,7 @@ services:
       initial-delay-seconds: 10
     env:
       - HOME={{ $home }}
+    cwd: {{ $home }}
     image:
       uri: {{ .Container }}
     script: |
