@@ -3,21 +3,24 @@ values:
     display_name: >-
       Secret reference for the NGC API key (e.g. secret://user/NGC_API_KEY).
       Required for NIM inference and Open WebUI image generation authentication.
-    string_value: ""
+    secret_value:
+      reference: ""
     display_category: Secrets
 
   - name: NgcOciSecret
     display_name: >-
       Secret reference for NGC OCI registry credentials used to pull the NIM container
       (e.g. secret://user/NGC_OCI_SECRET).
-    string_value: ""
+    secret_value:
+      reference: ""
     display_category: Secrets
 
   - name: HuggingFaceTokenSecret
     display_name: >-
       Secret reference for a Hugging Face token (e.g. secret://user/HF_TOKEN).
       Required — you must accept the model EULA on Hugging Face before running this workflow.
-    string_value: ""
+    secret_value:
+      reference: ""
     display_category: Secrets
 
   - name: NimImageUri
