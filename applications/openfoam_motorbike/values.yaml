@@ -31,8 +31,7 @@ values:
     display_category: I/O
   - name: S3Secret
     display_name: Secret URI for access to the S3Bucket (if using AWS S3).
-    secret_value:
-      reference: null
+    string_value: ""
     display_category: Storage
 
   - name: UtilityJobCores
