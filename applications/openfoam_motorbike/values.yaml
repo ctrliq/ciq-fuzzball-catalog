@@ -13,51 +13,27 @@ values:
     string_value: docker://opencfd/openfoam-default
     display_category: Container
 
-  - name: ParaviewContainerUri
-    display_name: >-
-      URI for Paraview container. If provided the last job in the workflow will start a paraview server you can connect
-      to and visualize your results. You will need to set up port forwarding with the fuzzball cli and connect to port
-      ParaviewPort. If empty, no paraview server will be started.
-    string_value: docker://kitware/paraview-for-ci:v5.13
-    display_category: Container
-
-  - name: ParaviewPort
-    display_name: Port used to connect to paraview.
-    uint_value: 11111
-    display_category: Networking
-  - name: ParaviewCores
-    display_name: Number of cores to allocate for paraview.
-    uint_value: 2
-    display_category: Resources
-  - name: ParaviewMemory
-    display_name: Amount of memory to allocate for paraview.
-    string_value: 4GiB
-    display_category: Resources
-  - name: ParaviewTimeout
-    display_name: Max runtime for paraview.
-    string_value: 1h
-    display_category: Execution
-
+  - name: ScratchVolume
+    display_name: Scratch volume for temporary storage. Required.
+    string_value: volume://user/ephemeral
+    display_category: Storage
   - name: DataVolume
-    display_name: Persistent volume results directory should be saved to. Leave empty skip.
-    string_value: volume://user/persistent
-    display_category: Storage
-  - name: S3Bucket
-    display_name: AWS S3 bucket to save data to. Requires S3Secret. Leave empty to skip.
-    string_value: ""
-    display_category: Storage
-  - name: S3Secret
-    display_name: Secret URI for access to the S3Bucket (if using AWS S3).
+    display_name: Data volume for saving results directory should be saved to. Leave empty to skip.
     string_value: ""
     display_category: Storage
   - name: ResultPath
-    display_name: Path relative to the DataVolume root and/or the S3 Bucket to save data to.
-    string_value: "results/openfoam"
+    display_name: Directory to save results to. Can be an absolute path to a local directory on your DataVolume or an s3 path.
+    string_value: ""
     display_category: I/O
   - name: ResultName
     display_name: Basename of result tar archive (S3) or directory (DataVolume). A timestamp will be appended to create unique file names.
     string_value: openfoam-motorbike
     display_category: I/O
+  - name: S3Secret
+    display_name: Secret URI for access to the S3Bucket (if using AWS S3).
+    secret_value:
+      reference: ""
+    display_category: Storage
 
   - name: UtilityJobCores
     display_name: CPU cores to allocate for the utility jobs.
