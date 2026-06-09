@@ -33,7 +33,7 @@ services:
     env:
       - NGC_API_KEY={{ $ngc_secret }}
       - NIM_HTTP_API_PORT={{ $nim_port }}
-      - NIM_CACHE_PATH={{ trimAll "/" (trim .NimCachePath) }}
+      - NIM_CACHE_PATH={{ trim .NimCachePath }}
       - NIM_IGNORE_MODEL_DOWNLOAD_FAIL=1
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
       - RUN_GUARDRAILS_ON_CPU=true
