@@ -1,5 +1,5 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-
+{{- $datamount := "/data" }}
 {{- $ngc_secret := trim .NgcApiKeySecret }}
 {{- if not $ngc_secret }}
   {{- fail "NgcApiKeySecret is required" }}
@@ -15,17 +15,15 @@
 
 {{- $model_name := trim .ModelName }}
 {{- $model_id := base $model_name }}
-{{- $nim_port := 8000 }}
-{{- $stub_port := 8001 }}
-{{- $ui_port := 8080 }}
+{{- $nim_port :=  randInt 10000 16000 }}
+{{- $stub_port := randInt 16001 22000 }}
+{{- $ui_port :=   randInt 22001 32000 }}
 
-version: v1
+version: v4
 
 volumes:
   cache:
     reference: {{ .CacheVolume }}
-  data:
-    reference: {{ .DataVolume }}
 
 services:
   nim:
@@ -35,7 +33,7 @@ services:
     env:
       - NGC_API_KEY={{ $ngc_secret }}
       - NIM_HTTP_API_PORT={{ $nim_port }}
-      - NIM_CACHE_PATH=/nim-cache/{{ trimAll "/" (trim .NimCachePath) }}
+      - NIM_CACHE_PATH={{ $datamount }}/{{ trimAll "/" (trim .NimCachePath) }}
       - NIM_IGNORE_MODEL_DOWNLOAD_FAIL=1
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
       - RUN_GUARDRAILS_ON_CPU=true
@@ -50,10 +48,10 @@ services:
       {{- end }}
       - HF_TOKEN={{ $hf_token }}
     mounts:
-      cache:
-        location: /nim-cache
-      data:
-        location: /data
+      {{ $datamount }}:
+        volume: CacheVolume
+      {{ $scratchmount }}:
+        volume: /scratch
     script: |
       #!/bin/sh
       mkdir -p "$NIM_CACHE_PATH"
