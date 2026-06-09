@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "ciq/examples/dependency-example"gi
+id: "ciq/examples/dependency-example"
 name: Dependent Jobs Example
 category: EXAMPLES
 featured: false

@@ -65,7 +65,7 @@ services:
         volume: data
   {{- end }}
   {{- if $homevol }}
-      {{ $homevol }}:
+      {{ $home }}:
         volume: home
   {{- end }}
 {{- end }}

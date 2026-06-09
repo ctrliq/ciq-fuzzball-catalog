@@ -226,7 +226,7 @@ services:
     script: |
       #!/bin/sh
       set -e
-      bash /app/backend/start.sh
+      exec bash /app/backend/start.sh
     resource:
       cpu:
         cores: 2

@@ -51,7 +51,7 @@ services:
   {{- $parts := splitList ":" $v }}
   {{- if eq (len $parts) 2 }}
       {{ $root }}/{{ trimPrefix "volume://" $v }}:
-        volume: vol-{{ $i }}:
+        volume: vol-{{ $i }}
    {{- else }}
       {{ $root }}/{{ index $parts 2 | trimPrefix "/" }}:
         volume: vol-{{ $i }}

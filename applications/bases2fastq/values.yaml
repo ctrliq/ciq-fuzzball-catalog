@@ -18,7 +18,7 @@ values:
 
   - name: InputPath
     display_name: >-
-      This is either a local path relative to the root of the data volume or a
+      This is either an absolute local path or a
       s3:// path and should point to the parent directory of the sequencing run
       folder <RunName>. If an s3:// path is used the optional AWS parameters
       must be set. A third possibility is to provide a http(s) URL root such that
@@ -29,7 +29,7 @@ values:
     display_category: I/O
   - name: OutputPath
     display_name: >-
-      This is either a local path or a s3:// path. If an s3:// path is used the optional AWS parameters must
+      This is either an absolute local path or a s3:// path. If an s3:// path is used the optional AWS parameters must
       be set.
     string_value: /data/results/aviti_out
     display_category: I/O

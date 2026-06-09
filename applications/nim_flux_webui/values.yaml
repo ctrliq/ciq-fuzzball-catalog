@@ -42,7 +42,7 @@ values:
 
   - name: CacheVolume
     display_name: >-
-      Persistent volume where NIM model weights are cached between runs. Mounted at /data.
+      Volume where NIM model weights are cached between runs. Mounted at /data.
       Using a persistent volume avoids re-downloading weights on each workflow run.
     string_value: "volume://user/ephemeral"
     display_category: Storage

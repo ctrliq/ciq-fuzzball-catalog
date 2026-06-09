@@ -22,7 +22,7 @@ values:
     string_value: ""
     display_category: Storage
   - name: ResultPath
-    display_name: Directory to save results to. Can be an absolute path to a local directory on your DataVolume or an s3 path.
+    display_name: Absolute local path or S3 URI prefix for results.
     string_value: ""
     display_category: I/O
   - name: ResultName
@@ -30,7 +30,7 @@ values:
     string_value: openfoam-motorbike
     display_category: I/O
   - name: S3Secret
-    display_name: Secret URI for access to the S3Bucket (if using AWS S3).
+    display_name: Secret URI for access to the S3 bucket (if using AWS S3 to save results).
     string_value: ""
     display_category: Storage
 

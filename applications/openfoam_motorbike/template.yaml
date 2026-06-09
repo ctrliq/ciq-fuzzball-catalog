@@ -6,15 +6,17 @@
 {{- end }}
 
 {{- $s3 := false }}
+{{- $local := false }}
 {{- if (hasPrefix "s3://" (trim .ResultPath)) }}
   {{- $s3 = true }}
   {{- if not .S3Secret }}
     {{- fail "Please provide S3Secret to save results to S3" }}
   {{- end }}
-{{- else }}
+{{- else if (trim .ResultPath) }}
   {{- if not (trim .DataVolume) }}
     {{- fail "DataVolume is required when saving results to a local path" }}
   {{- end }}
+  {{- $local = true }}
 {{- end }}
 
 {{- $container := list .OpenFoamContainerUri .OpenFoamVersion | join ":" }}
@@ -35,7 +37,7 @@ volumes:
           uri: {{ trim .ResultPath }}/{{ $name }}.tar.gz
           secret: {{ .S3Secret }}
 {{- end }}
-{{- if .DataVolume }}
+{{- if $local }}
   data:
     reference: {{ .DataVolume }}
 {{- end }}
@@ -261,6 +263,7 @@ jobs:
       - name: reconstruct-mesh
         status: FINISHED
 
+{{- if or $s3 $local }}
   tar-results:
     image:
       uri: docker://alpine:latest
@@ -282,12 +285,12 @@ jobs:
     cwd: {{ $scratchmount }}
     mounts:
       {{ $scratchmount }}:
-        volume:
-          scratch
-{{- if .DataVolume }}
+        volume: scratch
+{{- if $local }}
       {{ $datamount }}:
         volume: data
 {{- end }}
     depends-on:
       - name: to-vtk
         status: FINISHED
+{{- end }}

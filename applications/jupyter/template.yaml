@@ -4,7 +4,7 @@
 {{- $port := (randInt 10000 30000) }}
 {{- $volume := trim .DataVolume }}
 {{- if not (hasPrefix "volume://" $volume) }}
-  {{- fail "A Volume has to be specified" }}
+  {{- fail "DataVolume must be specified and start with 'volume://'" }}
 {{- end }}
 {{- $container_type := default "r" (trim .Type) }}
 
@@ -68,7 +68,6 @@ services:
       c.PasswordIdentityProvider.password_required = False
       c.ServerApp.root_dir = "{{ $mount }}"
       c.ServerApp.allow_credentials = False
-      c.ServerApp.allow_origin = '*'
       c.ServerApp.default_url = '/lab'
       c.ServerApp.base_url = "${FB_ENDPOINT_PATH_JUPYTER}"
       c.Application.log_level = "INFO"

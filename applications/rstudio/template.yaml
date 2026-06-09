@@ -18,7 +18,7 @@
 
 {{- $datamount := "/data" }}
 {{- $scratchmount := "/scratch" }}
-# in the root of scrath because cwd (required for rstudio) will be
+# in the root of scratch because cwd (required for rstudio) will be
 # root owned if it does not exist yet
 {{- $home := $scratchmount }}
 {{- if $homevol }}
