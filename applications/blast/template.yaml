@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-{{- $datamount := /data }}
-{{- $scratchmount := /scratch }}
+{{- $datamount := "/data" }}
+{{- $scratchmount := "/scratch" }}
 {{- if (and .BlastDbName .CustomBlastDbFetchCmd) }}
 {{- fail "BlastDbName and CustomBlastDbFetchCmd are mutually exclusive" }}
 {{- end }}
