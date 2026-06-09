@@ -1,12 +1,16 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+{{- $datamount := /data }}
+{{- $scratchmount := /scratch }}
 {{- if (and .BlastDbName .CustomBlastDbFetchCmd) }}
 {{- fail "BlastDbName and CustomBlastDbFetchCmd are mutually exclusive" }}
 {{- end }}
-{{- $dbpath := list "/data" .BlastDbPath | join "/"  }}
+{{- $dbpath := trim .BlastDbPath }}
 {{- $permdbpath := $dbpath }}
-{{- $dbname := .BlastDbName }}
+{{- $dbname := trim .BlastDbName }}
 
-version: v1
+
+
+version: v4
 
 volumes:
   data:
@@ -18,17 +22,17 @@ defaults:
   job:
     env:
       - CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+    mounts:
+      {{ $datamount }}:
+        volume: data
+      {{ $scratchmount }}:
+        volume: scratch
 
 jobs:
 {{- if .BlastDbName }}
   fetch-db:
     image:
       uri: {{.WorkflowContainer}}
-    mounts:
-      data:
-        location: /data
-      scratch:
-        location: /scratch
     script: |
       #!/bin/bash
       mkdir -p "{{$dbpath}}" && cd "{{$dbpath}}" || exit 1
@@ -71,16 +75,11 @@ jobs:
       timeout:
         execute: {{.BlastFetchTimeout}}
 {{- else if .CustomBlastDbFetchCmd}}
-{{- $dbpath = "/scratch/db"}}
+{{- $dbpath = printf "%s/%s" $scratchmount "db" }}
 {{- $dbname = default "custom" .CustomBlastDbName }}
   retrieve-database-sequences:
     image:
       uri: {{.WorkflowContainer}}
-    mounts:
-      data:
-        location: /data
-      scratch:
-        location: /scratch
     script: |
       #!/bin/bash
       {{.CustomBlastDbFetchCmd}} > {{$dbname}}.fa
@@ -95,11 +94,6 @@ jobs:
   make-blast-database:
     image:
       uri: {{.WorkflowContainer}}
-    mounts:
-      data:
-        location: /data
-      scratch:
-        location: /scratch
     script: |
       #!/bin/bash
       mkdir -p "{{$dbpath}}" && cd "{{$dbpath}}" || exit 1
@@ -123,16 +117,11 @@ jobs:
 {{- else}}
 {{ fail "Either CustomBlastDbFetchCmd or BlastDbName have to be specified" -}}
 {{- end }}
-{{- $outdir := list "/data" .BlastOutputPath | join "/" }}
+{{- $outdir := list $datamount .BlastOutputPath | join "/" }}
 {{- $name := trim .RunName }}
   retrieve-query-sequences:
     image:
       uri: {{.WorkflowContainer}}
-    mounts:
-      data:
-        location: /data
-      scratch:
-        location: /scratch
     script: |
       #!/bin/bash
       mkdir -p "{{$outdir}}" && cd "{{$outdir}}" || exit 1
@@ -148,11 +137,6 @@ jobs:
   run-blast:
     image:
       uri: {{.WorkflowContainer}}
-    mounts:
-      data:
-        location: /data
-      scratch:
-        location: /scratch
     script: |
       #!/bin/bash
       cd "{{$outdir}}"
