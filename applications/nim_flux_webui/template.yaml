@@ -33,7 +33,7 @@ services:
     env:
       - NGC_API_KEY={{ $ngc_secret }}
       - NIM_HTTP_API_PORT={{ $nim_port }}
-      - NIM_CACHE_PATH={{ $datamount }}/{{ trimAll "/" (trim .NimCachePath) }}
+      - NIM_CACHE_PATH={{ trimAll "/" (trim .NimCachePath) }}
       - NIM_IGNORE_MODEL_DOWNLOAD_FAIL=1
       - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
       - RUN_GUARDRAILS_ON_CPU=true
@@ -218,6 +218,7 @@ services:
       - ENABLE_OPENAI_API=true
       - OPENAI_API_BASE_URL=http://nim-stub.svc:{{ $stub_port }}/v1
       - OPENAI_API_KEY={{ $ngc_secret }}
+      - PORT={{ $ui_port }}
     depends-on:
       - name: nim-stub
         status: RUNNING
@@ -225,7 +226,7 @@ services:
     script: |
       #!/bin/sh
       set -e
-      exec bash /app/backend/start.sh
+      bash /app/backend/start.sh
     resource:
       cpu:
         cores: 2
