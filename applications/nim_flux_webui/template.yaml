@@ -50,8 +50,6 @@ services:
     mounts:
       {{ $datamount }}:
         volume: CacheVolume
-      {{ $scratchmount }}:
-        volume: /scratch
     script: |
       #!/bin/sh
       mkdir -p "$NIM_CACHE_PATH"

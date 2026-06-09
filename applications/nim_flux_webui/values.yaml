@@ -50,7 +50,7 @@ values:
   - name: NimCachePath
     display_name: >-
       Absolute path to the cache directory where NIM model weights are stored.
-    string_value: "/data/.cache"
+    string_value: "/data/.cache/nim"
     display_category: Storage
 
   - name: Cores
