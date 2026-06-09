@@ -117,7 +117,7 @@ jobs:
 {{- else}}
 {{ fail "Either CustomBlastDbFetchCmd or BlastDbName have to be specified" -}}
 {{- end }}
-{{- $outdir := list $datamount .BlastOutputPath | join "/" }}
+{{- $outdir := trim .BlastOutputPath }}
 {{- $name := trim .RunName }}
   retrieve-query-sequences:
     image:
