@@ -49,7 +49,7 @@ services:
       - HF_TOKEN={{ $hf_token }}
     mounts:
       {{ $datamount }}:
-        volume: CacheVolume
+        volume: cache
     script: |
       #!/bin/sh
       mkdir -p "$NIM_CACHE_PATH"
