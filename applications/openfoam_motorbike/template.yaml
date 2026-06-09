@@ -8,6 +8,13 @@
 {{- $s3 := false }}
 {{- if (hasPrefix "s3://" (trim .ResultPath)) }}
   {{- $s3 = true }}
+  {{- if not .S3Secret }}
+    {{- fail "Please provide S3Secret to save results to S3" }}
+  {{- end }}
+{{- else }}
+  {{- if not (trim .DataVolume) }}
+    {{- fail "DataVolume is required when saving results to a local path" }}
+  {{- end }}
 {{- end }}
 
 {{- $container := list .OpenFoamContainerUri .OpenFoamVersion | join ":" }}
@@ -26,7 +33,7 @@ volumes:
           uri: file://{{ $name }}.tar.gz
         destination:
           uri: {{ trim .ResultPath }}/{{ $name }}.tar.gz
-          secret: {{- if .S3Secret }} {{ .S3Secret }}{{- else }}{{ fail "Please provide S3Secret to save results to S3"}}{{- end }}
+          secret: {{ .S3Secret }}
 {{- end }}
 {{- if .DataVolume }}
   data:

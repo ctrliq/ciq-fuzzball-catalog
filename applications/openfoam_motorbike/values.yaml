@@ -32,7 +32,7 @@ values:
   - name: S3Secret
     display_name: Secret URI for access to the S3Bucket (if using AWS S3).
     secret_value:
-      reference: ""
+      reference: null
     display_category: Storage
 
   - name: UtilityJobCores
