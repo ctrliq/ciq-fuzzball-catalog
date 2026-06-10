@@ -163,7 +163,7 @@ services:
         stderr_logfile_maxbytes=0
     script: |-
       #!/bin/bash
-      exec /usr/local/bin/entrypoint.sh
+      exec bash /usr/local/bin/entrypoint.sh
     readiness-probe:
       http-get:
         path: /api/auth/status
