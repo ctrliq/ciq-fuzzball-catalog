@@ -1,7 +1,7 @@
 values:
   - name: "Cores"
     display_name: "How many CPU cores to allocate."
-    uint_value: 2
+    uint_value: 8
     display_category: "Resources"
   - name: "Memory"
     display_name: "How much memory to allocate."
