@@ -33,7 +33,7 @@ values:
     display_category: "Resources"
   - name: "StableDiffusionMemory"
     display_name: "How much memory to allocate to run Stable Diffusion."
-    string_value: "60GiB"
+    string_value: "30GiB"
     display_category: "Resources"
   - name: "StableDiffusionGPUs"
     display_name: "How many GPUs to allocate to run Stable Diffusion."
