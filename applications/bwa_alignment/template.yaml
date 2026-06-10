@@ -1,5 +1,6 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
 
-version: v1
+version: v4
 volumes:
   bwa-data:
     ingress:
@@ -28,15 +29,19 @@ volumes:
           {{- end }}
       {{- end }}
     {{- end }}
+
+defaults:
+  job:
+    mounts:
+      /data:
+        volume: bwa-data
+
 jobs:
   bwa-mem2-index:
     cwd: /data
     name: bwa-mem2-index
     image:
       uri: {{.ContainerImage}}
-    mounts:
-      bwa-data:
-        location: /data
     command:
       - /bin/bash
       - '-c'
@@ -56,9 +61,6 @@ jobs:
     cwd: /data
     image:
       uri: {{.ContainerImage}}
-    mounts:
-      bwa-data:
-        location: /data
     command:
       - /bin/bash
       - '-c'
