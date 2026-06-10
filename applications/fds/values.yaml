@@ -15,7 +15,11 @@ values:
     display_name: "Specifies the location from which to retrieve the FDS input file, such as a GitHub repository URL."
     string_value: "https://raw.githubusercontent.com/firemodels/fds/refs/heads/master/Verification/Fires/couch.fds"
     display_category: "Input Data"
-  - name: "InputFileDestination"
-    display_name: "Where to save the input file in the volume."
-    string_value: "file://couch.fds"
-    display_category: "I/O"
+  - name: DataVolume
+    display_name: Data volume to mount at /data
+    string_value: "volume://user/ephemeral"
+    display_category: Storage
+  - name: "WorkingDirectory"
+    display_name: "Analysis directory on the data volume"
+    string_value: "/data/fds"
+    display_category: "Storage"
