@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "vllm_inference_server" # needs to be **unique** per application, changing results in a new application
+id: "ciq/ml_and_ai/vllm_inference_server"
 name: "vLLM inference server"
 category: "ML_AND_AI"
 tags:

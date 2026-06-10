@@ -37,8 +37,15 @@ values:
     display_category: Model Configuration
 
   - name: VllmVolume
-    display_name: Volume to store the vLLM/HuggingFace cache directories.
-    string_value: volume://user/persistent/vllm
+    display_name: >-
+      Volume to store the vLLM/HuggingFace cache directories. The default is ephemeral but for
+      real world run use a persistent volume. Mounted at /data
+    string_value: volume://user/ephemeral
+    display_category: Storage
+  - name: HuggingfaceHome
+    display_name: >-
+      HuggingFace home directory where models are cached (among other things)
+    string_value: "/data/.cache/huggingface"
     display_category: Storage
 
   - name: ServerGPUModel
