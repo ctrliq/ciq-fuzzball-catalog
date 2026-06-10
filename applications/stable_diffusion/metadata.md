@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "stable_diffusion_text_to_image_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/ml_and_ai/stable_diffusion_text_to_image_application"
 name: "Stable Diffusion Text to Image"
 category: "ML_AND_AI"
 tags:

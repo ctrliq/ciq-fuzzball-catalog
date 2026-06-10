@@ -1,13 +1,14 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-version: v1
+
+version: v4
 jobs:
   jupyter:
     image:
       uri: oras://depot.ciq.com/fuzzball/fuzzball-applications/jupyter-{{.NotebookType}}-notebook.sif
       secret: {{.DepotSecret}}
     mounts:
-      stable-diffusion-storage:
-        location: /home/jovyan
+      /home/jovyan:
+        volume: stable-diffusion-storage
     env:
       - HOME=/home/jovyan
     command:
@@ -49,8 +50,8 @@ jobs:
         {{.StableDiffusionContainerURI}}
       secret: {{.DepotSecret}}
     mounts:
-      stable-diffusion-storage:
-        location: /data
+      /data:
+        volume: stable-diffusion-storage
     command:
       - /bin/sh
       - '-c'
@@ -75,8 +76,8 @@ jobs:
       uri: {{.CurlContainerURI}}
       secret: {{.DepotSecret}}
     mounts:
-      stable-diffusion-storage:
-        location: /data
+      /data:
+        volume: stable-diffusion-storage
     command:
       - /bin/sh
       - '-c'
