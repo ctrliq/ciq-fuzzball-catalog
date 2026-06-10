@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "immune_builder_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/ml_and_ai/immune_builder_application"
 name: "ImmuneBuilder"
 category: "ML_AND_AI"
 tags:
