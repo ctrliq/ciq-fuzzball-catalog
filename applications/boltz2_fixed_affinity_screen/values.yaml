@@ -64,10 +64,9 @@ values:
     display_category: Parameters
   - name: BoltzCache
     display_name: |
-      [optional] Path to a directory where boltz2 can store its cache. This should be a
-      directory on the persistent storage to avoid repeated downloads and the
-      path should be relative to the DataVolume root. Defaults to cache/boltz2.
-    string_value: cache/boltz2
+      Path to a directory where boltz2 can store its cache. For real workloads this should
+      be located on a persistent volume.
+    string_value: /data/cache/boltz2
     display_category: Parameters
   - name: BoltzOptions
     display_name: |

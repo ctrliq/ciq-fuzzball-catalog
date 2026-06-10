@@ -25,9 +25,12 @@
 {{- end }}
 
 # make boltz cache an absolute path
-{{- $boltz_cache := (default (printf "%s/cache/boltz2" $data_mount) (trim .BoltzCache)) }}
-{{- if (and (not (hasPrefix "s3://" $boltz_cache)) (not (hasPrefix $data_mount $boltz_cache))) }}
-  {{- $boltz_cache =  list $data_mount $boltz_cache  | join "/" }}
+{{- $boltz_cache := trim .BoltzCache }}
+{{- if not $boltz_cache }}
+  {{- fail "BoltzCache is required" }}
+{{- end }}
+{{- if not (hasPrefix $data_mount $boltz_cache) }}
+  {{- $boltz_cache =  list $data_mount (trimAll "/" $boltz_cache)  | join "/" }}
 {{- end }}
 
 {{- if $aws }}
