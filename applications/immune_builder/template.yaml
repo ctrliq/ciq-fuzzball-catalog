@@ -2,7 +2,7 @@ version: v4
 
 volumes:
   data_volume:
-    reference: volume://user/persistent
+    reference: {{ .DataVolume }}
     ingress:
 {{- $filename := .InputFasta | base }}
       - source:
@@ -40,12 +40,12 @@ jobs:
 {{- $filename := .InputFasta | base }}
 {{- $filenameNoExt := $filename | trimSuffix ".fasta" }}
 
-        mkdir -p /data/immunebuilder/output
+        mkdir -p {{ .OutputDir }}
         sed -i 's/>.*[Hh]eavy [Cc]hain.*/>H/g; s/>.*[Ll]ight [Cc]hain.*/>L/g' /data/immunebuilder/input/{{ $filename }}
 
         {{ $command }} \
           --fasta_file /data/immunebuilder/input/{{ $filename }} \
-          -o /data/immunebuilder/output/{{ $filenameNoExt }}.pdb \
+          -o {{ .OutputDir }}/{{ $filenameNoExt }}.pdb \
           --verbose
 
         echo "Prediction completed"
