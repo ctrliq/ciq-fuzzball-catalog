@@ -68,6 +68,10 @@ services:
         #!/bin/bash
         set -e
 
+        # add paths used in the docker container. this includes the llama executables that are needed
+        # for gguf models. Environment variables get adopted by supervisor'ed processes
+        PATH=/home/unsloth/.unsloth/llama.cpp/build/bin:/home/unsloth/.local/bin:/opt/venv/bin:$PATH
+
         # initialize writable directories on fresh volumes
         mkdir -p "${HOME}" "${HOME}/.jupyter" "{{ trim .UnslothDirectory }}/"{work,studio,docs,unsloth-notebooks}
         cd {{ trim .UnslothDirectory }}
