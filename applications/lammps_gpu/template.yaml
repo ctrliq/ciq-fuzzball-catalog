@@ -26,8 +26,7 @@ version: v4
   {{- fail "RunName is required" }}
 {{- end }}
 {{- $run_dir := printf "%s/%s" $scratch_mount $run }}
-{{- $output_path := trim .OutputPath }}
-{{- $out_dir := printf "%s/%s" $data_mount $output_path }}
+{{- $out_dir := trim .OutputPath }}
 
 {{- $s3_bucket := trim .S3Bucket }}
 {{- $s3_secret := trim .S3Secret }}
