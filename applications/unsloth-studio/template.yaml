@@ -1,5 +1,4 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
-
 {{- $jupyter_port := randInt 20001 21000 }}
 {{- $unsloth_port := randInt 21001 22000 }}
 
@@ -7,10 +6,19 @@
   {{- fail "UserPassword is required" }}
 {{- end }}
 
-version: v1
+{{- if not (and (trim .UnslothDirectory | hasPrefix "/") (trim .DataVolume | hasPrefix "volume://") (trim .ScratchVolume | hasPrefix "volume://")) }}
+  {{- fail "UnslothDirectory, DataVolume, and ScratchVolume are required" }}
+{{- end }}
+
+{{- $ws := printf "%s/workspace" (trim .UnslothDirectory) }}
+{{- $jupyterdir := printf "%s/jupyter" (trim .UnslothDirectory) }}
+
+version: v4
 volumes:
-  workspace:
-    reference: {{ .UnslothVolume }}
+  data:
+    reference: {{ .DataVolume }}
+  scratch:
+    reference: {{ .ScratchVolume }}
 services:
   unsloth:
     network:
@@ -34,12 +42,14 @@ services:
           scope: public
     persist: true
     env:
-      - HOME=/workspace/home
-      - UNSLOTH_STUDIO_HOME=/workspace/studio
+      - HOME=/scratch/home
+      - UNSLOTH_STUDIO_HOME={{ $ws }}
       - USER_PASSWORD={{ .UserPassword }}
     mounts:
-      workspace:
-        location: /workspace
+      /data:
+        volume: data
+      /scratch:
+        volume: scratch
     image:
       uri: "{{ .UnslothImage }}"
     files:
@@ -47,11 +57,10 @@ services:
         #!/bin/bash
         set -e
 
-        cd /workspace
-
         # initialize writable directories on fresh volumes
-        mkdir -p "${HOME}" "${HOME}/.jupyter" "${UNSLOTH_STUDIO_HOME}"
+        mkdir -p "${HOME}" "${HOME}/.jupyter" "${UNSLOTH_STUDIO_HOME}" "{{ $jupyterdir }}" "{{ trim .UnslothDirectory }}"
 
+        cd {{ trim .UnslothDirectory }}
         # environment variables
         echo "Exporting environment variables for terminal sessions..."
         printenv | grep -E '^HF_|^CUDA_|^NCCL_|^JUPYTER_|^SSH_|^PUBLIC_|^USER_|^UNSLOTH_|^PATH=' | \
@@ -100,7 +109,7 @@ services:
         c.ServerApp.open_browser = False
         c.ServerApp.ip = '0.0.0.0'
         c.ServerApp.port = {{ $jupyter_port }}
-        c.ServerApp.notebook_dir = '/workspace'
+        c.ServerApp.notebook_dir = '{{ $jupyterdir }}'
         c.ServerApp.terminado_settings = {{ `{{'shell_command': ['/bin/bash', '-l']}}` }}
         '''
         with open(config_file, 'w') as f:
@@ -131,10 +140,10 @@ services:
 
         [program:jupyter]
         command=jupyter lab --no-browser --ip="0.0.0.0" --port="{{ $jupyter_port }}"
-        directory=/workspace
+        directory={{ $jupyterdir }}
         autostart=true
         autorestart=true
-        environment=HOME="/workspace/home"
+        environment=HOME="/scratch/home"
         stdout_logfile=/dev/stdout
         stderr_logfile=/dev/stderr
         stdout_logfile_maxbytes=0
@@ -142,12 +151,12 @@ services:
 
         [program:studio]
         command=unsloth studio -H 0.0.0.0 -p {{ $unsloth_port }}
-        directory=/workspace
+        directory={{ $ws }}
         autostart=true
         autorestart=true
         startretries=3
         startsecs=2
-        environment=HOME="/workspace/home",UNSLOTH_STUDIO_HOME="/workspace/studio"
+        environment=HOME="/scratch/home",UNSLOTH_STUDIO_HOME="{{ $ws }}"
         stdout_logfile=/dev/stdout
         stderr_logfile=/dev/stderr
         stdout_logfile_maxbytes=0

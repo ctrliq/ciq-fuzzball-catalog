@@ -4,9 +4,20 @@ values:
     string_value: ""
     display_category: Configuration
 
-  - name: UnslothVolume
-    display_name: Volume used as workspace for Unsloth/Jupyter.
-    string_value: volume://user/persistent/unsloth
+  - name: ScratchVolume
+    display_name: Ephemeral volume mounted at /scratch. Required.
+    string_value: volume://user/ephemeral
+    display_category: Storage
+  - name: DataVolume
+    display_name: >-
+      Volume housing your Unsloth/Jupyter workspace. Mounted at /data. Use a persistent
+      volume to preserve your workspace for future sessions. Defaults to an ephemeral
+      volume for testing. Required.
+    string_value: volume://user/ephemeral
+    display_category: Storage
+  - name: UnslothDirectory
+    display_name: Absolute path to your unsloth data directory (workspace and jupyter notebooks). Required.
+    string_value: "/data/unsloth"
     display_category: Storage
 
   - name: CpuCores

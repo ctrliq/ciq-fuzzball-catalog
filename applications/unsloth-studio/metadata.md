@@ -1,6 +1,6 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 ---
-id: "unsloth_studio" # needs to be **unique** per application, changing results in a new application
+id: "ciq/ml_and_ai/unsloth_studio"
 name: "Unsloth Studio"
 category: "ML_AND_AI"
 tags:
