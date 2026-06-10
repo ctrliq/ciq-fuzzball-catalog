@@ -82,7 +82,8 @@ jobs:
         volume: stable-diffusion-storage
     script: |
       #!/bin/sh
-      outdir=/data/txt2img/$(date +%Y-%m-%d-%H:%M:%S); mkdir -p "${outdir}"
+      outdir=/data/txt2img/$(date +%Y-%m-%d-%H:%M:%S)
+      mkdir -p "${outdir}"
       echo "${TXT2IMG_PROMPT}" >"${outdir}/prompt.txt"
       python3 /stable-diffusion/scripts/txt2img.py --prompt "${TXT2IMG_PROMPT}" \
           --ckpt /data/txt2img/sd-v1-4.ckpt --outdir "${outdir}" --seed $RANDOM

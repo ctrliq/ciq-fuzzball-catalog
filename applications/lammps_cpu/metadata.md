@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "lammps_cpu_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/molecular_dynamics/lammps_cpu_application"
 name: "LAMMPS (CPU)"
 category: "MOLECULAR_DYNAMICS"
 tags:

@@ -1,5 +1,5 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-version: v1
+version: v4
 volumes:
   scratch:
     reference: {{ .ScratchVolume }}
@@ -17,6 +17,12 @@ volumes:
     reference: {{ .DataVolume }}
 {{- end }}
 
+defaults:
+  job:
+    mounts:
+      /scratch:
+        volume: scratch
+
 jobs:
   stagein:
     command:
@@ -26,9 +32,6 @@ jobs:
     cwd: /scratch
     image:
       uri: docker://alpine:latest
-    mounts:
-      scratch:
-        location: /scratch
     name: stagein
     resource:
       cpu:
@@ -44,9 +47,6 @@ jobs:
     cwd: /scratch/{{.RunName}}
     image:
       uri: {{.LammpsContainerUri}}
-    mounts:
-      scratch:
-        location: /scratch
     multinode:
       implementation: {{.MpiFlavor}}
       nodes: {{.Nodes}}
@@ -74,10 +74,10 @@ jobs:
     image:
       uri: docker://alpine:latest
     mounts:
-      scratch:
-        location: /scratch
-      data:
-        location: /data
+      /scratch:
+        volume: scratch
+      /data:
+        volume: data
     name: stageout
     depends-on:
       - name: run-lammps

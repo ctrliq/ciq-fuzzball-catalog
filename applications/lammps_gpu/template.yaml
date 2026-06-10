@@ -1,5 +1,5 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-version: v1
+version: v4
 
 {{- $expurl := trim .ExperimentUrl }}
 {{- if not $expurl }}
@@ -51,8 +51,8 @@ version: v1
 defaults:
   job:
     mounts:
-      scratch:
-        location: "{{ $scratch_mount }}"
+      {{ $scratch_mount }}:
+        volume: scratch
 
 volumes:
   scratch:
@@ -146,8 +146,10 @@ jobs:
       uri: docker://alpine:3.23.3
 {{- if $data_vol }}
     mounts:
-      data:
-        location: {{ $data_mount }}
+      {{ $scratch_mount }}:
+        volume: scratch
+      {{ $data_mount }}:
+        volume: data
 {{- end }}
     depends-on:
       - name: lammps
