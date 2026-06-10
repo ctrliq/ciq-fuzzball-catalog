@@ -69,7 +69,7 @@ jobs:
       - /bin/sh
       - stageout.sh
       - {{.RunName}}
-      - /data/{{.OutputPath}}
+      - {{.OutputPath}}
     cwd: /scratch
     image:
       uri: docker://alpine:latest
