@@ -1,46 +1,51 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $ver := .AnsysVersion }}
 {{- $ansys_version_number := printf "v%s%s" (substr 2 4 $ver) (substr 5 6 $ver) }}
-version: v1
+{{- $datamount := "/data" }}
+version: v4
+
+volumes:
+  data:
+    reference: {{.Volume}}
+
+defaults:
+  job:
+    mounts:
+      {{ $datamount }}: data
+
 jobs:
   cfx-static-mixer:
-    env:
-      - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
     image:
       uri: {{.AnsysCfxContainerURI}}
       secret: {{.AnsysCfxContainerOciSecret}}
-    mounts:
-      data:
-        location: /data
-    policy:
-      timeout:
-        execute: 30m0s
-    cwd: /data
-    command:
-      - /bin/sh
-      - '-c'
-      - >-
-        export PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/CFX/bin:$PATH;
+    env:
+      - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
+    cwd: {{ $datamount }}
+    script: |
+      #!/bin/sh
+      set -e
 
-        mkdir ansys-cfx-static-mixer-example-$FB_WORKFLOW_ID;
-        cd ansys-cfx-static-mixer-example-$FB_WORKFLOW_ID;
+      export PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/CFX/bin:$PATH
 
-        cfx5solve -eg StaticMixer -par-dist "$(hostname)*{{.CfxCores}}";
+      WORKDIR="{{ $datamount }}/ansys-cfx-static-mixer-example-$FB_WORKFLOW_ID"
+      mkdir -p "$WORKDIR"
+      cd "$WORKDIR"
 
-        LATEST_CFX_LOG_FILE=$(ls -1t StaticMixer_*.out 2>/dev/null | head -n 1)
+      cfx5solve -eg StaticMixer -par-dist "$(hostname)*{{.CfxCores}}"
 
-        if [ -n "$LATEST_CFX_LOG_FILE" ]; then
-          cat $LATEST_CFX_LOG_FILE;
-        else
-          echo "No CFX log files found.";
-        fi
+      LATEST_CFX_LOG_FILE=$(ls -1t StaticMixer_*.out 2>/dev/null | head -n 1)
 
+      if [ -n "$LATEST_CFX_LOG_FILE" ]; then
+        cat $LATEST_CFX_LOG_FILE
+      else
+        echo "No CFX log files found."
+      fi
     resource:
       cpu:
         cores: {{.CfxCores}}
         affinity: NUMA
       memory:
         size: {{.CfxMemory}}
-volumes:
-  data:
-    reference: {{.Volume}}
+    policy:
+      timeout:
+        execute: 30m
