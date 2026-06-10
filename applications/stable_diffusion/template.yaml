@@ -60,9 +60,6 @@ services:
         affinity: NUMA
       memory:
         size: {{.JupyterMemory}}
-    policy:
-      timeout:
-        execute: {{.JupyterTimeout}}
     depends-on:
       - name: txt2img
         status: FINISHED

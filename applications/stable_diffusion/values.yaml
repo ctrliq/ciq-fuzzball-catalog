@@ -23,10 +23,6 @@ values:
     display_name: "How much memory to allocate to Jupyter Notebook."
     string_value: "1GiB"
     display_category: "Resources"
-  - name: "JupyterTimeout"
-    display_name: "Maximum runtime for Jupyter Notebook."
-    string_value: "12h"
-    display_category: "Execution"
   - name: "StableDiffusionCores"
     display_name: "How many CPU cores to allocate to run Stable Diffusion."
     uint_value: 4
