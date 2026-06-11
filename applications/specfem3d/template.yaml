@@ -1,5 +1,5 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-version: v1
+version: v4
 volumes:
   scratch:
     {{- if .ResultsDestination }}
@@ -13,14 +13,18 @@ volumes:
           {{- end }}
     {{- end }}
     reference: volume://user/ephemeral
+
+defaults:
+  job:
+    mounts:
+      /mnt:
+        volume: scratch
+
 jobs:
   fetch-project:
     cwd: /mnt
     image:
       uri: {{.FetchProjectContainer}}
-    mounts:
-      scratch:
-        location: /mnt
     policy:
       timeout:
         execute: {{.FetchTimeout}}
@@ -35,9 +39,6 @@ jobs:
     cwd: /mnt/{{.ProjectRepo | base | trimSuffix ".git"}}
     image:
       uri: {{.SpecfemContainer}}
-    mounts:
-      scratch:
-        location: /mnt
     policy:
       timeout:
         execute: {{.MeshTimeout}}
@@ -68,9 +69,6 @@ jobs:
     cwd: /mnt/{{.ProjectRepo | base | trimSuffix ".git"}}
     image:
       uri: {{.SpecfemContainer}}
-    mounts:
-      scratch:
-        location: /mnt
     policy:
       timeout:
         execute: {{.DbTimeout}}
@@ -95,9 +93,6 @@ jobs:
     cwd: /mnt/{{.ProjectRepo | base | trimSuffix ".git"}}
     image:
       uri: {{.SpecfemContainer}}
-    mounts:
-      scratch:
-        location: /mnt
     policy:
       timeout:
         execute: {{.SimTimeout}}

@@ -1,66 +1,100 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+{{- $scratchmount := "/scratch" }}
+{{- $datamount := "/data" }}
+{{- if not (trim .ScratchVolume) }}
+  {{- fail "ScratchVolume is required" }}
+{{- end }}
+{{- if not (hasPrefix "volume://" (trim .ScratchVolume)) }}
+  {{- fail "ScratchVolume must be a volume:// reference" }}
+{{- end }}
+
+{{- $s3secret := trim .S3Secret }}
+{{- $s3 := false }}
+{{- $local := false }}
+{{- if (hasPrefix "s3://" (trim .ResultPath)) }}
+  {{- $s3 = true }}
+  {{- if not $s3secret }}
+    {{- fail "Please provide S3Secret to save results to S3" }}
+  {{- end }}
+{{- else if (trim .ResultPath) }}
+  {{- if not (trim .DataVolume) }}
+    {{- fail "DataVolume is required when saving results to a local path" }}
+  {{- end }}
+  {{- if not (hasPrefix "volume://" (trim .DataVolume)) }}
+    {{- fail "DataVolume must be a volume:// reference" }}
+  {{- end }}
+  {{- if not (hasPrefix $datamount (trim .ResultPath)) }}
+    {{- fail (printf "A local ResultPath must be an absolute path under %s (the mounted data volume); otherwise results are written outside the volume and lost" $datamount) }}
+  {{- end }}
+  {{- $local = true }}
+{{- end }}
+
 {{- $container := list .OpenFoamContainerUri .OpenFoamVersion | join ":" }}
 {{- $wmdir := list .WmProjectDir .OpenFoamVersion | join "" }}
 {{- $rc := list $wmdir "etc/bashrc" | join "/" }}
 {{- $ts := now | unixEpoch }}
 {{- $name := list (trim .ResultName) $ts | join "-" }}
 
-version: v1
+version: v4
 volumes:
   scratch:
-    reference: volume://user/ephemeral
-{{- if .S3Bucket }}
+    reference: {{ .ScratchVolume }}
+{{- if $s3 }}
     egress:
       - source:
           uri: file://{{ $name }}.tar.gz
         destination:
-          uri: s3://{{ trim .S3Bucket }}/{{ trim .ResultPath }}/{{ $name }}.tar.gz
-          secret: {{- if .S3Secret }} {{ .S3Secret }}{{- else }}{{ fail "Please provide S3Secret to save results to S3"}}{{- end }}
+          uri: {{ trim .ResultPath }}/{{ $name }}.tar.gz
+          secret: {{ $s3secret }}
 {{- end }}
-{{- if .DataVolume }}
+{{- if $local }}
   data:
     reference: {{ .DataVolume }}
 {{- end }}
+
+defaults:
+  job:
+    mounts:
+      {{ $scratchmount }}:
+        volume: scratch
 
 jobs:
   preprocess-model:
     image:
       uri: {{ $container }}
-    command:
-      - "/bin/bash"
-      - "-c"
-      - |
-        cp -r {{$wmdir}}/tutorials/incompressible/simpleFoam/motorBike {{ $name }};
-        cp {{ $name }}/system/decomposeParDict.6 {{ $name }}/system/decomposeParDict;
+    script: |
+      #!/bin/bash
+      cp -r {{$wmdir}}/tutorials/incompressible/simpleFoam/motorBike {{ $name }};
+      cp {{ $name }}/system/decomposeParDict.6 {{ $name }}/system/decomposeParDict;
 
-        cd {{ $name }}
+      cd {{ $name }}
 
-        SUBDOMAINS=$(( {{.SimulationOrMeshJobCores}} * {{.SimulationOrMeshJobNodes}} ))
-        sed -i "s/numberOfSubdomains\ 6/numberOfSubdomains\ ${SUBDOMAINS}/g" system/decomposeParDict;
-        sed -i 's/\(3 2 1\)/{{.Coefficients}}/g' system/decomposeParDict;
-        cat system/decomposeParDict;
+      SUBDOMAINS=$(( {{.SimulationOrMeshJobCores}} * {{.SimulationOrMeshJobNodes}} ))
+      sed -i "s/numberOfSubdomains\ 6/numberOfSubdomains\ ${SUBDOMAINS}/g" system/decomposeParDict;
+      sed -i 's/\(3 2 1\)/{{.Coefficients}}/g' system/decomposeParDict;
+      cat system/decomposeParDict;
 
-        source {{$rc}};
-        mkdir -p constant/triSurface;
-        cp -f $FOAM_TUTORIALS/resources/geometry/motorBike.obj.gz constant/triSurface/;
-        surfaceFeatureExtract;
-        blockMesh;
-        decomposePar;
+      source {{$rc}};
+      mkdir -p constant/triSurface;
+      cp -f $FOAM_TUTORIALS/resources/geometry/motorBike.obj.gz constant/triSurface/;
+      surfaceFeatureExtract;
+      blockMesh;
+      decomposePar;
     resource:
       cpu:
         cores: {{.UtilityJobCores}}
         affinity: NUMA
       memory:
         size: {{.UtilityJobMemory}}
-    cwd: /scratch
-    mounts:
-      scratch:
-        location: /scratch
+    cwd: {{ $scratchmount }}
 
   snappy-hex-mesh:
     image:
       uri: {{ $container }}
-    command: ["/bin/bash", "-c", "source {{$rc}}; snappyHexMesh -overwrite -parallel;"]
+    script: |
+      #!/bin/bash
+      source {{$rc}}
+      snappyHexMesh -overwrite -parallel
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -70,10 +104,7 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /scratch/{{ $name }}
-    mounts:
-      scratch:
-        location: /scratch
+    cwd: {{ $scratchmount }}/{{ $name }}
     depends-on:
       - name: preprocess-model
         status: FINISHED
@@ -81,7 +112,10 @@ jobs:
   toposet:
     image:
       uri: {{ $container }}
-    command: ["/bin/bash", "-c", "source {{$rc}}; topoSet -parallel;"]
+    script: |
+      #!/bin/bash
+      source {{$rc}}
+      topoSet -parallel
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -91,10 +125,7 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /scratch/{{ $name }}
-    mounts:
-      scratch:
-        location: /scratch
+    cwd: {{ $scratchmount }}/{{ $name }}
     depends-on:
       - name: snappy-hex-mesh
         status: FINISHED
@@ -102,23 +133,18 @@ jobs:
   set-initial-conditions:
     image:
       uri: {{ $container }}
-    command:
-      - "/bin/bash"
-      - "-c"
-      - |
-        source {{$rc}};
-        source {{$wmdir}}/bin/tools/RunFunctions;
-        restore0Dir -processor;
+    script: |
+      #!/bin/bash
+      source {{$rc}}
+      source {{$wmdir}}/bin/tools/RunFunctions
+      restore0Dir -processor
     resource:
       cpu:
         cores: {{.UtilityJobCores}}
         affinity: NUMA
       memory:
         size: {{.UtilityJobMemory}}
-    cwd: /scratch/{{ $name }}
-    mounts:
-      scratch:
-        location: /scratch
+    cwd: {{ $scratchmount }}/{{ $name }}
     depends-on:
       - name: toposet
         status: FINISHED
@@ -126,7 +152,10 @@ jobs:
   patch-summary:
     image:
       uri: {{ $container }}
-    command: ["/bin/bash", "-c", "source {{$rc}}; patchSummary -parallel;"]
+    script: |
+      #!/bin/bash
+      source {{$rc}}
+      patchSummary -parallel
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -136,10 +165,7 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /scratch/{{ $name }}
-    mounts:
-      scratch:
-        location: /scratch
+    cwd: {{ $scratchmount }}/{{ $name }}
     depends-on:
       - name: set-initial-conditions
         status: FINISHED
@@ -147,7 +173,10 @@ jobs:
   potential-foam:
     image:
       uri: {{ $container }}
-    command: ["/bin/bash", "-c", "source {{$rc}}; potentialFoam -writephi -parallel"]
+    script: |
+      #!/bin/bash
+      source {{$rc}}
+      potentialFoam -writephi -parallel
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -157,10 +186,7 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /scratch/{{ $name }}
-    mounts:
-      scratch:
-        location: /scratch
+    cwd: {{ $scratchmount }}/{{ $name }}
     depends-on:
       - name: patch-summary
         status: FINISHED
@@ -168,7 +194,10 @@ jobs:
   check-mesh:
     image:
       uri: {{ $container }}
-    command: ["/bin/bash", "-c", "source {{$rc}}; checkMesh -parallel -writeFields '(nonOrthoAngle)' -constant"]
+    script: |
+      #!/bin/bash
+      source {{$rc}}
+      checkMesh -parallel -writeFields '(nonOrthoAngle)' -constant
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -178,10 +207,7 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /scratch/{{ $name }}
-    mounts:
-      scratch:
-        location: /scratch
+    cwd: {{ $scratchmount }}/{{ $name }}
     depends-on:
       - name: potential-foam
         status: FINISHED
@@ -189,7 +215,10 @@ jobs:
   simple-foam:
     image:
       uri: {{ $container }}
-    command: ["/bin/bash", "-c", "source {{$rc}}; simpleFoam -parallel"]
+    script: |
+      #!/bin/bash
+      source {{$rc}}
+      simpleFoam -parallel
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -199,10 +228,7 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /scratch/{{ $name }}
-    mounts:
-      scratch:
-        location: /scratch
+    cwd: {{ $scratchmount }}/{{ $name }}
     depends-on:
       - name: check-mesh
         status: FINISHED
@@ -210,23 +236,18 @@ jobs:
   reconstruct-mesh:
     image:
       uri: {{ $container }}
-    command:
-      - "/bin/bash"
-      - "-c"
-      - |
-        source {{$rc}};
-        reconstructParMesh -constant;
-        reconstructPar -latestTime;
+    script: |
+      #!/bin/bash
+      source {{$rc}}
+      reconstructParMesh -constant
+      reconstructPar -latestTime
     resource:
       cpu:
         cores: {{.UtilityJobCores}}
         affinity: NUMA
       memory:
         size: {{.UtilityJobMemory}}
-    cwd: /scratch/{{ $name }}
-    mounts:
-      scratch:
-        location: /scratch
+    cwd: {{ $scratchmount }}/{{ $name }}
     depends-on:
       - name: simple-foam
         status: FINISHED
@@ -234,12 +255,10 @@ jobs:
   to-vtk:
     image:
       uri: {{ $container }}
-    command:
-      - "/bin/bash"
-      - "-c"
-      - |
-        source {{$rc}};
-        foamToVTK -parallel
+    script: |
+      #!/bin/bash
+      source {{$rc}}
+      foamToVTK -parallel
     multinode:
       nodes: {{.SimulationOrMeshJobNodes}}
       implementation: openmpi
@@ -249,91 +268,39 @@ jobs:
         affinity: NUMA
       memory:
         size: {{.SimulationOrMeshJobMemory}}
-    cwd: /scratch/{{ $name }}
-    mounts:
-      scratch:
-        location: /scratch
+    cwd: {{ $scratchmount }}/{{ $name }}
     depends-on:
       - name: reconstruct-mesh
         status: FINISHED
 
+{{- if or $s3 $local }}
   tar-results:
     image:
       uri: docker://alpine:latest
-    command:
-      - /bin/sh
-      - "-c"
-      - |
-        echo "${FB_WORKFLOW_ID}" > {{ $name }}/FB_WORKFLOW_ID
-        if [[ -n "{{ trim .S3Bucket }}" ]] ; then
-          tar -zcvf {{ $name }}.tar.gz {{ $name }}
-        fi
-        if [[ -n "{{ trim .DataVolume }}" ]] ; then
-          mkdir -p /data/{{ trim .ResultPath }}
-          cp -r {{ $name }} /data/{{ trim .ResultPath }}
-        fi
+    script: |
+      #!/bin/sh
+      echo "${FB_WORKFLOW_ID}" > {{ $name }}/FB_WORKFLOW_ID
+      if {{ $s3 }} ; then
+        tar -zcvf {{ $name }}.tar.gz {{ $name }}
+      elif [ -n "{{ trim .DataVolume }}" ] ; then
+        mkdir -p "{{ trim .ResultPath }}"
+        cp -r "{{ $name }}" "{{ trim .ResultPath }}"
+      fi
     resource:
       cpu:
         cores: {{.UtilityJobCores}}
         affinity: NUMA
       memory:
         size: {{.UtilityJobMemory}}
-    cwd: /scratch
+    cwd: {{ $scratchmount }}
     mounts:
-      scratch:
-        location: /scratch
-{{- if .DataVolume }}
-      data:
-        location: /data
+      {{ $scratchmount }}:
+        volume: scratch
+{{- if $local }}
+      {{ $datamount }}:
+        volume: data
 {{- end }}
     depends-on:
       - name: to-vtk
-        status: FINISHED
-
-{{- if .ParaviewContainerUri }}
-  port-forwarding-info:
-    image:
-      uri: {{ .ParaviewContainerUri }}
-    resource:
-      cpu:
-        cores: 1
-      memory:
-        size: 500MiB
-    command:
-      - /bin/bash
-      - "-c"
-      - |
-        echo "Accessing the paraview server once it starts requires port-forwarding via the CLI:"
-        echo
-        echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} paraview {{ .ParaviewPort }}:{{ .ParaviewPort }}"
-    depends-on:
-      - name: to-vtk
-        status: FINISHED
-
-  paraview:
-    image:
-      uri: {{ .ParaviewContainerUri }}
-    command:
-      - /opt/paraview/install/bin/pvserver
-      - "--server-port={{ .ParaviewPort }}"
-      - "--hostname=localhost"
-    resource:
-      cpu:
-        cores: {{ .ParaviewCores }}
-        affinity: NUMA
-      memory:
-        size: {{ .ParaviewMemory }}
-    multinode:
-      nodes: 1
-      implementation: openmpi
-    cwd: /scratch/{{ $name }}
-    mounts:
-      scratch:
-        location: /scratch
-    policy:
-      timeout:
-        execute: {{ .ParaviewTimeout }}
-    depends-on:
-      - name: port-forwarding-info
         status: FINISHED
 {{- end }}

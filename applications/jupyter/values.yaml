@@ -23,12 +23,10 @@ values:
     display_name: "Disallow other jobs from using the same node/instance"
     bool_value: false
     display_category: "Scheduling"
-  - name: "Volume"
+  - name: "DataVolume"
     display_name: |
-      [required] Where to store notebook data. Will be mounted at /data. Defaults to 'volume://user/persistent',
-      the default name for user-scoped persistent storage. Adapt to match one of your persistent or ephemeral
-      storage classes.
-    string_value: "volume://user/persistent"
+      [required] Data volume for notebook data. Will be mounted at /data.
+    string_value: "volume://user/ephemeral"
     display_category: "Storage"
 
   - name: "ServiceScope"

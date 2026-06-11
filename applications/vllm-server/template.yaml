@@ -1,13 +1,13 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 
 {{- $vllm_api_port := randInt 10000 24000 }}
-{{- $data_mount := "/home/vllm" }}
+{{- $data_mount := "/data" }}
 
 {{- if not (trim .ServerApiKey) }}
   {{- fail "ServerApiKey is required" }}
 {{- end }}
 
-version: v1
+version: v4
 volumes:
   data:
     reference: {{ .VllmVolume }}
@@ -29,8 +29,8 @@ services:
     image:
       uri: {{ .VllmImage }}
     mounts:
-      data:
-        location: {{ $data_mount }}
+      {{ $data_mount }}:
+        volume: data
     resource:
       cpu:
         cores: {{ .ServerCores }}
@@ -41,7 +41,7 @@ services:
       annotations:
         nvidia.com/gpu.model: "{{ .ServerGPUModel }}"
     env:
-      - HOME={{ $data_mount }}
+      - HF_HOME={{ .HuggingfaceHome }}
       {{- if .HuggingFaceHubToken }}
       - HF_TOKEN={{ .HuggingFaceHubToken }}
       {{- end }}

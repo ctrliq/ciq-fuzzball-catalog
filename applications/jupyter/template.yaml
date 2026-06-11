@@ -2,13 +2,13 @@
 
 {{- $mount := "/data" }}
 {{- $port := (randInt 10000 30000) }}
-{{- $volume := trim .Volume }}
+{{- $volume := trim .DataVolume }}
 {{- if not (hasPrefix "volume://" $volume) }}
-  {{- fail "A Volume has to be specified" }}
+  {{- fail "DataVolume must be specified and start with 'volume://'" }}
 {{- end }}
 {{- $container_type := default "r" (trim .Type) }}
 
-version: v1
+version: v4
 
 volumes:
   data:
@@ -38,7 +38,7 @@ services:
       timeout-seconds: 5
       initial-delay-seconds: 10
     image:
-      uri: docker://quay.io/jupyter/{{ $container_type }}-notebook:latest
+      uri: docker://quay.io/jupyter/{{ $container_type }}-notebook:2026-06-05
     resource:
       cpu:
         cores: {{ .Cores }}
@@ -50,8 +50,8 @@ services:
       {{- end }}
       exclusive: {{ .Exclusive }}
     mounts:
-      data:
-        location: {{ $mount }}
+      {{ $mount }}:
+        volume: data
     env:
       - NB_USER=jovyan
       - HOME=/home/jovyan

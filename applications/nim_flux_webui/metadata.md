@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "nim_flux_webui_application"
+id: "ciq/ml_and_ai/nim_flux_webui_application"
 name: "NVIDIA NIM Flux Image Generation with Open WebUI"
 category: "ML_AND_AI"
 tags:

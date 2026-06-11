@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "alphafold2_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/ml_and_ai/alphafold2_application"
 name: "AlphaFold2"
 category: "ML_AND_AI"
 featured: true

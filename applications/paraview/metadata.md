@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "paraview_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/visualization/paraview_application"
 name: "ParaView"
 category: "VISUALIZATION"
 featured: true

@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "transformer_fine_tuning" # needs to be **unique** per application, changing results in a new application
+id: "ciq/ml_and_ai/transformer_fine_tuning"
 name: "Transformer Fine Tuning Example"
 category: "ML_AND_AI"
 tags:
@@ -12,4 +12,3 @@ This workflow demonstrates an example usage pattern to fine tune an existing lan
 - Loading an existing model
 - Fine tuning the model weights on the new data set
 - Comparing the models performance pre and post fine tuning.
-

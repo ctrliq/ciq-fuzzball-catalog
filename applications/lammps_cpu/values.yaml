@@ -4,8 +4,8 @@ values:
     string_value: "volume://user/ephemeral"
     display_category: "Storage"
   - name: "DataVolume"
-    display_name: "Persistent volume to store data (if PersistResults is true)"
-    string_value: "volume://user/persistent"
+    display_name: "Persistent volume to store data (if PersistResults is true). Mounted at /data."
+    string_value: "volume://user/ephemeral"
     display_category: "Storage"
 
   - name: "ExperimentUrl"
@@ -29,14 +29,13 @@ values:
     string_value: "lj-my-first-input"
   - name: "OutputPath"
     display_name: >-
-      Path relative to the root of the data volume where results should be written to. Ignored if no stageout script is
+      Path of the directory on the data volume where results should be written to. Ignored if no stageout script is
       provided.
-    string_value: "results/lammps_cpu"
+    string_value: "/data/results/lammps_cpu"
 
   - name: "LammpsContainerUri"
     display_name: "URI of LAMMPS container that will be used for computation."
     string_value: "docker://community.wave.seqera.io/library/lammps:2024.08.29--4e9c8f5535deab3e"
-    #string_value: "docker://lammps/lammps:stable_29Sep2021_rockylinux8_openmpi_py3"
   - name: "LammpsOptions"
     display_name: "Lammps options for run (-in is added automatically)."
     string_value: ""

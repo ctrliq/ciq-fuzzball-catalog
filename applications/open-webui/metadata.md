@@ -1,6 +1,6 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 ---
-id: "open-webui" # needs to be **unique** per application, changing results in a new application
+id: "ciq/ml_and_ai/open-webui"
 name: "Open WebUI"
 category: "ML_AND_AI"
 tags:

@@ -1,7 +1,7 @@
 # Copyright 2025 CIQ, Inc. All rights reserved
 
 ---
-id: "wrf_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/weather_and_climate/wrf_application"
 name: "WRF + WPS"
 category: "WEATHER_AND_CLIMATE"
 featured: true
