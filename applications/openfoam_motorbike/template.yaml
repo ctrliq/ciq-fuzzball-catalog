@@ -4,17 +4,27 @@
 {{- if not (trim .ScratchVolume) }}
   {{- fail "ScratchVolume is required" }}
 {{- end }}
+{{- if not (hasPrefix "volume://" (trim .ScratchVolume)) }}
+  {{- fail "ScratchVolume must be a volume:// reference" }}
+{{- end }}
 
+{{- $s3secret := trim .S3Secret }}
 {{- $s3 := false }}
 {{- $local := false }}
 {{- if (hasPrefix "s3://" (trim .ResultPath)) }}
   {{- $s3 = true }}
-  {{- if not .S3Secret }}
+  {{- if not $s3secret }}
     {{- fail "Please provide S3Secret to save results to S3" }}
   {{- end }}
 {{- else if (trim .ResultPath) }}
   {{- if not (trim .DataVolume) }}
     {{- fail "DataVolume is required when saving results to a local path" }}
+  {{- end }}
+  {{- if not (hasPrefix "volume://" (trim .DataVolume)) }}
+    {{- fail "DataVolume must be a volume:// reference" }}
+  {{- end }}
+  {{- if not (hasPrefix $datamount (trim .ResultPath)) }}
+    {{- fail (printf "A local ResultPath must be an absolute path under %s (the mounted data volume); otherwise results are written outside the volume and lost" $datamount) }}
   {{- end }}
   {{- $local = true }}
 {{- end }}
@@ -35,7 +45,7 @@ volumes:
           uri: file://{{ $name }}.tar.gz
         destination:
           uri: {{ trim .ResultPath }}/{{ $name }}.tar.gz
-          secret: {{ .S3Secret }}
+          secret: {{ $s3secret }}
 {{- end }}
 {{- if $local }}
   data:
@@ -273,8 +283,8 @@ jobs:
       if {{ $s3 }} ; then
         tar -zcvf {{ $name }}.tar.gz {{ $name }}
       elif [ -n "{{ trim .DataVolume }}" ] ; then
-        mkdir -p {{ trim .ResultPath }}
-        cp -r {{ $name }} {{ trim .ResultPath }}
+        mkdir -p "{{ trim .ResultPath }}"
+        cp -r "{{ $name }}" "{{ trim .ResultPath }}"
       fi
     resource:
       cpu:

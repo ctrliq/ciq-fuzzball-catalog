@@ -76,7 +76,7 @@ volumes:
       - source:
           uri: file://{{ $tar_base }}.tar.gz
         destination:
-          uri: s3://{{ $s3_bucket }}/{{ $output_path }}/{{ $tar_base }}.tar.gz
+          uri: s3://{{ $s3_bucket }}/{{ $out_dir | trim | trimPrefix $data_mount }}/{{ $tar_base }}.tar.gz
           secret: {{ $s3_secret }}
 {{- end }}
 {{- if $data_vol }}

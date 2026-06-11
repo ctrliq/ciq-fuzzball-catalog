@@ -5,9 +5,10 @@ values:
     display_category: Storage
   - name: DataVolume
     display_name: >-
-      [optional] Persistent storage provisioner to use. If neither InputPath nor
-      OutputPath are local paths, or the DataVolumeName is unique this can be omitted.
-      Will be mounted at /data
+      [optional] Persistent storage provisioner to use. It is only required when
+      InputPath and/or OutputPath are local paths (i.e. not s3:// or http(s)://
+      URIs). If both InputPath and OutputPath are remote (s3:// or http(s)://)
+      this can be omitted. Will be mounted at /data
     string_value: "volume://user/ephemeral"
     display_category: Storage
 
@@ -60,7 +61,7 @@ values:
     display_category: AWS Configuration
   - name: AWSRegion
     display_name: >-
-      [optional] Region housing the S3 bucket used for iinput and/or output.
+      [optional] Region housing the S3 bucket used for input and/or output.
     string_value: us-east-2
     display_category: AWS Configuration
 

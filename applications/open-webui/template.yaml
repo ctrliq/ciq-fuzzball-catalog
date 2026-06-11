@@ -1,4 +1,13 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
+{{- $datamount := "/data" }}
+{{- $ollamaDir := trim .OllamaModelsDir }}
+{{- if (and $ollamaDir (not (hasPrefix (printf "%s/" $datamount) $ollamaDir))) }}
+{{- fail (printf "OllamaModelsDir must be an absolute path under the data mount (%s/), got: %s" $datamount $ollamaDir) }}
+{{- end }}
+{{- $webuiDir := trim .OpenWebuiDir }}
+{{- if (and $webuiDir (not (hasPrefix (printf "%s/" $datamount) $webuiDir))) }}
+{{- fail (printf "OpenWebuiDir must be an absolute path under the data mount (%s/), got: %s" $datamount $webuiDir) }}
+{{- end }}
 version: v4
 
 volumes:
@@ -25,7 +34,7 @@ services:
 
     env:
       - OLLAMA_HOST=0.0.0.0:11434
-      - OLLAMA_MODELS={{ .OllamaModelsDir }}
+      - OLLAMA_MODELS={{ $ollamaDir }}
       - OLLAMA_KEEP_ALIVE=24h
       - OLLAMA_MAX_LOADED_MODELS=2
       - OLLAMA_NUM_PARALLEL=2
@@ -119,7 +128,7 @@ services:
     env:
       - WEBUI_AUTH=False
       - ENABLE_PERSISTENT_CONFIG=False
-      - DATA_DIR={{ .OpenWebuiDir }}
+      - DATA_DIR={{ $webuiDir }}
 
       - OLLAMA_BASE_URL=http://ollama.svc:11434
 
@@ -154,7 +163,7 @@ services:
     script: |
       #!/bin/sh
       set -e
-      mkdir -p "{{ .OpenWebuiDir }}"
+      mkdir -p "{{ $webuiDir }}"
       export WEBUI_URL=${FB_ENDPOINT_URL_WEB}
       exec /bin/bash start.sh
 
@@ -190,7 +199,7 @@ jobs:
 
     env:
       - OLLAMA_HOST=0.0.0.0:11434
-      - OLLAMA_MODELS={{ .OllamaModelsDir }}
+      - OLLAMA_MODELS={{ $ollamaDir }}
 
     mounts:
       /data:

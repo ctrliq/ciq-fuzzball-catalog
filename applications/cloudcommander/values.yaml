@@ -2,10 +2,10 @@ values:
   - name: Volumes
     display_name: |
       Comma separated list of volumes to mount. These are Fuzzball volume references
-      such as `volume://group/persistent/data`. By default the example volume would be available
-      as `group/persistent/data` in the file browser. If you would like to use a custom path for
-      a particular volume in the file browser, you can specify it like this:
-      `volume://group/persistent/data:data`. The leading slash is optional.
+      such as `volume://group/persistent/data`. By default the example volume
+      `volume://user/ephemeral:data` would be available as `data` in the file browser. If you
+      would like to use a custom path for a particular volume in the file browser, you can specify
+      it like this: `volume://group/persistent/data:data`. The leading slash is optional.
     string_value: "volume://user/ephemeral:data"
 
   - name: Container

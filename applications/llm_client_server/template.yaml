@@ -6,6 +6,10 @@
 
 {{- $data_mount := "/data" }}
 
+{{- if and (trim .HuggingfaceCache) (not (or (eq (trim .HuggingfaceCache) $data_mount) (hasPrefix (printf "%s/" $data_mount) (trim .HuggingfaceCache)))) }}
+  {{- fail (printf "HuggingfaceCache must be an absolute path under the mounted volume %s so the cache persists" $data_mount) }}
+{{- end }}
+
 version: v4
 volumes:
   data:

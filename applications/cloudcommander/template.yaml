@@ -11,6 +11,7 @@
 version: v4
 volumes:
 {{- range $i, $v := $volumes }}
+  {{- $v := trim $v }}
   vol-{{ $i }}:
   {{- $parts := (splitList ":" $v) }}
   {{- if eq (len $parts) 2 }}
@@ -48,6 +49,7 @@ services:
           scope: {{ .ServiceScope }}
     mounts:
 {{- range $i, $v := $volumes }}
+  {{- $v := trim $v }}
   {{- $parts := splitList ":" $v }}
   {{- if eq (len $parts) 2 }}
       {{ $root }}/{{ trimPrefix "volume://" $v }}:

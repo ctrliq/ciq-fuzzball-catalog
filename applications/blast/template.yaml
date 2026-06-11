@@ -5,6 +5,9 @@
 {{- fail "BlastDbName and CustomBlastDbFetchCmd are mutually exclusive" }}
 {{- end }}
 {{- $dbpath := trim .BlastDbPath }}
+{{- if (and $dbpath (not (hasPrefix (printf "%s/" $datamount) $dbpath))) }}
+{{- fail (printf "BlastDbPath must be an absolute path under the data mount (%s/), got: %s" $datamount $dbpath) }}
+{{- end }}
 {{- $permdbpath := $dbpath }}
 {{- $dbname := trim .BlastDbName }}
 
@@ -82,6 +85,7 @@ jobs:
       uri: {{.WorkflowContainer}}
     script: |
       #!/bin/bash
+      mkdir -p "{{$dbpath}}" && cd "{{$dbpath}}" || exit 1
       {{.CustomBlastDbFetchCmd}} > {{$dbname}}.fa
     resource:
       cpu:
@@ -118,6 +122,9 @@ jobs:
 {{ fail "Either CustomBlastDbFetchCmd or BlastDbName have to be specified" -}}
 {{- end }}
 {{- $outdir := trim .BlastOutputPath }}
+{{- if (and $outdir (not (hasPrefix (printf "%s/" $datamount) $outdir))) }}
+{{- fail (printf "BlastOutputPath must be an absolute path under the data mount (%s/), got: %s" $datamount $outdir) }}
+{{- end }}
 {{- $name := trim .RunName }}
   retrieve-query-sequences:
     image:

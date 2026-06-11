@@ -34,6 +34,18 @@
   {{- fail "DataVolume is required when InputPath or OutputPath is a local path" }}
 {{- end }}
 
+{{- /* local InputPath/OutputPath must be absolute and under the data mount so the job (cwd /scratch) can read/write them */}}
+{{- if (and (eq $input_is "local") (trim .InputPath)) }}
+  {{- if not (hasPrefix (printf "%s/" $data_mount) (trim .InputPath)) }}
+    {{- fail (printf "InputPath is a local path and must be an absolute path under the data mount (%s); got %q" $data_mount (trim .InputPath)) }}
+  {{- end }}
+{{- end }}
+{{- if (and (eq $output_is "local") (trim .OutputPath)) }}
+  {{- if not (hasPrefix (printf "%s/" $data_mount) (trim .OutputPath)) }}
+    {{- fail (printf "OutputPath is a local path and must be an absolute path under the data mount (%s); got %q" $data_mount (trim .OutputPath)) }}
+  {{- end }}
+{{- end }}
+
 version: v4
 volumes:
   scratch:

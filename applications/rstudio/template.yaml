@@ -23,6 +23,9 @@
 {{- $home := $scratchmount }}
 {{- if $homevol }}
   {{- if (trim .HomeDir) }}
+    {{- if not (hasPrefix "/" (trim .HomeDir)) }}
+      {{- fail "HomeDir must be an absolute path starting with '/'" }}
+    {{- end }}
     {{- $home = trim .HomeDir }}
   {{- else }}
     {{- fail "HomeDir is required when specifying HomeVolume" }}

@@ -4,7 +4,7 @@
 version: v4
 
 services:
- jupyter:
+  jupyter:
     image:
       uri: oras://depot.ciq.com/fuzzball/fuzzball-applications/jupyter-{{.NotebookType}}-notebook.sif
       secret: {{.DepotSecret}}
@@ -28,7 +28,7 @@ services:
         command:
           - /bin/sh
           - '-c'
-          - jupyter server list &> /dev/null
+          - jupyter server list >/dev/null 2>&1
       period-seconds: 5
       timeout-seconds: 5
       initial-delay-seconds: 10
