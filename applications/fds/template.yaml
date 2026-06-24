@@ -4,7 +4,6 @@
 version: v4
 volumes:
   vol_1:
-    name: vol_1
     ingress:
       - source:
           uri: {{.InputFileSource}}
