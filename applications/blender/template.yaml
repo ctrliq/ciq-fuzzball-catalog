@@ -1,8 +1,8 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 
 {{- $output_s3_uri := trim .OutputS3Uri }}
-{{- if and $output_s3_uri (not (hasPrefix "s3://" $output_s3_uri)) }}
-  {{- fail "OutputS3Uri should be a S3 URI starting with s3://" }}
+{{- if and $output_s3_uri (not ((hasPrefix "s3://" $output_s3_uri) (hasPrefix "fb://" $output_s3_uri))) }}
+  {{- fail "OutputS3Uri should be a S3 URI starting with s3:// or fb://" }}
 {{- end }}
 {{- $s3_secret := trim .S3Secret }}
 {{- if and $output_s3_uri (not (hasPrefix "secret://" $s3_secret)) }}
