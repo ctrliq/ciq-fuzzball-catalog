@@ -6,7 +6,7 @@ values:
       `volume://user/ephemeral:data` would be available as `data` in the file browser. If you
       would like to use a custom path for a particular volume in the file browser, you can specify
       it like this: `volume://group/persistent/data:data`. The leading slash is optional.
-    string_value: "volume://user/ephemeral:data"
+    string_value: "volume://group/persistent/data:/data,volume://group/persistent/home:/home"
 
   - name: Container
     display_name: CloudCommander container
