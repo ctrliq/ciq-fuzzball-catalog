@@ -17,11 +17,11 @@ values:
     display_category: "Render Settings"
   - name: Concurrency
     display_name: Parallel Render Concurrency
-    uint_value: 12
+    uint_value: 2
     display_category: "Resources"
   - name: RenderCores
     display_name: CPU Cores per Render Task
-    uint_value: 12
+    uint_value: 4
     display_category: "Resources"
   - name: RenderMemory
     display_name: Memory per Render Task

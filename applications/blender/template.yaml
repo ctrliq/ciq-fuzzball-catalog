@@ -42,7 +42,9 @@ volumes:
           uri: file://output.mp4
         destination:
           uri: {{ $output_s3_uri }}
+          {{- if $s3_secret }}
           secret: {{ $s3_secret }}
+          {{- end }}
     {{- end }}
 
 jobs:
