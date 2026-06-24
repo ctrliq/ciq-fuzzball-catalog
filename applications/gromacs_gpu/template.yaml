@@ -50,8 +50,8 @@ jobs:
           gmx=/usr/local/gromacs/avx2_256/bin/gmx
         elif grep -q avx /proc/cpuinfo ; then
           gmx=/usr/local/gromacs/avx_256/bin/gmx
-        elif [ -e /usr/local/gromacs/arm_neaon_asimd ]; then
-          gmx=/usr/local/gromacs/arm_neaon_asimd
+        elif [ -e /usr/local/gromacs/arm_neon_asimd ]; then
+          gmx=/usr/local/gromacs/arm_neon_asimd
         else
           gmx=/usr/local/gromacs/sse4.1/bin/gmx
         fi
