@@ -10,7 +10,7 @@ values:
 
   - name: ModelVolume
     display_name: Volume to store the HuggingFace cache directory. Will be mounted at /data.
-    string_value: volume://user/ephemeral
+    string_value: volume://group/persistent/data
     display_category: Storage
   - name: HuggingfaceCache
     display_name: >-
@@ -20,7 +20,7 @@ values:
 
   - name: ServerGPUModel
     display_name: GPU model to request.
-    string_value: NVIDIA L4
+    string_value: ""
     display_category: Resources
   - name: ServerCores
     display_name: Cores to allocate for the LLM server service.
