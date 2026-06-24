@@ -33,8 +33,7 @@ values:
     display_category: "Storage"
   - name: S3Secret
     display_name: Fuzzball Secret for S3 Access (Optional)
-    secret_value:
-      reference: ""
+    string_value: ""
     display_category: "Storage"
   - name: Volume
     display_name: Local ephemeral storage volume used for temporary data
