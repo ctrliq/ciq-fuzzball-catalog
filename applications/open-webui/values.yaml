@@ -17,7 +17,7 @@ values:
   - name: "TestPrompt"
     display_name: "Test Prompt (leave empty to skip verification)"
     string_value: "Say Hello, world!"
-    display_category: "Basic Configuration"
+    display_category: ""
 
   - name: "DataVolume"
     display_name: >-

@@ -108,7 +108,6 @@ services:
       success-threshold: 1
 
     resource:
-      exclusive: true
       cpu:
         cores: 2
       memory:
@@ -181,7 +180,6 @@ services:
       success-threshold: 1
 
     resource:
-      exclusive: true
       cpu:
         cores: 1
       memory:
