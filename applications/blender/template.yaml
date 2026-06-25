@@ -100,7 +100,7 @@ jobs:
 
   assemble-video:
     image:
-      uri: docker://jrottenberg/ffmpeg:4.4-alpine
+      uri: docker://linuxserver/ffmpeg:version-8.1-cli
     mounts:
       /scratch:
         volume: scratch
