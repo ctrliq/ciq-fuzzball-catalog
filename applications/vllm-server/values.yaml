@@ -40,7 +40,7 @@ values:
     display_name: >-
       Volume to store the vLLM/HuggingFace cache directories. The default is ephemeral but for
       real world run use a persistent volume. Mounted at /data
-    string_value: volume://user/ephemeral
+    string_value: volume://group/persistent/data
     display_category: Storage
   - name: HuggingfaceHome
     display_name: >-

@@ -23,7 +23,7 @@ values:
     display_name: >-
       Storage for Ollama models (can be 50-150GB for large models) and Open WebUI data (vector DB, documents, configs). Mounted
       at /data. Use a persistent volume to preserve downloaded models between runs.
-    string_value: "volume://user/ephemeral"
+    string_value: "volume://group/persistent/data"
     display_category: "Storage"
 
   - name: "OllamaModelsDir"
