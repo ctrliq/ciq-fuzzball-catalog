@@ -22,16 +22,12 @@ services:
           protocol: tcp
           port: {{ $novnc_port }}
       endpoints:
-        # Access the desktop straight from a browser at the generated subdomain
-        # URL. No `fuzzball workflow port-forward` needed.
         - name: vnc
           port-name: novnc
           protocol: http
           type: subdomain
           scope: {{.EndpointScope}}
     readiness-probe:
-      # Service only reports RUNNING once noVNC is answering, so the endpoint
-      # isn't a dead link while the desktop is still coming up.
       http-get:
         path: /
         port: {{ $novnc_port }}
