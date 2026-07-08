@@ -1,5 +1,5 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-version: v1
+version: v4
 
 {{- if .UseInlineAnimationScript }}
 files:
@@ -126,12 +126,15 @@ defaults:
       - CESMDATAROOT=/home/user
       - PATH=/opt/ncar/cesm2/cime/scripts:/srv/conda/bin:/usr/local/bin:/usr/bin:/bin
     mounts:
-      workdir:
-        location: /home/user
+      /home/user: workdir
 
 volumes:
   workdir:
-    reference: {{.VolumeReference}}
+    {{- if .PersistentVolumeName }}
+    name: {{ .PersistentVolumeName }}
+    {{- else }}
+    use: ephemeral
+    {{- end }}
     {{- if not .UseInlineAnimationScript }}
     ingress:
       - source:
@@ -212,6 +215,37 @@ jobs:
 
       echo "=== case.build ==="
       ./case.build
+
+      # NCAR's svn inputdata server presents a TLS cert for the wrong hostname,
+      # so the default svn protocol fails on every file. Rewrite the server list
+      # to pull over wget from the working HTTPS mirror instead.
+      echo "=== Patch inputdata server list (prefer wget HTTPS mirror) ==="
+      CFG=$(find /opt /home /usr /srv -name config_inputdata.xml 2>/dev/null | head -1)
+      if [ -n "$CFG" ]; then
+        cp "$CFG" "${CFG}.bak" 2>/dev/null || true
+        cat > "$CFG" <<'XML'
+      <?xml version="1.0"?>
+      <inputdata>
+        <server>
+          <protocol>wget</protocol>
+          <address>https://ftp.cgd.ucar.edu/cesm/inputdata/</address>
+          <checksum>../inputdata_checksum.dat</checksum>
+        </server>
+        <server>
+          <comment>wget access to the svn server (fallback)</comment>
+          <protocol>wget</protocol>
+          <address>https://svn-ccsm-inputdata.cgd.ucar.edu/trunk/inputdata/</address>
+        </server>
+        <server>
+          <protocol>svn</protocol>
+          <address>https://svn-ccsm-inputdata.cgd.ucar.edu/trunk/inputdata</address>
+        </server>
+      </inputdata>
+      XML
+        echo "Patched $CFG"
+      else
+        echo "WARN: config_inputdata.xml not found; download may still fail."
+      fi
 
       echo "=== Download required input data ==="
       ./check_input_data --download
