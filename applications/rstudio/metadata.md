@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "rstudio_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/data_science/rstudio_application"
 name: "RStudio Server"
 category: "DATA_SCIENCE"
 tags:

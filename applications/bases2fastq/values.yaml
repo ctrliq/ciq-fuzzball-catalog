@@ -1,22 +1,25 @@
 values:
   - name: ScratchVolume
-    display_name: Ephemeral storage during run.
+    display_name: Ephemeral storage provisioner for temporary data.
     string_value: volume://user/ephemeral
+    display_category: Storage
   - name: DataVolume
-    display_name: |
-      [optional] Persistent data storage volume. If neither InputPath nor
-      OutputPath are local paths, this volume can be omitted.
-    string_value: volume://user/persistent
+    display_name: >-
+      [optional] Persistent storage provisioner to use. It is only required when
+      InputPath and/or OutputPath are local paths (i.e. not s3:// or http(s)://
+      URIs). If both InputPath and OutputPath are remote (s3:// or http(s)://)
+      this can be omitted. Will be mounted at /data
+    string_value: "volume://user/ephemeral"
     display_category: Storage
 
   - name: Bases2FastqContainer
     display_name: Container used for bases2fastq.
-    string_value: docker://elembio/bases2fastq:2.1
+    string_value: docker://elembio/bases2fastq:2.4
     display_category: Container
 
   - name: InputPath
-    display_name: |
-      This is either a local path relative to the root of the data volume or a
+    display_name: >-
+      This is either an absolute local path or a
       s3:// path and should point to the parent directory of the sequencing run
       folder <RunName>. If an s3:// path is used the optional AWS parameters
       must be set. A third possibility is to provide a http(s) URL root such that
@@ -26,14 +29,13 @@ values:
     string_value: http://element-public-data.s3.amazonaws.com/bases2fastq-share/bases2fastq-v2
     display_category: I/O
   - name: OutputPath
-    display_name: |
-      This is either a local path relative to the (persistent) data volume root
-      or a s3:// path. If an s3:// path is used the optional AWS parameters must
+    display_name: >-
+      This is either an absolute local path or a s3:// path. If an s3:// path is used the optional AWS parameters must
       be set.
-    string_value: results/aviti_out
+    string_value: /data/results/aviti_out
     display_category: I/O
   - name: RunName
-    display_name: |
+    display_name: >-
       The name of the sequencing run. Input is expected to be at
       <InputPath>/<RunName> for all modes of input and output will be at
       <OutputPath>/<RunName>.
@@ -41,7 +43,7 @@ values:
     display_category: I/O
 
   - name: AWSAccessKeyIdSecret
-    display_name: |
+    display_name: >-
       [optional] Fuzzball env secret containing an AWS access key id used to
       access the S3 bucket for input and/or output. This has to be an env secret
       since the environment variable is directly used by bases2fastq. This
@@ -50,7 +52,7 @@ values:
     string_value: secret://user/aws_aki1
     display_category: AWS Configuration
   - name: AWSSecretAccessKeySecret
-    display_name: |
+    display_name: >-
       [optional] Fuzzball env secret containing an AWS secret access key used to
       access the S3 bucket storing the raw Sequencer output. Like
       AWSAccessKeyIdSecret, this has to be an env secret since the environment
@@ -58,8 +60,8 @@ values:
     string_value: secret://user/aws_sak1
     display_category: AWS Configuration
   - name: AWSRegion
-    display_name: |
-      [optional] Region housing the S3 bucket used for iinput and/or output.
+    display_name: >-
+      [optional] Region housing the S3 bucket used for input and/or output.
     string_value: us-east-2
     display_category: AWS Configuration
 

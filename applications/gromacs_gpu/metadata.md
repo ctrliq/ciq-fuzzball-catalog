@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "gromacs_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/other/gromacs_application"
 name: "GROMACS (GPU)"
 category: "OTHER"
 featured: true

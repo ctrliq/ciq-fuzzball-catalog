@@ -27,7 +27,7 @@ values:
 
   - name: VolumeReference
     display_name: Volume Reference for the scratch directory
-    string_value: "volume://user/ephemeral/scratch"
+    string_value: "volume://user/ephemeral"
 
   - name: CpuCores
     display_name: CPU Cores
@@ -35,7 +35,7 @@ values:
 
   - name: MemoryGb
     display_name: Memory (GB)
-    uint_value: 32
+    uint_value: 30
 
   - name: GPUNumber
     display_name: Number of GPUs to use for fine tuning (within a single node)

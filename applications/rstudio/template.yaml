@@ -3,18 +3,37 @@
 {{- $datavol := trim .DataVolume }}
 {{- $scratchvol := trim .ScratchVolume }}
 {{- $homevol := trim .HomeVolume }}
+{{- if and $datavol (not (hasPrefix "volume://" $datavol)) }}
+  {{- fail "DataVolume must start with 'volume://'" }}
+{{- end }}
+{{- if and $homevol (not (hasPrefix "volume://" $homevol)) }}
+  {{- fail "HomeVolume must start with 'volume://'" }}
+{{- end }}
+{{- if and $scratchvol (not (hasPrefix "volume://" $scratchvol)) }}
+  {{- fail "ScratchVolume must start with 'volume://'" }}
+{{- end }}
 {{- if not $scratchvol }}
   {{- fail "ScratchVolume is required" }}
 {{- end }}
+
 {{- $datamount := "/data" }}
 {{- $scratchmount := "/scratch" }}
-{{- $home := "/home/user" }}
-{{- if not $homevol }}
-  {{ $home = $scratchmount }}
+# in the root of scratch because cwd (required for rstudio) will be
+# root owned if it does not exist yet
+{{- $home := $scratchmount }}
+{{- if $homevol }}
+  {{- if (trim .HomeDir) }}
+    {{- if not (hasPrefix "/" (trim .HomeDir)) }}
+      {{- fail "HomeDir must be an absolute path starting with '/'" }}
+    {{- end }}
+    {{- $home = trim .HomeDir }}
+  {{- else }}
+    {{- fail "HomeDir is required when specifying HomeVolume" }}
+  {{- end }}
 {{- end }}
 {{- $port := randInt 10000 32000 }}
 
-version: v1
+version: v4
 
 volumes:
 {{- if $datavol }}
@@ -45,17 +64,19 @@ services:
       uri: {{ .ContainerImage }}
     mounts:
 {{- if $datavol }}
-      data:
-        location: {{ $datamount }}
+      {{ $datamount }}:
+        volume: data
 {{- end }}
 {{- if $homevol }}
-      home:
-        location: {{ $home }}
+      {{ $home }}:
+        volume: home
 {{- end }}
-      scratch:
-        location: {{ $scratchmount }}
+      {{ $scratchmount }}:
+        volume: scratch
     # cwd becomes the home dir in /etc/passwd which makes RStudio Server *much* happier
     cwd: {{ $home }}
+    env:
+      - HOME={{ $home }}
     persist: true
     script: |
         #!/bin/bash
@@ -74,7 +95,7 @@ services:
         # tmpdir is small enough that R package installations will fail. Need scratch
         TMPDIR="{{- $scratchmount }}/tmp"
         mkdir -p "$TMPDIR" || die "Failed to create temporary directory: $TMPDIR"
-
+        mkdir -p "${HOME}" || die "Failed to create home directory"
         # some setup
         USER=$(id -un)
         USERNAME=$USER

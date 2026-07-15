@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "fds_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/computational_fluid_dynamics/fds_application"
 name: "Fire Dynamics Simulator (FDS)"
 category: "COMPUTATIONAL_FLUID_DYNAMICS"
 tags:

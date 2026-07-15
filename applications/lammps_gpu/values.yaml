@@ -45,7 +45,7 @@ values:
     display_name: >-
       Path used for result storage. For persistent volumes, this is relative to the volume root. For S3, this is the
       key prefix within the bucket.
-    string_value: "results/lammps_gpu"
+    string_value: "/data/results/lammps_gpu"
     display_category: Parameters
 
   - name: LammpsContainerUri

@@ -21,13 +21,21 @@
 {{- end }}
 
 {{- $datamount := "/data" }}
-{{- $home := "/home/fb" }}
-{{- if not $homevol }}
-  {{ $home = "/tmp/homefb" }}
+{{- $home := "/tmp/fbhome" }}
+{{- if $homevol }}
+  {{- if (trim .HomeDir) }}
+    {{- if not (hasPrefix "/" (trim .HomeDir)) }}
+      {{- fail (printf "HomeDir must be an absolute path starting with '/', got %q" (trim .HomeDir)) }}
+    {{- end }}
+    {{- $home = trim .HomeDir }}
+  {{- else }}
+    {{- fail "HomeDir is required when specifying HomeVolume" }}
+  {{- end }}
 {{- end }}
 {{- $port := randInt 10000 32000 }}
 
-version: v1
+
+version: v4
 
 {{- if (or $datavol $homevol) }}
 volumes:
@@ -56,12 +64,12 @@ services:
 {{- if (or $datavol $homevol) }}
     mounts:
   {{- if $datavol }}
-      data:
-        location: {{ $datamount }}
+      {{ $datamount }}:
+        volume: data
   {{- end }}
   {{- if $homevol }}
-      home:
-        location: {{ $home }}
+      {{ $home }}:
+        volume: home
   {{- end }}
 {{- end }}
     persist: true

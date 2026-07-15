@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "llm_client_server" # needs to be **unique** per application, changing results in a new application
+id: "ciq/ml_and_ai/llm_client_server"
 name: "Local LLM chat"
 category: "ML_AND_AI"
 tags:

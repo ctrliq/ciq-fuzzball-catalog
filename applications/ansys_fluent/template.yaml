@@ -1,106 +1,112 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $ver := .AnsysVersion }}
 {{- $ansys_version_number := printf "v%s%s" (substr 2 4 $ver) (substr 5 6 $ver) }}
-version: v1
+{{- $datamount := "/data" }}
+version: v4
+
+volumes:
+  data:
+    reference: {{.Volume}}
+    ingress:
+      - source:
+          uri: https://ansys13.ansys.com/AnsysInnovationCourses/FBU/How-To-Series/Getting%20Started%20with%20Fluent/Course_9-Heat_Transfer/FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip
+        destination:
+          uri: file://FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip
+
+defaults:
+  job:
+    mounts:
+      {{ $datamount }}: data
+
 jobs:
   fluent-tjunction-heat-transfer:
-    env:
-      - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
     image:
       uri: {{.AnsysFluentContainerURI}}
       secret: {{.AnsysFluentContainerOciSecret}}
-    mounts:
-      data:
-        location: /data
-    policy:
-      timeout:
-        execute: 30m0s
-    cwd: /data
-    command:
-      - /bin/sh
-      - '-c'
-      - >-
-        mkdir ansys-fluent-tjunction-heat-transfer-$FB_WORKFLOW_ID;
-        cd ansys-fluent-tjunction-heat-transfer-$FB_WORKFLOW_ID;
-        mv /data/FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip .;
-        unzip FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip;
-        cd FLU_BTB_2022R2_EN_Wl2.6_Input_Files;
+    env:
+      - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
+    cwd: {{ $datamount }}
+    script: |
+      #!/bin/sh
+      set -e
 
-        cat > setup-and-run-simulation.jou << _EOF
-          ; configure batch options -- ensure exit on error
-          /file/set-batch-options no yes yes no
+      WORKDIR="{{ $datamount }}/ansys-fluent-tjunction-heat-transfer-$FB_WORKFLOW_ID"
+      mkdir -p "$WORKDIR"
+      cd "$WORKDIR"
 
-          ; read in tjunction mesh file
-          /file/read-case t-junction_2022R2.msh.h5
+      mv {{ $datamount }}/FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip .
+      unzip FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip
+      cd FLU_BTB_2022R2_EN_Wl2.6_Input_Files
 
-          ; set temperature units to C
-          /define/units temperature c
+      cat > setup-and-run-simulation.jou << '_EOF'
+        ; configure batch options -- ensure exit on error
+        /file/set-batch-options no yes yes no
 
-          ; solve for energy
-          /define/models/energy? yes no no no yes
+        ; read in tjunction mesh file
+        /file/read-case t-junction_2022R2.msh.h5
 
-          ; setup materials
-          /define/materials/copy fluid water-liquid
-          /define/materials/copy solid steel
+        ; set temperature units to C
+        /define/units temperature c
 
-          ; set materials in cell zones
-          /define/boundary-conditions/fluid fluid yes water-liquid no no no no 0. no 0. no 0. no 0 no 0 no 1 no yes no no no
-          /define/boundary-conditions/solid solid yes steel no no no no 0. no 0. no 0. no 0 no 0 no 1 no no no
+        ; solve for energy
+        /define/models/energy? yes no no no yes
 
-          ; set boundary conditions
+        ; setup materials
+        /define/materials/copy fluid water-liquid
+        /define/materials/copy solid steel
 
-          ; set velocity and temperature of water at inlet-main to 1 m/s and 80 C respectively
-          /define/boundary-conditions/velocity-inlet inlet-main no no yes yes no 1 no 0. no 80. no no yes 5. 10
+        ; set materials in cell zones
+        /define/boundary-conditions/fluid fluid yes water-liquid no no no no 0. no 0. no 0. no 0 no 0 no 1 no yes no no no
+        /define/boundary-conditions/solid solid yes steel no no no no 0. no 0. no 0. no 0 no 0 no 1 no no no
 
-          ; set velocity and temperature of water at inlet-main to 0.5 m/s and 20 C respectively
-          /define/boundary-conditions/velocity-inlet inlet-side no no yes yes no 0.5 no 0. no 20 no no yes 5. 10
+        ; set boundary conditions
 
-          ; set backflow water temp at outlet to 80 C
-          /define/boundary-conditions/pressure-outlet outlet yes no 0. no 80 no yes no no yes 5. 10 yes no no no
+        ; set velocity and temperature of water at inlet-main to 1 m/s and 80 C respectively
+        /define/boundary-conditions/velocity-inlet inlet-main no no yes yes no 1 no 0. no 80. no no yes 5. 10
 
-          ; Set energy convergence to 1e-08
-          /solve/monitors/residual/convergence-criteria 0.001 0.001 0.001 0.001 1e-08 0.001 0.001
+        ; set velocity and temperature of water at inlet-main to 0.5 m/s and 20 C respectively
+        /define/boundary-conditions/velocity-inlet inlet-side no no yes yes no 0.5 no 0. no 20 no no yes 5. 10
 
-          ; set reports
-          /solve/report-definitions/add report-t-out surface-massavg field temperature surface-names outlet () quit
-          /solve/report-definitions/add report-vel-out surface-massavg field velocity-magnitude surface-names outlet () quit
-          /solve/report-definitions/add report-p-in surface-areaavg field pressure surface-names inlet-main inlet-side () per-surface? yes quit
+        ; set backflow water temp at outlet to 80 C
+        /define/boundary-conditions/pressure-outlet outlet yes no 0. no 80 no yes no no yes 5. 10 yes no no no
 
-          ; write out report data
-          /solve/report-files/add report-t-out-rfile report-defs () report-defs report-t-out () quit
-          /solve/report-files/add report-vel-out-rfile report-defs () report-defs report-vel-out () quit
-          /solve/report-files/add report-p-in-rfile report-defs () report-defs report-p-in () quit
+        ; Set energy convergence to 1e-08
+        /solve/monitors/residual/convergence-criteria 0.001 0.001 0.001 0.001 1e-08 0.001 0.001
 
-          ; set plots to create
-          /solve/report-plots/add report-t-out-rplot report-defs report-t-out () name "report-t-out-rplot" x-label iteration y-label "Mass-Weighted Average of temperature" active? yes print? no quit
-          /solve/report-plots/add report-vel-out-rplot report-defs report-vel-out () name "report-vel-out-rplot" x-label iteration y-label "Mass-Weighted Average of velocity" active? yes print? no quit
-          /solve/report-plots/add report-p-in-rplot report-defs report-p-in () name "report-p-in-rplot" x-label iteration y-label "Area-Weighted Average of pressure" active? yes print? no quit
+        ; set reports
+        /solve/report-definitions/add report-t-out surface-massavg field temperature surface-names outlet () quit
+        /solve/report-definitions/add report-vel-out surface-massavg field velocity-magnitude surface-names outlet () quit
+        /solve/report-definitions/add report-p-in surface-areaavg field pressure surface-names inlet-main inlet-side () per-surface? yes quit
 
-          ; Init and solve
-          /solve/initialize/hyb-initialization
-          /solve/iterate 200
+        ; write out report data
+        /solve/report-files/add report-t-out-rfile report-defs () report-defs report-t-out () quit
+        /solve/report-files/add report-vel-out-rfile report-defs () report-defs report-vel-out () quit
+        /solve/report-files/add report-p-in-rfile report-defs () report-defs report-p-in () quit
 
-          ; write results case and data
-          /file/write-case-data tjunction-heat-transfer-%i.cas.gz
+        ; set plots to create
+        /solve/report-plots/add report-t-out-rplot report-defs report-t-out () name "report-t-out-rplot" x-label iteration y-label "Mass-Weighted Average of temperature" active? yes print? no quit
+        /solve/report-plots/add report-vel-out-rplot report-defs report-vel-out () name "report-vel-out-rplot" x-label iteration y-label "Mass-Weighted Average of velocity" active? yes print? no quit
+        /solve/report-plots/add report-p-in-rplot report-defs report-p-in () name "report-p-in-rplot" x-label iteration y-label "Area-Weighted Average of pressure" active? yes print? no quit
 
-          ; exit
-          /exit yes
-        _EOF
+        ; Init and solve
+        /solve/initialize/hyb-initialization
+        /solve/iterate 200
 
-        export PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/fluent/bin:$PATH;
+        ; write results case and data
+        /file/write-case-data tjunction-heat-transfer-%i.cas.gz
 
-        fluent 3ddp -g -t4 -i setup-and-run-simulation.jou;
+        ; exit
+        /exit yes
+      _EOF
+
+      export PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/fluent/bin:$PATH
+      fluent 3ddp -g -t4 -i setup-and-run-simulation.jou
     resource:
       cpu:
         cores: {{.FluentCores}}
         affinity: NUMA
       memory:
         size: {{.FluentMemory}}
-volumes:
-  data:
-    reference: {{.Volume}}
-    ingress:
-    - source:
-        uri: https://ansys13.ansys.com/AnsysInnovationCourses/FBU/How-To-Series/Getting%20Started%20with%20Fluent/Course_9-Heat_Transfer/FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip
-      destination:
-        uri: file://FLU_BTB_2022R2_EN_Wl2.6_Input_Files.zip
+    policy:
+      timeout:
+        execute: 30m

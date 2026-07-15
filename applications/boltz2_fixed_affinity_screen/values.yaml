@@ -1,15 +1,16 @@
 values:
   - name: DataVolume
     display_name: |
-      Persistent data storage volume. Required even if the input and
+      Data storage volume mounted at /data. Required even if the input and
       outputs are not in a data volume since it will be used to store
-      the boltz2 cache.
-    string_value: volume://user/persistent
+      the boltz2 cache. Should be a persistent volume but for testing
+      defaults to ephemeral.
+    string_value: volume://user/ephemeral
     display_category: Storage
   - name: ScratchVolume
     display_name: |
       Ephemeral data storage volume. Used for temporary files and initial
-      results.
+      results. Mounted at /scratch.
     string_value: volume://user/ephemeral
     display_category: Storage
 
@@ -34,9 +35,8 @@ values:
     display_name: |
       Multiple sequence alignment (MSA) file to use for the affinity screen.
       This should be a file in the CSV format expected by boltz2, i.e. with
-      `key` and `sequence` columns. Can be a local file relative to the root of
-      the DataVolume, a s3 URI, or a http(s) URI. If a s3 URI is used, a S3
-      secret must be provided as well.
+      `key` and `sequence` columns. Can be a local file in the DataVolume,
+      a s3 URI, or a http(s) URI. If a s3 URI is used, a S3 secret must be provided as well.
     string_value: https://raw.githubusercontent.com/ctrliq/ciq-fuzzball-catalog/refs/heads/main/applications/boltz2_fixed_affinity_screen/data/msa.csv
     display_category: Input
   - name: Template
@@ -64,10 +64,9 @@ values:
     display_category: Parameters
   - name: BoltzCache
     display_name: |
-      [optional] Path to a directory where boltz2 can store its cache. This should be a
-      directory on the persistent storage to avoid repeated downloads and the
-      path should be relative to the DataVolume root. Defaults to cache/boltz2.
-    string_value: cache/boltz2
+      Path to a directory where boltz2 can store its cache. For real workloads this should
+      be located on a persistent volume.
+    string_value: /data/cache/boltz2
     display_category: Parameters
   - name: BoltzOptions
     display_name: |
@@ -94,9 +93,9 @@ values:
   - name: OutputPath
     display_name: |
       [optional] Path to the output directory. This is either a local path
-      relative to the (persistent) data volume root or a s3:// path. If an s3://
+      on the data volume root or a s3:// path. If an s3://
       path is used the optional AWS parameters must be set.
-    string_value: results/boltz2
+    string_value: ""
     display_category: Output
 
   - name: AWSAccessKeyIdSecret

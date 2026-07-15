@@ -1,5 +1,4 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
-
 {{- $jupyter_port := randInt 20001 21000 }}
 {{- $unsloth_port := randInt 21001 22000 }}
 
@@ -7,10 +6,29 @@
   {{- fail "UserPassword is required" }}
 {{- end }}
 
-version: v1
+{{- if not (and
+    (trim .UnslothDirectory | hasPrefix "/")
+    (trim .DataVolume | hasPrefix "volume://")
+    (trim .ScratchVolume | hasPrefix "volume://")
+    ) -}}
+  {{- fail "UnslothDirectory, DataVolume, and ScratchVolume are required" }}
+{{- end }}
+
+{{- if and (trim .HFHomeDirectory) (not (or (eq (trim .HFHomeDirectory) "/data") (hasPrefix "/data/" (trim .HFHomeDirectory)))) }}
+  {{- fail "HFHomeDirectory, when set, must be an absolute path under the mounted data volume (/data)" }}
+{{- end }}
+
+{{- $projects := printf "%s/work" (trim .UnslothDirectory) }}
+{{- $home := printf "%s/studio" (trim .UnslothDirectory) }}
+{{- $docs := printf "%s/docs" (trim .UnslothDirectory) }}
+{{- $notebooks := printf "%s/unsloth-notebooks" (trim .UnslothDirectory) }}
+
+version: v4
 volumes:
-  workspace:
-    reference: {{ .UnslothVolume }}
+  data:
+    reference: {{ .DataVolume }}
+  scratch:
+    reference: {{ .ScratchVolume }}
 services:
   unsloth:
     network:
@@ -34,12 +52,19 @@ services:
           scope: public
     persist: true
     env:
-      - HOME=/workspace/home
-      - UNSLOTH_STUDIO_HOME=/workspace/studio
+      - UNSLOTH_STUDIO_DOCUMENTS_HOME={{ $docs }}
+      - UNSLOTH_STUDIO_HOME={{ $home }}
+      - UNSLOTH_STUDIO_PROJECTS_HOME={{ $projects }}
+      - HOME=/scratch/home
       - USER_PASSWORD={{ .UserPassword }}
+      {{- if (trim .HFHomeDirectory) }}
+      - HF_HOME={{ trim .HFHomeDirectory }}
+      {{- end }}
     mounts:
-      workspace:
-        location: /workspace
+      /data:
+        volume: data
+      /scratch:
+        volume: scratch
     image:
       uri: "{{ .UnslothImage }}"
     files:
@@ -47,10 +72,13 @@ services:
         #!/bin/bash
         set -e
 
-        cd /workspace
+        # add paths used in the docker container. this includes the llama executables that are needed
+        # for gguf models. Environment variables get adopted by supervisor'ed processes
+        PATH=/home/unsloth/.unsloth/llama.cpp/build/bin:/home/unsloth/.local/bin:/opt/venv/bin:$PATH
 
         # initialize writable directories on fresh volumes
-        mkdir -p "${HOME}" "${HOME}/.jupyter" "${UNSLOTH_STUDIO_HOME}"
+        mkdir -p "${HOME}" "${HOME}/.jupyter" "{{ trim .UnslothDirectory }}/"{work,studio,docs,unsloth-notebooks}
+        cd {{ trim .UnslothDirectory }}
 
         # environment variables
         echo "Exporting environment variables for terminal sessions..."
@@ -100,7 +128,7 @@ services:
         c.ServerApp.open_browser = False
         c.ServerApp.ip = '0.0.0.0'
         c.ServerApp.port = {{ $jupyter_port }}
-        c.ServerApp.notebook_dir = '/workspace'
+        c.ServerApp.root_dir = '{{ $notebooks }}'
         c.ServerApp.terminado_settings = {{ `{{'shell_command': ['/bin/bash', '-l']}}` }}
         '''
         with open(config_file, 'w') as f:
@@ -131,10 +159,9 @@ services:
 
         [program:jupyter]
         command=jupyter lab --no-browser --ip="0.0.0.0" --port="{{ $jupyter_port }}"
-        directory=/workspace
+        directory={{ $notebooks }}
         autostart=true
         autorestart=true
-        environment=HOME="/workspace/home"
         stdout_logfile=/dev/stdout
         stderr_logfile=/dev/stderr
         stdout_logfile_maxbytes=0
@@ -142,19 +169,18 @@ services:
 
         [program:studio]
         command=unsloth studio -H 0.0.0.0 -p {{ $unsloth_port }}
-        directory=/workspace
+        directory={{ $projects }}
         autostart=true
         autorestart=true
         startretries=3
         startsecs=2
-        environment=HOME="/workspace/home",UNSLOTH_STUDIO_HOME="/workspace/studio"
         stdout_logfile=/dev/stdout
         stderr_logfile=/dev/stderr
         stdout_logfile_maxbytes=0
         stderr_logfile_maxbytes=0
     script: |-
       #!/bin/bash
-      exec /usr/local/bin/entrypoint.sh
+      exec bash /usr/local/bin/entrypoint.sh
     readiness-probe:
       http-get:
         path: /api/auth/status
