@@ -1,7 +1,7 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 
 ---
-id: "specfem3d_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/other/specfem3d_application"
 name: "SPECFEM3D Cartesian"
 category: "OTHER"
 tags:

@@ -1,5 +1,5 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-version: v1
+version: v4
 volumes:
   scratch:
     ingress:
@@ -8,14 +8,18 @@ volumes:
         destination:
           uri: file://gromacs-benchmarks.tar.gz
     reference: volume://user/ephemeral
+
+defaults:
+  job:
+    mounts:
+      /scratch:
+        volume: scratch
+
 jobs:
   setup:
     cwd: /scratch
     image:
       uri: {{.Container}}
-    mounts:
-      scratch:
-        location: /scratch
     command:
       - /bin/sh
       - '-xc'
@@ -33,9 +37,6 @@ jobs:
     cwd: /scratch/gromacs-benchmarks/{{.Benchmark}}
     image:
       uri: {{.Container}}
-    mounts:
-      scratch:
-        location: /scratch
     env:
       - GMX_ENABLE_DIRECT_GPU_COMM=1
     command:

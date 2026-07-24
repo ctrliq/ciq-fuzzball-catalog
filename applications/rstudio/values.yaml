@@ -10,10 +10,14 @@ values:
 
   - name: "HomeVolume"
     display_name: >
-      [optional] Storage volume used as your home directory. Will be mounted at /home/user.
+      [optional] Storage volume used as your home directory. Will be mounted at /home.
       Use to house a persistent R library, settings, etc. If not set (the default), an
       ephemeral home directory will be created and any changes made in the home directory
       will not persist.
+    string_value: ""
+    display_category: "Storage"
+  - name: "HomeDir"
+    display_name: "Path to the homedir (absolute). Required if HomeVolume is used."
     string_value: ""
     display_category: "Storage"
   - name: "DataVolume"

@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "bwa_alignment_application"
+id: "ciq/biology/bwa_alignment_application"
 name: "BWA Alignment"
 category: "BIOLOGY"
 tags:

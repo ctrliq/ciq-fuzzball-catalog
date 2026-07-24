@@ -1,8 +1,8 @@
-version: v1
+version: v4
 
 volumes:
   data_volume:
-    reference: volume://user/persistent
+    reference: {{ .DataVolume }}
     ingress:
 {{- $filename := .InputFasta | base }}
       - source:
@@ -19,14 +19,17 @@ volumes:
           secret: {{ .SecretNameOptional }}
 {{- end }}
 
+defaults:
+  job:
+    mounts:
+      /data:
+        volume: data_volume
+
 jobs:
   immunebuilder-predict:
     cwd: /data/immunebuilder
     image:
       uri: docker://oceansource/immunebuilder:latest
-    mounts:
-      data_volume:
-        location: /data
     command:
       - /bin/sh
       - '-c'
@@ -37,12 +40,12 @@ jobs:
 {{- $filename := .InputFasta | base }}
 {{- $filenameNoExt := $filename | trimSuffix ".fasta" }}
 
-        mkdir -p /data/immunebuilder/output
+        mkdir -p {{ .OutputDir }}
         sed -i 's/>.*[Hh]eavy [Cc]hain.*/>H/g; s/>.*[Ll]ight [Cc]hain.*/>L/g' /data/immunebuilder/input/{{ $filename }}
 
         {{ $command }} \
           --fasta_file /data/immunebuilder/input/{{ $filename }} \
-          -o /data/immunebuilder/output/{{ $filenameNoExt }}.pdb \
+          -o {{ .OutputDir }}/{{ $filenameNoExt }}.pdb \
           --verbose
 
         echo "Prediction completed"

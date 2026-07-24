@@ -1,5 +1,5 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-version: v1
+version: v4
 volumes:
   scratch:
     {{- if or .ResultsDestination .VideoDestination }}
@@ -45,14 +45,18 @@ volumes:
         destination:
           uri: file://{{.AnimationScriptFilename}}
     reference: volume://user/ephemeral
+
+defaults:
+  job:
+    mounts:
+      /project:
+        volume: scratch
+
 jobs:
   geogrid:
     cwd: /project
     image:
       uri: {{.WRFContainer}}
-    mounts:
-      scratch:
-        location: /project
     policy:
       timeout:
         execute: {{.GeogridTimeout}}
@@ -71,9 +75,6 @@ jobs:
     cwd: /project
     image:
       uri: {{.WRFContainer}}
-    mounts:
-      scratch:
-        location: /project
     policy:
       timeout:
         execute: {{.UngribTimeout}}
@@ -107,9 +108,6 @@ jobs:
     cwd: /project
     image:
       uri: {{.WRFContainer}}
-    mounts:
-      scratch:
-        location: /project
     policy:
       timeout:
         execute: {{.MetgridTimeout}}
@@ -131,9 +129,6 @@ jobs:
     cwd: /project
     image:
       uri: {{.WRFContainer}}
-    mounts:
-      scratch:
-        location: /project
     policy:
       timeout:
         execute: {{.RealTimeout}}
@@ -156,9 +151,6 @@ jobs:
     cwd: /project
     image:
       uri: {{.WRFContainer}}
-    mounts:
-      scratch:
-        location: /project
     policy:
       timeout:
         execute: {{.WRFTimeout}}
@@ -182,9 +174,6 @@ jobs:
     cwd: /project
     image:
       uri: {{.AnimationContainer}}
-    mounts:
-      scratch:
-        location: /project
     policy:
       timeout:
         execute: {{.AnimationTimeout}}
@@ -212,9 +201,6 @@ jobs:
     cwd: /project
     image:
       uri: {{.WRFContainer}}
-    mounts:
-      scratch:
-        location: /project
     policy:
       timeout:
         execute: {{.ZipTimeout}}

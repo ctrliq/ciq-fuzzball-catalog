@@ -1,9 +1,9 @@
 
-version: v1
+version: v4
 
 volumes:
   data_volume:
-    reference: volume://user/{{ .VolumeType }}
+    reference: {{ .DataVolume }}
     ingress:
 {{- range $index, $fasta := splitList "," (.InputFastas | toString) }}
 {{- $filename := $fasta | trim | base }}
@@ -24,14 +24,17 @@ volumes:
 {{- end }}
 {{- end }}
 
+defaults:
+  job:
+    mounts:
+      /data:
+        volume: data_volume
+
 jobs:
   download-params:
     cwd: /data/alphafold2/params
     image:
       uri: docker://p3terx/aria2-pro
-    mounts:
-      data_volume:
-        location: /data
     policy:
       timeout:
         execute: 8h0m0s
@@ -67,9 +70,6 @@ jobs:
     cwd: /data/alphafold2/bfd
     image:
       uri: docker://p3terx/aria2-pro
-    mounts:
-      data_volume:
-        location: /data
     policy:
       timeout:
         execute: 48h0m0s
@@ -114,9 +114,6 @@ jobs:
     cwd: /data/alphafold2/uniref30
     image:
       uri: docker://p3terx/aria2-pro
-    mounts:
-      data_volume:
-        location: /data
     policy:
       timeout:
         execute: 24h0m0s
@@ -158,9 +155,6 @@ jobs:
     cwd: /data/alphafold2/uniref90
     image:
       uri: docker://p3terx/aria2-pro
-    mounts:
-      data_volume:
-        location: /data
     policy:
       timeout:
         execute: 24h0m0s
@@ -200,9 +194,6 @@ jobs:
       - TREMBL_URL=https://ftp.ebi.ac.uk/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_trembl.fasta.gz
     image:
       uri: docker://p3terx/aria2-pro
-    mounts:
-      data_volume:
-        location: /data
     policy:
       timeout:
         execute: 24h0m0s
@@ -245,9 +236,6 @@ jobs:
       - SPROT_URL=https://ftp.ebi.ac.uk/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
     image:
       uri: docker://p3terx/aria2-pro
-    mounts:
-      data_volume:
-        location: /data
     policy:
       timeout:
         execute: 24h0m0s
@@ -292,9 +280,6 @@ jobs:
     cwd: /data/alphafold2/uniprot
     image:
       uri: docker://p3terx/aria2-pro
-    mounts:
-      data_volume:
-        location: /data
     policy:
       timeout:
         execute: 24h0m0s
@@ -326,9 +311,6 @@ jobs:
     cwd: /data/alphafold2/mgnify
     image:
       uri: docker://p3terx/aria2-pro
-    mounts:
-      data_volume:
-        location: /data
     policy:
       retry:
         attempts: 2
@@ -370,9 +352,6 @@ jobs:
     cwd: /data/alphafold2/pdb70
     image:
       uri: docker://p3terx/aria2-pro
-    mounts:
-      data_volume:
-        location: /data
     policy:
       retry:
         attempts: 2
@@ -419,9 +398,6 @@ jobs:
       - SEQRES_URL=https://files.rcsb.org/pub/pdb/derived_data/pdb_seqres.txt.gz
     image:
       uri: docker://p3terx/aria2-pro
-    mounts:
-      data_volume:
-        location: /data
     policy:
       retry:
         attempts: 2
@@ -462,9 +438,6 @@ jobs:
     cwd: /data/alphafold2/pdb-mmcif
     image:
       uri: docker://eeacms/rsync
-    mounts:
-      data_volume:
-        location: /data
     policy:
       retry:
         attempts: 2
@@ -511,9 +484,6 @@ jobs:
     cwd: /data/alphafold2/pdb-mmcif
     image:
       uri: docker://p3terx/aria2-pro
-    mounts:
-      data_volume:
-        location: /data
     policy:
       retry:
         attempts: 2
@@ -577,9 +547,6 @@ jobs:
     cwd: /data/alphafold2
     image:
       uri: docker://unlhcc/alphafold:latest
-    mounts:
-      data_volume:
-        location: /data
     policy:
       timeout:
         execute: {{ $timeoutFastas := splitList "," (.InputFastas | toString) }}{{- $fastaCount := len $timeoutFastas }}{{- $baseHours := 24 }}{{- $additionalHours := mul (sub $fastaCount 1) 8 }}{{- $totalHours := add $baseHours $additionalHours }}{{ $totalHours }}h0m0s

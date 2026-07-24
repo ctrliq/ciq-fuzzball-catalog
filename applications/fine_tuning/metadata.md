@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "transformer_fine_tuning" # needs to be **unique** per application, changing results in a new application
+id: "ciq/ml_and_ai/transformer_fine_tuning"
 name: "Transformer Fine Tuning Example"
 category: "ML_AND_AI"
 tags:

@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "blast_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/other/blast_application"
 name: "BLAST"
 category: "OTHER"
 featured: true

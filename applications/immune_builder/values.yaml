@@ -4,6 +4,14 @@ values:
     string_value: "antibody"
     display_category: "Model Configuration"
 
+  - name: DataVolume
+    display_name: Data volume mounted at /data
+    string_value: "volume://user/ephemeral"
+    display_category: "Storage"
+  - name: OutputDir
+    display_name: Output directory
+    string_value: "/data/immunebuilder"
+    display_category: "Storage"
 
   - name: "InputFasta"
     display_name: "URL of for fasta file that contains heavy and light chains"

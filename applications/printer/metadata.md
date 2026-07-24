@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "printer_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/examples/printer"
 name: "Printer Example"
 category: "EXAMPLES"
 tags:

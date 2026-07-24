@@ -1,5 +1,7 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-version: v1
+{{- $filename := base .InputFileSource | trim }}
+
+version: v4
 volumes:
   vol_1:
     name: vol_1
@@ -7,24 +9,28 @@ volumes:
       - source:
           uri: {{.InputFileSource}}
         destination:
-          uri: {{.InputFileDestination}}
-    reference: volume://user/persistent/fds
+          uri: file://{{ .WorkingDirectory | trim | trimPrefix "/data" | trimPrefix "/" }}/{{ $filename }}
+    reference: {{ .DataVolume }}
+
+defaults:
+  job:
+    mounts:
+      /data:
+        volume: vol_1
+
 jobs:
   fds:
-    cwd: /workspace
+    cwd: /data
     name: fds
     image:
       uri: docker://openbcl/fds
-    mounts:
-      vol_1:
-        location: /workspace
     policy:
       timeout:
         execute: {{.Timeout}}
-    command:
-      - /bin/sh
-      - '-c'
-      - mpiexec -n {{.Cores}} fds couch.fds
+    script: |
+      #!/bin/sh
+      mkdir -p {{ .WorkingDirectory }} && cd {{ .WorkingDirectory }} || exit 1
+      mpiexec -n {{.Cores}} fds {{ $filename }}
     resource:
       cpu:
         cores: {{.Cores}}

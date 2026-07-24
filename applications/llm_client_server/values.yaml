@@ -9,12 +9,13 @@ values:
     display_category: Model Configuration
 
   - name: ModelVolume
-    display_name: Volume to store the HuggingFace cache directory.
+    display_name: Volume to store the HuggingFace cache directory. Will be mounted at /data.
     string_value: volume://user/ephemeral
     display_category: Storage
   - name: HuggingfaceCache
-    display_name: Path relative to the root of the storage volume used as the HuggingFace cache.
-    string_value: ".cache/huggingface/hub"
+    display_name: >-
+      Path to the HuggingFace cache.
+    string_value: "/data/.cache/huggingface/hub"
     display_category: Storage
 
   - name: ServerGPUModel

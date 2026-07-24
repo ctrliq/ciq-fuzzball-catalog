@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "lammps_gpu_application"
+id: "ciq/molecular_dynamics/lammps_gpu_application"
 name: "LAMMPS (GPU)"
 category: "MOLECULAR_DYNAMICS"
 featured: true

@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: blender-parallel-render
+id: "ciq/modeling/blender-parallel-render"
 name: Blender Render Pipeline
 category: MODELING
 featured: true

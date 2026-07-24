@@ -6,7 +6,11 @@
 
 {{- $data_mount := "/data" }}
 
-version: v1
+{{- if and (trim .HuggingfaceCache) (not (or (eq (trim .HuggingfaceCache) $data_mount) (hasPrefix (printf "%s/" $data_mount) (trim .HuggingfaceCache)))) }}
+  {{- fail (printf "HuggingfaceCache must be an absolute path under the mounted volume %s so the cache persists" $data_mount) }}
+{{- end }}
+
+version: v4
 volumes:
   data:
     reference: {{ .ModelVolume }}
@@ -21,8 +25,8 @@ services:
     image:
       uri: docker://vllm/vllm-openai:{{ .VllmVersion }}
     mounts:
-      data:
-        location: {{ $data_mount }}
+      {{ $data_mount }}:
+        volume: data
     resource:
       cpu:
         cores: {{ .ServerCores }}
@@ -34,7 +38,7 @@ services:
         nvidia.com/gpu.model: "{{ .ServerGPUModel }}"
     script: |
       #!/bin/sh
-      HF_HUB_CACHE="{{ $data_mount }}/{{ .HuggingfaceCache }}"
+      HF_HUB_CACHE="{{ .HuggingfaceCache }}"
       export HF_HUB_CACHE
       mkdir -p "$HF_HUB_CACHE" || exit 1
       vllm serve --port={{ $vllm_api_port }} --api-key="{{ $vllm_api_key }}" --max-model-len {{ .MaxContextSize }} "{{ .ModelName }}"

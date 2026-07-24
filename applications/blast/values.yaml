@@ -1,7 +1,9 @@
 values:
   - name: "DataVolume"
-    display_name: "Persistent data directory for public BLAST databases and (optionally) output."
-    string_value: "volume://user/persistent"
+    display_name: >-
+      Data directory for public BLAST databases and (optionally) output. Usually a persistent directory like
+      volume://group/persistent/data. Defaults to an ephemeral volume for quick testing. Mounted at /data.
+    string_value: "volume://user/ephemeral"
     display_category: "Storage"
   - name: "ScratchVolume"
     display_name: "Ephemeral volume for temporary files."
@@ -16,12 +18,13 @@ values:
     display_category: "Container"
 
   - name: "BlastDbName"
-    display_name: "Name of a public NCBI BLAST database (see https://blast.ncbi.nlm.nih.gov/Blast.cgi). Mutually exclusive with CustomBlastDbFetchCmd."
+    display_name: >-
+      Name of a public NCBI BLAST database (see https://blast.ncbi.nlm.nih.gov/Blast.cgi). Mutually exclusive with CustomBlastDbFetchCmd.
     string_value: "pdbaa"
     display_category: "BLAST Database"
   - name: "BlastDbPath"
-    display_name: "Path relative to the root of the data volume where public BLAST databases are stored."
-    string_value: "refdb/blast"
+    display_name: "Absolute path to the directory where public BLAST databases are stored."
+    string_value: "/data/refdb/blast"
     display_category: "BLAST Database"
   - name: "BlastFetchTimeout"
     display_name: "Time limit for fetching/updating the public BLAST database."
@@ -29,7 +32,7 @@ values:
     display_category: "BLAST Database"
 
   - name: "CustomBlastDbFetchCmd"
-    display_name: >
+    display_name: >-
       A command that writes sequences used to build a custom database in fasta format to stdout. efetch, curl,
       and wget are available in the default container.
     string_value: ""
@@ -39,7 +42,9 @@ values:
     string_value: "-dbtype prot -parse_seqids -title 'Nurse shark proteins' -taxid 7801"
     display_category: "Custom BLAST Database"
   - name: "CustomBlastDbName"
-    display_name: "If a name is provided the generated BLAST database will be persisted in BlastDbPath and can be referred to by this name in future runs."
+    display_name: >-
+      If a name is provided the generated BLAST database will be persisted in BlastDbPath and can be referred to
+      by this name in future runs.
     string_value: ""
     display_category: "Custom BLAST Database"
   - name: "CustomBlastDbTimeout"
@@ -57,8 +62,8 @@ values:
     string_value: "pox_efc"
     display_category: "Run Configuration"
   - name: "BlastOutputPath"
-    display_name: "Path relative to the root of the data volume where the results are stored."
-    string_value: "results/blast/${FB_WORKFLOW_ID}"
+    display_name: "Absolute path where the output should be stored."
+    string_value: "/data/results/blast/${FB_WORKFLOW_ID}"
     display_category: "Run Configuration"
 
   - name: "BlastCmd"

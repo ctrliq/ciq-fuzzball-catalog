@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 ---
-id: "bases2fastq_application" # needs to be **unique** per application, changing results in a new application
+id: "ciq/genomics/bases2fastq"
 name: "Bases2Fastq"
 category: "GENOMICS"
 tags:

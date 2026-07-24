@@ -1,5 +1,5 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
-version: v1
+version: v4
 
 {{- $expurl := trim .ExperimentUrl }}
 {{- if not $expurl }}
@@ -26,8 +26,7 @@ version: v1
   {{- fail "RunName is required" }}
 {{- end }}
 {{- $run_dir := printf "%s/%s" $scratch_mount $run }}
-{{- $output_path := trim .OutputPath }}
-{{- $out_dir := printf "%s/%s" $data_mount $output_path }}
+{{- $out_dir := trim .OutputPath }}
 
 {{- $s3_bucket := trim .S3Bucket }}
 {{- $s3_secret := trim .S3Secret }}
@@ -51,8 +50,8 @@ version: v1
 defaults:
   job:
     mounts:
-      scratch:
-        location: "{{ $scratch_mount }}"
+      {{ $scratch_mount }}:
+        volume: scratch
 
 volumes:
   scratch:
@@ -77,7 +76,7 @@ volumes:
       - source:
           uri: file://{{ $tar_base }}.tar.gz
         destination:
-          uri: s3://{{ $s3_bucket }}/{{ $output_path }}/{{ $tar_base }}.tar.gz
+          uri: s3://{{ $s3_bucket }}/{{ $out_dir | trim | trimPrefix $data_mount }}/{{ $tar_base }}.tar.gz
           secret: {{ $s3_secret }}
 {{- end }}
 {{- if $data_vol }}
@@ -146,8 +145,10 @@ jobs:
       uri: docker://alpine:3.23.3
 {{- if $data_vol }}
     mounts:
-      data:
-        location: {{ $data_mount }}
+      {{ $scratch_mount }}:
+        volume: scratch
+      {{ $data_mount }}:
+        volume: data
 {{- end }}
     depends-on:
       - name: lammps
