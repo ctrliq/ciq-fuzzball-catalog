@@ -18,6 +18,7 @@ volumes:
 services:
   vllm:
     network:
+      host: true
       ports:
         - name: openai-api
           port: {{ $vllm_api_port }}

@@ -68,6 +68,7 @@ services:
         nvidia.com/gpu.model: "{{ trim .GPUModel }}"
       {{- end }}
     network:
+      host: true
       ports:
         - name: http
           port: {{ $nim_port }}
@@ -189,6 +190,7 @@ services:
         status: RUNNING
         description: stub proxies to NIM so NIM must be ready first
     network:
+      host: true
       ports:
         - name: http
           port: {{ $stub_port }}
