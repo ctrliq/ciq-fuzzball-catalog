@@ -1,0 +1,154 @@
+values:
+  - name: Model
+    display_name: >-
+      Nemotron 3 checkpoint to serve. Available options: nano-30b-fp8, nano-30b-bf16, super-120b-fp8,
+      super-120b-bf16 (all four run on NVIDIA L40S). super-120b-nvfp4 and ultra-550b-nvfp4 require
+      NVIDIA B200/Blackwell hardware and cannot run on L40S -- NVFP4 needs Blackwell's FP4 tensor
+      cores, so there is no L40S-compatible fallback for those two. ultra-550b-bf16 also requires
+      B200 as published (8x B200 for ~1.1TB of weights).
+    string_value: nano-30b-fp8
+    options_input:
+      options:
+        - nano-30b-fp8
+        - nano-30b-bf16
+        - super-120b-fp8
+        - super-120b-bf16
+        - super-120b-nvfp4
+        - ultra-550b-nvfp4
+        - ultra-550b-bf16
+    display_category: Model Configuration
+  - name: ServedModelName
+    display_name: >-
+      Model name clients use in API requests. Leave empty to serve under the full
+      HuggingFace checkpoint id.
+    string_value: ""
+    display_category: Model Configuration
+  - name: MaxModelLen
+    display_name: >-
+      Maximum context length. 0 uses the recipe value of 262144 (256K). Values above
+      262144 (up to 1048576) are allowed and enable long-context mode, but require
+      lowering the maximum sequence count to leave room for the KV cache.
+    uint_value: 0
+    display_category: Model Configuration
+
+  - name: MaxNumSeqs
+    display_name: >-
+      Maximum concurrent sequences (batch size). 0 uses the recipe value. Raising this
+      increases throughput and worsens per-user latency; the ceiling is set by GPU
+      memory left for the KV cache after the weights load.
+    uint_value: 0
+    display_category: Tuning
+  - name: MaxNumBatchedTokens
+    display_name: Maximum tokens processed in a single iteration. 0 uses the recipe value.
+    uint_value: 0
+    display_category: Tuning
+  - name: GPUMemoryUtilization
+    display_name: >-
+      Fraction of GPU memory vLLM may use. Empty uses the recipe value. Lower this
+      first if the server runs out of memory during startup.
+    string_value: ""
+    display_category: Tuning
+  - name: KVCacheDtype
+    display_name: >-
+      KV cache data type. Use 'fp8' only with FP8/NVFP4 checkpoints unless the recipe
+      says otherwise, and 'auto' for plain BF16.
+    string_value: recipe-default
+    options_input:
+      options: [recipe-default, auto, fp8]
+    display_category: Tuning
+  - name: MambaSsmCacheDtype
+    display_name: >-
+      Mamba state cache data type. 'float32' gives the best accuracy, 'float16' is
+      faster with a small accuracy cost. Set 'float32' if quality regresses against
+      the published benchmarks.
+    string_value: recipe-default
+    options_input:
+      options: [recipe-default, float32, float16]
+    display_category: Tuning
+  - name: EnableSpeculativeDecoding
+    display_name: >-
+      Enable MTP speculative decoding where the recipe supports it (Ultra only). This
+      is the largest throughput lever for long generations. Ignored by models whose
+      recipe does not define it.
+    bool_value: true
+    display_category: Tuning
+  - name: SpeculativeTokens
+    display_name: >-
+      Number of speculative draft tokens. 0 uses the recipe value. More is not
+      automatically better once batch sizes grow.
+    uint_value: 0
+    display_category: Tuning
+  - name: ExtraServeArgs
+    display_name: Additional arguments appended verbatim to the 'vllm serve' command line.
+    string_value: ""
+    display_category: Tuning
+
+  - name: GPUModel
+    display_name: >-
+      GPU model to request. 'recipe-default' requests the GPU the recipe was published
+      on (L40S for Nano and Super BF16/FP8; B200 for the NVFP4 checkpoints and Ultra
+      BF16). 'any' places no constraint and lets the scheduler choose. Note: overriding
+      this to L40S will not make the NVFP4 checkpoints run -- NVFP4 requires Blackwell's
+      FP4 tensor cores, which L40S does not have.
+    string_value: recipe-default
+    options_input:
+      options: ["recipe-default", "any", "NVIDIA H100", "NVIDIA H200", "NVIDIA B200"]
+    display_category: Resources
+  - name: GPUDevices
+    display_name: >-
+      Number of GPUs to request, also used as the tensor parallel size. 0 uses the
+      recipe value (1 for Nano, 4 for Super BF16/FP8, 2 for Super NVFP4, 8 for Ultra).
+    uint_value: 0
+    display_category: Resources
+  - name: Cores
+    display_name: CPU cores to allocate for the server. 0 uses the recipe value.
+    uint_value: 0
+    display_category: Resources
+  - name: Memory
+    display_name: Host memory to allocate for the server. Empty uses the recipe value.
+    string_value: ""
+    display_category: Resources
+
+  - name: DataVolume
+    display_name: >-
+      Volume for the HuggingFace cache, mounted at /data. The default is ephemeral,
+      which re-downloads the weights on every run; use a persistent volume for
+      anything larger than Nano.
+    string_value: volume://user/ephemeral
+    display_category: Storage
+  - name: HuggingFaceHome
+    display_name: HuggingFace home directory where model weights are cached.
+    string_value: "/data/.cache/huggingface"
+    display_category: Storage
+
+  - name: HuggingFaceTokenSecret
+    display_name: >-
+      Secret reference for a HuggingFace token with read access (e.g.
+      secret://user/HF_TOKEN). Only required for gated checkpoints.
+    secret_value:
+      reference: ""
+    display_category: Secrets
+  - name: ApiKeySecret
+    display_name: >-
+      Secret reference for an API key clients must present as a bearer token (e.g.
+      secret://user/VLLM_API_KEY). Leave empty to serve without authentication, which
+      is safe only at 'user' scope.
+    secret_value:
+      reference: ""
+    display_category: Secrets
+
+  - name: ServiceScope
+    display_name: >-
+      Who can reach the OpenAI-compatible endpoint. Defaults to 'user'. Set an API key
+      secret before widening this.
+    string_value: user
+    options_input:
+      options: [user, group, organization]
+    display_category: Access
+
+  - name: VllmImage
+    display_name: >-
+      vLLM container image to serve with. Empty uses the image pinned by the recipe
+      for the selected model, which is the minimum version that supports it.
+    string_value: ""
+    display_category: Versions
