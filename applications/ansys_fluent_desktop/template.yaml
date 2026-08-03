@@ -34,12 +34,35 @@ services:
         scheme: HTTP
       initial-delay-seconds: 15
     env:
-      - HOME=/tmp/home
       - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
     mounts:
       {{ $datamount }}: data
+    files:
+      /usr/share/applications/Fluent.desktop: |
+        [Desktop Entry]
+        Version=1.0
+        Type=Application
+        Name=ANSYS Fluent
+        Comment=ANSYS Fluent Launcher
+        Exec={{$ansys_root}}/fluent/bin/fluent
+        Icon={{$ansys_root}}/fluent/jobservice/ui/favicon.ico
+        Terminal=false
+        Categories=Science;
     script: |
       #!/bin/sh
+      set -e
+      umask 077
+      d="$(mktemp -d)"
+      export USER=$(whoami)
+      export HOME="$d"
+      mkdir -p "${HOME}/.vnc" "${HOME}/Desktop"
+      cd "${HOME}/Desktop"
+      grep -v 'Categories' /usr/share/applications/Fluent.desktop > Fluent.desktop
+      f="${HOME}/Desktop/Fluent.desktop"
+      chmod +x "$f"
+      sum="$(sha256sum "$f" | cut -d' ' -f1)"
+      dbus-run-session -- gio set -t string "$f" metadata::xfce-exe-checksum "$sum"
+
       export PATH={{$ansys_root}}/fluent/bin:{{$ansys_root}}/Framework/bin/Linux64:$PATH
       echo "Starting Fluent virtual desktop (noVNC on :{{ $novnc_port }})..."
       /usr/local/bin/start-vncserver.sh
