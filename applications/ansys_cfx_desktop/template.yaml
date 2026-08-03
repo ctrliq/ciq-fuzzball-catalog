@@ -60,9 +60,12 @@ services:
       set -e
       umask 077
       d="$(mktemp -d)"
-      export USER=$(whoami)
+      t="$(mktemp -d)"
+      export TMPDIR="$t"
       export HOME="$d"
       mkdir -p "${HOME}/.vnc" "${HOME}/Desktop"
+
+      export USER=$(whoami)
 
       cd "${HOME}/Desktop"
       ln -s {{$ansys_root}}/CFX/examples
@@ -88,6 +91,8 @@ services:
       /bin/bash -x /usr/local/bin/start-vncserver.sh || echo "start-vncserver.sh exited $?"
       echo "=== X session log ==="
       cat "${HOME}/.vnc/"*.log 2>/dev/null || echo "(no session log written)"
+
+      rm -rf "$d" "$t"
     resource:
       cpu:
         cores: {{.CfxDesktopCores}}
