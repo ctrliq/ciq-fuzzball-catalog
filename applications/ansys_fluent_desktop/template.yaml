@@ -1,37 +1,70 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $ver := .AnsysVersion }}
 {{- $ansys_version_number := printf "v%s%s" (substr 2 4 $ver) (substr 5 6 $ver) }}
+{{- $ansys_root := printf "%s/%s" .AnsysInstallDir $ansys_version_number }}
 {{- $datamount := "/data" }}
+{{- $novnc_port := 6080 }}
 version: v4
 
 volumes:
   data:
     reference: {{.Volume}}
 
-defaults:
-  job:
-    mounts:
-      {{ $datamount }}: data
-
-jobs:
+services:
   xfce4:
+    persist: true
     image:
       uri: {{.AnsysFluentDesktopContainerURI}}
       secret: {{.AnsysFluentDesktopContainerOciSecret}}
+    network:
+      ports:
+        - name: novnc
+          protocol: tcp
+          port: {{ $novnc_port }}
+      endpoints:
+        - name: vnc
+          port-name: novnc
+          protocol: http
+          type: subdomain
+          scope: {{.EndpointScope}}
+    readiness-probe:
+      http-get:
+        path: /
+        port: {{ $novnc_port }}
+        scheme: HTTP
+      initial-delay-seconds: 15
     env:
-      - HOME=/tmp/home
       - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
+    mounts:
+      {{ $datamount }}: data
+    files:
+      /usr/share/applications/Fluent.desktop: |
+        [Desktop Entry]
+        Version=1.0
+        Type=Application
+        Name=ANSYS Fluent
+        Comment=ANSYS Fluent Launcher
+        Exec={{$ansys_root}}/fluent/bin/fluent
+        Icon={{$ansys_root}}/fluent/jobservice/ui/favicon.ico
+        Terminal=false
+        Categories=Science;
     script: |
       #!/bin/sh
-      export PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/fluent/bin:{{.AnsysInstallDir}}/{{$ansys_version_number}}/Framework/bin/Linux64:$PATH
+      set -e
+      umask 077
+      d="$(mktemp -d)"
+      export USER=$(whoami)
+      export HOME="$d"
+      mkdir -p "${HOME}/.vnc" "${HOME}/Desktop"
+      cd "${HOME}/Desktop"
+      grep -v 'Categories' /usr/share/applications/Fluent.desktop > Fluent.desktop
+      f="${HOME}/Desktop/Fluent.desktop"
+      chmod +x "$f"
+      sum="$(sha256sum "$f" | cut -d' ' -f1)"
+      dbus-run-session -- gio set -t string "$f" metadata::xfce-exe-checksum "$sum"
 
-      echo
-      echo "Accessing the virtual desktop requires port-forwarding via the CLI:"
-      echo
-      echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} xfce4 6080:6080"
-      echo
-      echo Then navigate to http://localhost:6080
-      echo
+      export PATH={{$ansys_root}}/fluent/bin:{{$ansys_root}}/Framework/bin/Linux64:$PATH
+      echo "Starting Fluent virtual desktop (noVNC on :{{ $novnc_port }})..."
       /usr/local/bin/start-vncserver.sh
     resource:
       cpu:
