@@ -1,44 +1,59 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $ver := .AnsysVersion }}
 {{- $ansys_version_number := printf "v%s%s" (substr 2 4 $ver) (substr 5 6 $ver) }}
+{{- $ansys_root := printf "%s/%s" .AnsysInstallDir $ansys_version_number }}
 {{- $datamount := "/data" }}
+{{- /* noVNC web port this image's start-vncserver.sh serves on. Fixed for this image. */}}
+{{- $novnc_port := 6080 }}
 version: v4
 
 volumes:
   data:
     reference: {{.Volume}}
 
-defaults:
-  job:
-    mounts:
-      {{ $datamount }}: data
-
-jobs:
+services:
   xfce4:
+    persist: true
     image:
-      uri: {{.AnsysMechanicalDesktopContainerURI}}
-      secret: {{.AnsysMechanicalDesktopContainerOciSecret}}
+      uri: {{.AnsysLsDynaDesktopContainerURI}}
+      secret: {{.AnsysLsDynaDesktopContainerOciSecret}}
+    network:
+      ports:
+        - name: novnc
+          protocol: tcp
+          port: {{ $novnc_port }}
+      endpoints:
+        # Access the desktop straight from a browser at the generated subdomain
+        # URL. No `fuzzball workflow port-forward` needed.
+        - name: vnc
+          port-name: novnc
+          protocol: http
+          type: subdomain
+          scope: {{.EndpointScope}}
+    readiness-probe:
+      # Service only reports RUNNING once noVNC is answering, so the endpoint
+      # isn't a dead link while the desktop is still coming up.
+      http-get:
+        path: /
+        port: {{ $novnc_port }}
+        scheme: HTTP
+      initial-delay-seconds: 15
     env:
       - HOME=/tmp/home
       - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
+    mounts:
+      {{ $datamount }}: data
     script: |
       #!/bin/sh
-      export PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/Framework/bin/Linux64:$PATH
-
-      echo
-      echo "Accessing the virtual desktop requires port-forwarding via the CLI:"
-      echo
-      echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} xfce4 6080:6080"
-      echo
-      echo Then navigate to http://localhost:6080
-      echo
+      export PATH={{$ansys_root}}/Framework/bin/Linux64:$PATH
+      echo "Starting LS-DYNA virtual desktop (noVNC on :{{ $novnc_port }})..."
       /usr/local/bin/start-vncserver.sh
     resource:
       cpu:
-        cores: {{.MechanicalDesktopCores}}
+        cores: {{.LsDynaDesktopCores}}
         affinity: NUMA
       memory:
-        size: {{.MechanicalDesktopMemory}}
+        size: {{.LsDynaDesktopMemory}}
     policy:
       timeout:
         execute: {{.Timeout}}
