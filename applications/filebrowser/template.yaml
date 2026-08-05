@@ -16,7 +16,7 @@
 
 
 
-version: v1
+version: v4
 volumes:
 {{- range $i, $v := $volumes }}
   vol-{{ $i }}:
@@ -55,11 +55,11 @@ services:
 {{- range $i, $v := $volumes }}
   {{- $parts := splitList ":" $v }}
   {{- if eq (len $parts) 2 }}
-      vol-{{ $i }}:
-        location: {{ $root }}/{{ trimPrefix "volume://" $v }}
+      {{ $root }}/{{ trimPrefix "volume://" $v }}:
+        volume: vol-{{ $i }}
   {{- else }}
-      vol-{{ $i }}:
-        location: {{ $root }}/{{ index $parts 2 | trimPrefix "/" }}
+      {{ $root }}/{{ index $parts 2 | trimPrefix "/" }}:
+        volume: vol-{{ $i }}
   {{- end }}
 {{- end }}
     script: |

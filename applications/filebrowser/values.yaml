@@ -7,7 +7,7 @@ values:
       a particular volume in the file browser, you can specify it like this:
       `volume://user/persistent:/custom/path`. The leading slash is optional.
     display_category: Storage
-    string_value: "volume://user/persistent:data"
+    string_value: "volume://user/ephemeral:data"
 
   - name: Container
     display_name: FileBrowser container
