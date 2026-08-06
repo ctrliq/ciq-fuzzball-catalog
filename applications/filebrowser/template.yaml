@@ -1,0 +1,81 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $root := "/fuzzball" }}
+{{- $port := (randInt 10000 30000) }}
+
+{{- if not (trim .Volumes | hasPrefix "volume://") }}
+  {{-  fail "At least one volume has to be specified in the Volumes field." }}
+{{- end }}
+{{- $volumes := list }}
+{{- range $raw := splitList "," .Volumes }}
+  {{- $volume := trim $raw }}
+  {{- if ne $volume "" }}
+    {{- $volumes = append $volumes $volume }}
+  {{- end }}
+{{- end }}
+
+
+
+version: v4
+volumes:
+{{- range $i, $v := $volumes }}
+  vol-{{ $i }}:
+  {{- $parts := (splitList ":" $v) }}
+  {{- if eq (len $parts) 2 }}
+    reference: {{ $v }}
+  {{- else if eq (len $parts) 3 }}
+    reference: {{ index $parts 0 }}:{{ index $parts 1 }}
+  {{- else }}
+    {{- fail (printf "Invalid volume reference: %s" $v) }}
+  {{- end }}
+{{- end }}
+
+services:
+  filebrowser:
+    image:
+      uri: {{ .Container }}
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 1GiB
+    persist: true
+    network:
+      ports:
+        - name: web
+          port: {{ $port }}
+          protocol: tcp
+      endpoints:
+        - name: filebrowser
+          port-name: web
+          type: subdomain
+          protocol: http
+          scope: user
+    mounts:
+{{- range $i, $v := $volumes }}
+  {{- $parts := splitList ":" $v }}
+  {{- if eq (len $parts) 2 }}
+      {{ $root }}/{{ trimPrefix "volume://" $v }}:
+        volume: vol-{{ $i }}
+  {{- else }}
+      {{ $root }}/{{ index $parts 2 | trimPrefix "/" }}:
+        volume: vol-{{ $i }}
+  {{- end }}
+{{- end }}
+    script: |
+      #!/bin/sh
+      # the go net library resolves 0.0.0.0 to ipv6 which won't work. getting the v4 ip address of the container
+      BIND_ADDR=$(ip -4 route get 1.0.0.1 | awk '{for(i=1;i<NF;i++) if($i=="src") {print $(i+1); exit}}')
+      DB="$(mktemp)"
+
+      /bin/filebrowser config init \
+        --auth.method=proxy \
+        --auth.header=X-Fuzzball-Account-ID \
+        --database "${DB}" \
+        --address ${BIND_ADDR} \
+        --port {{ $port }} \
+        --root {{ $root }} \
+        --branding.disableUsedPercentage
+      /bin/filebrowser users add --database "${DB}" --lockPassword "${FB_ACCOUNT_ID}" {{ randInt 1 1000000000000 | toString | b64enc }}
+
+      /bin/filebrowser --database "${DB}"

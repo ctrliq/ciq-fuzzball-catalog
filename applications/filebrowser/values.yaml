@@ -1,0 +1,15 @@
+values:
+  - name: Volumes
+    display_name: |
+      Comma separated list of volumes to mount. These are Fuzzball volume references
+      such as `volume://user/persistent`. By default the volume would be available
+      under its name in the file browser. If you would like to use a custom path for
+      a particular volume in the file browser, you can specify it like this:
+      `volume://user/persistent:/custom/path`. The leading slash is optional.
+    display_category: Storage
+    string_value: "volume://user/ephemeral:data"
+
+  - name: Container
+    display_name: FileBrowser container
+    string_value: "docker://filebrowser/filebrowser:v2.63.5"
+    display_category: Container
