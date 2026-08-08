@@ -1,0 +1,47 @@
+# Copyright 2025 CIQ, Inc. All rights reserved.
+
+{{- $buildNumber := .StarccmBuildNumber }}
+{{- if eq .StarccmPrecision "double" }}
+  {{- $buildNumber = printf "%s-R8" .StarccmBuildNumber }}
+{{- end }}
+
+version: v1
+volumes:
+  data:
+    reference: {{.Volume}}
+jobs:
+  starccm-acoustic-wave-simulation:
+    cwd: /data
+    env:
+      - CDLMD_LICENSE_FILE={{.CdlmdLicenseFile}}
+      - STARCCM_POD_KEY={{.StarccmPodKey}}
+    image:
+      uri: >-
+        {{.StarccmDesktopContainerURI}}:{{.StarccmVersion}}-{{.StarccmPrecision}}
+      secret: {{.StarccmDesktopContainerOciSecret}}
+    mounts:
+      data:
+        location: /data
+    policy:
+      timeout:
+        execute: 30m0s
+    command:
+      - /bin/sh
+      - '-c'
+      - |
+        export PATH=/opt/Siemens/{{ $buildNumber }}/STAR-CCM+{{ $buildNumber }}/star/bin:$PATH;
+
+        echo
+        echo "Accessing the virtual desktop requires port-forwarding via the CLI:"
+        echo
+        echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} xfce4 6080:6080"
+        echo
+        echo Then navigate to http://localhost:6080
+        echo
+        /usr/local/bin/start-vncserver.sh
+    resource:
+      cpu:
+        cores: {{.StarccmDesktopCores}}
+        affinity: NUMA
+      memory:
+        size: {{.StarccmDesktopMemory}}
