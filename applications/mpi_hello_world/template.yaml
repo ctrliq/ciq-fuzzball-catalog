@@ -11,10 +11,10 @@ jobs:
       mpi_hello_world
     resource:
       cpu:
-        cores: 1
+        cores: {{.Cores}}
         affinity: NUMA
       memory:
         size: 1GB
     multinode:
-      nodes: 2
+      nodes: {{.Nodes}}
       implementation: {{.MpiFlavor}}

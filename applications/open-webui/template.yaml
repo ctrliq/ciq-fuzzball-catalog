@@ -89,6 +89,7 @@ services:
       wait $OLLAMA_PID
 
     network:
+      host: true
       ports:
         - name: api
           port: 11434
@@ -149,6 +150,7 @@ services:
         volume: data
 
     network:
+      host: true
       ports:
         - name: web
           port: 8080
