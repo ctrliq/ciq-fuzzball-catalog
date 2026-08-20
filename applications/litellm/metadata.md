@@ -19,6 +19,9 @@ annotated `ciq.com/api: openai`, and registers one LiteLLM deployment per live r
 so a pool scaling up or down is reflected without anyone touching the gateway. A request
 for a model whose pool has scaled to zero wakes it and succeeds on retry.
 
+This entry is a reference implementation: the reconcile loop is deliberately plain
+Python, meant to be copied as the starting point for your own gateway.
+
 ## Using it
 
 Create a virtual key against the gateway, then point any OpenAI client at the endpoint
@@ -67,6 +70,11 @@ scope is the access control.
   private CA.** Without it discovery never reaches the Fuzzball API: the gateway serves no
   models at all and only logs `DISCOVERY-FAILED` SSL errors, while the workflow itself looks
   healthy.
+- **A pool that scales to zero surfaces LiteLLM's router cooldown to callers.** Such a
+  model has a single LiteLLM deployment, so each drain produces a short burst of 429
+  "No deployments available" responses until the next discovery pass swaps the route.
+  Clients should retry on 429; `cooldown_time` and `allowed_fails` in
+  `router_settings` are the tuning knobs if the bursts matter.
 - **Generation length is bounded by the cluster's endpoint ingress timeout.** A response
   that produces nothing for longer than that window is cut off. Ask your cluster
   administrator what it is set to.
