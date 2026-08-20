@@ -1,0 +1,174 @@
+values:
+  - name: ModelName
+    display_name: >-
+      Model to serve. Either a HuggingFace repo id (openai/gpt-oss-120b) or an
+      hf:// URI (hf://openai/gpt-oss-120b).
+    string_value: openai/gpt-oss-20b
+    display_category: Model Configuration
+  - name: MaxContextSize
+    display_name: Maximum context size. This will impact GPU memory usage.
+    uint_value: 131072
+    display_category: Model Configuration
+  - name: HuggingFaceHubToken
+    display_name: HuggingFace Hub Token secret. Required for gated models.
+    string_value: ""
+    display_category: Model Configuration
+  - name: DataType
+    display_name: Data type for model weights.
+    string_value: auto
+    display_category: Model Configuration
+  - name: GPUMemoryUtilization
+    display_name: The fraction of GPU memory to be used for the model.
+    string_value: "0.9"
+    display_category: Model Configuration
+  - name: MaxNumBatchedTokens
+    display_name: Maximum number of tokens that can be processed in a single iteration.
+    uint_value: 2048
+    display_category: Model Configuration
+  - name: ToolCallParser
+    display_name: >-
+      Tool call parser used for the model. Leave empty to disable tool calling.
+    string_value: openai
+    display_category: Model Configuration
+  - name: ReasoningParser
+    display_name: >-
+      Reasoning parser used for the model. Leave empty to disable reasoning
+      parsing.
+    string_value: openai_gptoss
+    display_category: Model Configuration
+
+  - name: MinReplicas
+    display_name: >-
+      Minimum number of vLLM replicas. Set to 0 to release all GPUs while the
+      pool is idle; the first request through the proxy then pays a cold start.
+      Must be at least 1 when EnableProxy is false.
+    uint_value: 1
+    display_category: Scaling
+  - name: MaxReplicas
+    display_name: >-
+      Maximum number of vLLM replicas. GPU capacity for this many replicas is
+      pre-allocated when the workflow starts.
+    uint_value: 4
+    display_category: Scaling
+  - name: ScaleUpPendingRequests
+    display_name: >-
+      Number of queued requests on a replica that triggers adding another
+      replica.
+    uint_value: 2
+    display_category: Scaling
+  - name: ScaleUpCooldownSeconds
+    display_name: Seconds to wait between successive scale-up decisions.
+    uint_value: 60
+    display_category: Scaling
+  - name: ActivationCooldownSeconds
+    display_name: >-
+      Seconds to wait between activations of an idle pool. Only used when
+      EnableProxy is true.
+    uint_value: 30
+    display_category: Scaling
+  - name: ScaleDownCooldownSeconds
+    display_name: >-
+      Seconds an idle pool must stay idle before a replica is retired. Acts as
+      the drain window for requests in flight.
+    uint_value: 300
+    display_category: Scaling
+  - name: MetricsIntervalSeconds
+    display_name: How often the autoscaler scrapes service metrics.
+    uint_value: 15
+    display_category: Scaling
+
+  - name: EnableProxy
+    display_name: >-
+      Run a LiteLLM proxy in the workflow to hold the endpoint and front the
+      pool. When false, the pool itself holds the endpoint for discovery by an
+      external LiteLLM instance.
+    bool_value: true
+    display_category: Access
+  - name: ServiceScope
+    display_name: |
+      Who can access the OpenAI-compatible endpoint. Defaults to 'group'.
+    string_value: "group"
+    options_input:
+      options: [user, group, organization, public]
+    display_category: Access
+  - name: ServerApiKey
+    display_name: >-
+      API key callers present to the OpenAI-compatible endpoint. Required when
+      ServiceScope is public. When empty and EnableProxy is true, an internal
+      key is generated for proxy-to-pool traffic only.
+    string_value: ""
+    display_category: Access
+
+  - name: GPUVendor
+    display_name: GPU vendor. Selects the matching vLLM container image.
+    string_value: nvidia
+    options_input:
+      options: [nvidia, amd]
+    display_category: Resources
+  - name: GPUModel
+    display_name: >-
+      GPU model to request for each replica (e.g. NVIDIA L40S). Leave empty for
+      any model supplied by the selected vendor.
+    string_value: ""
+    display_category: Resources
+  - name: ServerGPUDevices
+    display_name: >-
+      Number of GPU devices per replica. Also used as the tensor parallel size.
+    uint_value: 1
+    display_category: Resources
+  - name: ServerCores
+    display_name: Cores to allocate for each vLLM replica.
+    uint_value: 8
+    display_category: Resources
+  - name: ServerMemory
+    display_name: Amount of memory to allocate for each vLLM replica.
+    string_value: 64GiB
+    display_category: Resources
+  - name: ProxyCores
+    display_name: Cores to allocate for the LiteLLM proxy.
+    uint_value: 2
+    display_category: Resources
+  - name: ProxyMemory
+    display_name: Amount of memory to allocate for the LiteLLM proxy.
+    string_value: 4GiB
+    display_category: Resources
+
+  - name: ProxyRetries
+    display_name: >-
+      Times the proxy retries a failed request against the pool before
+      returning an error.
+    uint_value: 2
+    display_category: Proxy Behavior
+  - name: ProxyRequestTimeoutSeconds
+    display_name: >-
+      Seconds the proxy waits for a response from a replica. Must exceed the
+      longest expected generation.
+    uint_value: 600
+    display_category: Proxy Behavior
+
+  - name: ModelVolume
+    display_name: >-
+      Volume holding the HuggingFace model cache, mounted at /data on every
+      replica. The default is ephemeral; use a persistent volume so replicas
+      added during scale-up do not re-download the model.
+    string_value: volume://user/ephemeral
+    display_category: Storage
+  - name: HuggingfaceCache
+    display_name: >-
+      HuggingFace home directory where models are cached. Must be a path under
+      /data.
+    string_value: "/data/.cache/huggingface"
+    display_category: Storage
+
+  - name: VllmImage
+    display_name: vLLM container image used when GPUVendor is nvidia.
+    string_value: docker://vllm/vllm-openai:v0.27.1
+    display_category: Versions
+  - name: VllmImageROCm
+    display_name: vLLM container image used when GPUVendor is amd.
+    string_value: docker://rocm/vllm:rocm7.14.0_cdna_ubuntu24.04_py3.14_pytorch_2.11.0_vllm_0.23.0
+    display_category: Versions
+  - name: LiteLLMImage
+    display_name: LiteLLM container image used for the in-workflow proxy.
+    string_value: docker://ghcr.io/berriai/litellm:v1.97.0
+    display_category: Versions

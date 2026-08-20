@@ -1,0 +1,217 @@
+# Generated from the vLLM recipe models/moonshotai/Kimi-K2.6.yaml by scripts/gen_models.py.
+# Edit the recipe or the generator, not this file.
+values:
+  - name: Variant
+    display_name: >-
+      Checkpoint variant to serve. Each pins its own precision, weights and
+      flags: default (int4), nvfp4 (nvfp4).
+    string_value: "default"
+    options_input:
+      options: [default, nvfp4]
+    display_category: Model Configuration
+  - name: MaxModelLen
+    display_name: >-
+      Maximum context length, in tokens. 0 keeps the length the recipe validated
+      for the selected configuration. Model maximum: 262144.
+    uint_value: 0
+    display_category: Model Configuration
+  - name: HuggingFaceHubToken
+    display_name: >-
+      HuggingFace Hub token. Required for gated checkpoints.
+    string_value: ""
+    display_category: Model Configuration
+  - name: ExtraVllmArgs
+    display_name: >-
+      Extra flags appended to the vllm serve command. Appended last, so they
+      override the recipe's own flags. For expert tuning only.
+    string_value: ""
+    display_category: Model Configuration
+  - name: EnableToolCalling
+    display_name: >-
+      Kimi K2 tool-call parser with automatic tool choice
+    bool_value: true
+    display_category: Model Features
+  - name: EnableReasoning
+    display_name: >-
+      Kimi K2 reasoning parser for extracting chain-of-thought content
+    bool_value: true
+    display_category: Model Features
+  - name: EnableSpecDecoding
+    display_name: >-
+      Eagle3 speculative decoding for accelerated inference
+    bool_value: true
+    display_category: Model Features
+  - name: EnableTextOnly
+    display_name: >-
+      Skip loading the vision encoder for text-only workloads — frees VRAM for
+      KV cache. Mutually exclusive with encoder_parallel.
+    bool_value: false
+    display_category: Model Features
+  - name: EnableEncoderParallel
+    display_name: >-
+      Run the vision encoder in data-parallel mode — avoids TP comm overhead on
+      the small encoder. Mutually exclusive with text_only.
+    bool_value: true
+    display_category: Model Features
+  - name: Hardware
+    display_name: >-
+      GPU node profile to deploy on. Selects the GPU vendor, how many GPUs each
+      replica requests, the container image and the recipe's tuning for that
+      hardware: b200 (B200, 8 GPU(s) per replica), b300 (B300, 8 GPU(s) per
+      replica, verified), gb200 (GB200 NVL4, 4 GPU(s) per replica, verified),
+      gb300 (GB300 NVL4, 4 GPU(s) per replica), h200 (H200, 8 GPU(s) per
+      replica, verified), mi300x (MI300X, 8 GPU(s) per replica, verified),
+      mi325x (MI325X, 8 GPU(s) per replica, verified), mi355x (MI355X, 8 GPU(s)
+      per replica, verified).
+    string_value: "h200"
+    options_input:
+      options: [b200, b300, gb200, gb300, h200, mi300x, mi325x, mi355x]
+    display_category: Resources
+  - name: Strategy
+    display_name: >-
+      Parallelism strategy for each replica. All GPUs of the node are used
+      either way: single_node_dep (Data + Expert Parallel), single_node_tep
+      (Tensor + Expert Parallel), single_node_tp (Tensor Parallel).
+    string_value: "single_node_tp"
+    options_input:
+      options: [single_node_dep, single_node_tep, single_node_tp]
+    display_category: Resources
+  - name: GPUModel
+    display_name: >-
+      Exact GPU model to request for each replica (for example NVIDIA H200).
+      Leave empty to accept any GPU of the selected vendor.
+    string_value: ""
+    display_category: Resources
+  - name: ServerCores
+    display_name: >-
+      CPU cores per vLLM replica. Default sized for 8 GPU(s) per replica.
+    uint_value: 64
+    display_category: Resources
+  - name: ServerMemory
+    display_name: >-
+      Host memory per vLLM replica. Weight loading and the KV cache manager need
+      headroom beyond the GPUs.
+    string_value: 192GiB
+    display_category: Resources
+  - name: ProxyCores
+    display_name: >-
+      CPU cores for the LiteLLM proxy.
+    uint_value: 2
+    display_category: Resources
+  - name: ProxyMemory
+    display_name: >-
+      Memory for the LiteLLM proxy.
+    string_value: 4GiB
+    display_category: Resources
+  - name: MinReplicas
+    display_name: >-
+      Minimum number of vLLM replicas. Set to 0 to release all GPUs while the
+      pool is idle; the first request through the proxy then pays a cold start.
+      Must be at least 1 when EnableProxy is false.
+    uint_value: 1
+    display_category: Scaling
+  - name: MaxReplicas
+    display_name: >-
+      Maximum number of vLLM replicas. Each replica holds 8 GPU(s), and capacity
+      for this many replicas is pre-allocated when the workflow starts.
+    uint_value: 1
+    display_category: Scaling
+  - name: ScaleUpPendingRequests
+    display_name: >-
+      Queued requests on a replica that trigger adding another replica.
+    uint_value: 2
+    display_category: Scaling
+  - name: ScaleUpCooldownSeconds
+    display_name: >-
+      Seconds to wait between successive scale-up decisions.
+    uint_value: 60
+    display_category: Scaling
+  - name: ActivationCooldownSeconds
+    display_name: >-
+      Seconds to wait between activations of an idle pool. Only used when
+      EnableProxy is true.
+    uint_value: 30
+    display_category: Scaling
+  - name: ScaleDownCooldownSeconds
+    display_name: >-
+      Seconds an idle pool must stay idle before a replica is retired. Acts as
+      the drain window for requests in flight.
+    uint_value: 300
+    display_category: Scaling
+  - name: MetricsIntervalSeconds
+    display_name: >-
+      How often the autoscaler scrapes service metrics.
+    uint_value: 15
+    display_category: Scaling
+  - name: ReadinessFailureThreshold
+    display_name: >-
+      Failed readiness probes tolerated before a replica is considered dead.
+      Probes run every 30 seconds after a 60 second delay, so this is the weight
+      download and load budget (default about 180 minutes).
+    uint_value: 360
+    display_category: Scaling
+  - name: EnableProxy
+    display_name: >-
+      Run a LiteLLM proxy in the workflow to hold the endpoint and front the
+      pool. When false, the pool itself holds the endpoint for discovery by an
+      external LiteLLM instance.
+    bool_value: false
+    display_category: Access
+  - name: ServiceScope
+    display_name: >-
+      Who can access the OpenAI-compatible endpoint.
+    string_value: "group"
+    options_input:
+      options: [user, group, organization, public]
+    display_category: Access
+  - name: ServerApiKey
+    display_name: >-
+      API key callers present to the OpenAI-compatible endpoint. Required when
+      ServiceScope is public. When empty and EnableProxy is true, an internal
+      key is generated for proxy-to-pool traffic only.
+    string_value: ""
+    display_category: Access
+  - name: ProxyRetries
+    display_name: >-
+      Times the proxy retries a failed request against the pool before returning
+      an error.
+    uint_value: 2
+    display_category: Proxy Behavior
+  - name: ProxyRequestTimeoutSeconds
+    display_name: >-
+      Seconds the proxy waits for a response from a replica. Must exceed the
+      longest expected generation.
+    uint_value: 600
+    display_category: Proxy Behavior
+  - name: ModelVolume
+    display_name: >-
+      Volume holding the HuggingFace model cache, mounted at /data on every
+      replica. The default is ephemeral; use a persistent volume so replicas
+      added during scale-up do not re-download the weights.
+    string_value: volume://user/ephemeral
+    display_category: Storage
+  - name: HuggingfaceCache
+    display_name: >-
+      HuggingFace home directory where weights are cached. Must be a path under
+      /data.
+    string_value: "/data/.cache/huggingface"
+    display_category: Storage
+  - name: VllmImage
+    display_name: >-
+      Container image override for NVIDIA hardware, including the docker://
+      scheme. Leave empty for the image this application ships:
+      vllm/vllm-openai:latest.
+    string_value: ""
+    display_category: Versions
+  - name: VllmImageROCm
+    display_name: >-
+      Container image override for AMD hardware, including the docker:// scheme.
+      Leave empty for the image this application ships:
+      vllm/vllm-openai-rocm:nightly.
+    string_value: ""
+    display_category: Versions
+  - name: LiteLLMImage
+    display_name: >-
+      LiteLLM container image used for the in-workflow proxy.
+    string_value: docker://ghcr.io/berriai/litellm:v1.97.0
+    display_category: Versions

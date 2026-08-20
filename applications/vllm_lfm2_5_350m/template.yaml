@@ -1,0 +1,271 @@
+# Copyright 2026 CIQ, Inc. All rights reserved.
+#
+# Generated from the vLLM recipe models/LiquidAI/LFM2.5-350M.yaml by scripts/gen_models.py.
+# Edit the recipe or the generator, not this file.
+
+{{- /*
+  Hardware profile, serving strategy and checkpoint variant together select
+  one configuration validated by the recipe. Every vLLM flag, environment
+  variable, GPU count and container image below comes from that recipe.
+*/}}
+{{- $hw := .Hardware | trim | lower }}
+{{- $strategy := "single_node_tp" }}
+{{- $variant := "default" }}
+
+{{- if not (or (eq $hw "b200") (eq $hw "b300") (eq $hw "gb200") (eq $hw "gb300") (eq $hw "h100") (eq $hw "h200") (eq $hw "mi300x") (eq $hw "mi325x") (eq $hw "mi355x")) }}
+  {{- fail (printf "unsupported Hardware %q. This application supports: b200, b300, gb200, gb300, h100, h200, mi300x, mi325x, mi355x" $hw) }}
+{{- end }}
+
+{{- $model := "" }}
+{{- $vendor := "" }}
+{{- $gpus := 0 }}
+{{- $image := "" }}
+{{- $model = "LiquidAI/LFM2.5-350M" }}
+{{- if or (eq $hw "mi300x") (eq $hw "mi325x") (eq $hw "mi355x") }}
+{{- $vendor = "amd.com" }}
+{{- else }}
+{{- $vendor = "nvidia.com" }}
+{{- end }}
+{{- $gpus = 1 }}
+{{- if or (eq $hw "mi300x") (eq $hw "mi325x") (eq $hw "mi355x") }}
+{{- $image = default "docker://rocm/vllm:rocm7.14.0_cdna_ubuntu24.04_py3.14_pytorch_2.11.0_vllm_0.23.0" (trim .VllmImageROCm) }}
+{{- else }}
+{{- $image = default "docker://vllm/vllm-openai:v0.23.0" (trim .VllmImage) }}
+{{- end }}
+
+{{- $proxy := .EnableProxy }}
+{{- $scope := .ServiceScope | trim | lower }}
+{{- $api_key := .ServerApiKey | trim }}
+{{- if and (eq $scope "public") (not $api_key) }}
+  {{- fail "ServerApiKey is required when ServiceScope is public" }}
+{{- end }}
+
+{{- $min_replicas := .MinReplicas }}
+{{- $max_replicas := .MaxReplicas }}
+{{- if lt $max_replicas 1 }}
+  {{- fail "MaxReplicas must be at least 1" }}
+{{- end }}
+{{- if lt $max_replicas $min_replicas }}
+  {{- fail "MaxReplicas must be greater than or equal to MinReplicas" }}
+{{- end }}
+{{- if and (not $proxy) (lt $min_replicas 1) }}
+  {{- fail "MinReplicas must be at least 1 when EnableProxy is false: without an in-workflow proxy nothing observes requests against an idle pool, so the first replica cannot be scaled up on demand" }}
+{{- end }}
+
+{{- $gpu_model := trim .GPUModel }}
+{{- $vllm_port := randInt 10000 24000 }}
+{{- $proxy_port := randInt 24001 32000 }}
+
+{{- $data_mount := "/data" }}
+{{- $hf_cache := trim .HuggingfaceCache }}
+{{- if not (or (eq $hf_cache $data_mount) (hasPrefix (printf "%s/" $data_mount) $hf_cache)) }}
+  {{- fail (printf "HuggingfaceCache must be an absolute path under the mounted volume %s so the cache persists" $data_mount) }}
+{{- end }}
+
+{{- /*
+  With the proxy in front, the vLLM API key never leaves the workflow, so one
+  is generated when the caller supplied none. Without the proxy, callers talk
+  to vLLM directly and can only present a key they already know.
+*/}}
+{{- $vllm_key := $api_key }}
+{{- if and $proxy (not $vllm_key) }}
+  {{- $vllm_key = randInt 0 10000000 | printf "%08d" | b64enc }}
+{{- end }}
+
+{{- /*
+  Replicas of an autoscaled service share one DNS record that tracks the
+  currently ready replicas and stays valid while the pool sits at zero.
+*/}}
+{{- $pool_base := printf "http://vllm.autoscaler:%d/v1" $vllm_port }}
+
+version: v4
+
+volumes:
+  data:
+    reference: {{ trim .ModelVolume }}
+
+services:
+  vllm:
+    image:
+      uri: {{ $image }}
+    mounts:
+      {{ $data_mount }}:
+        volume: data
+    network:
+      ports:
+        - name: openai-api
+          port: {{ $vllm_port }}
+          protocol: tcp
+{{- if not $proxy }}
+      endpoints:
+        - name: openai
+          port-name: openai-api
+          protocol: http
+          type: subdomain
+          scope: {{ $scope }}
+{{- end }}
+    resource:
+      cpu:
+        cores: {{ .ServerCores }}
+      memory:
+        size: {{ trim .ServerMemory }}
+      devices:
+        {{ $vendor }}/gpu: {{ $gpus }}
+{{- if $gpu_model }}
+      annotations:
+        {{ $vendor }}/gpu.model: "{{ $gpu_model }}"
+{{- end }}
+    env:
+      - HF_HOME={{ $hf_cache }}
+{{- if trim .HuggingFaceHubToken }}
+      - HF_TOKEN={{ trim .HuggingFaceHubToken }}
+{{- end }}
+{{- if $vllm_key }}
+      - VLLM_API_KEY={{ $vllm_key }}
+{{- end }}
+{{- /* Environment pinned by the recipe for this configuration. */}}
+{{- if or (eq $hw "b200") (eq $hw "b300") (eq $hw "gb200") (eq $hw "gb300") }}
+      - 'VLLM_USE_OINK_OPS=1'
+{{- end }}
+    autoscaler:
+      replicas:
+        min: {{ $min_replicas }}
+        max: {{ $max_replicas }}
+      metrics:
+        enabled: true
+        path: /metrics
+        port: {{ $vllm_port }}
+        interval: {{ .MetricsIntervalSeconds }}
+{{- if not $proxy }}
+      scale-up:
+        triggers:
+          # Queued requests on any replica grow the pool toward MaxReplicas.
+          - metrics-query: 'max(vllm:num_requests_waiting) >= bool {{ .ScaleUpPendingRequests }}'
+            cooldown-period: {{ .ScaleUpCooldownSeconds }}
+{{- end }}
+      scale-down:
+        # Retire a replica only once no replica is serving a request, so
+        # generations in flight run to completion instead of being cut off.
+        metrics-query: 'max(vllm:num_requests_running) == bool 0'
+        cooldown-period: {{ .ScaleDownCooldownSeconds }}
+{{- if not $proxy }}
+    persist: true
+{{- end }}
+    script: |
+      #!/bin/sh
+      set -e
+      mkdir -p "$HF_HOME"
+      exec vllm serve "{{ $model }}" \
+        --host 0.0.0.0 \
+        --port {{ $vllm_port }} \
+        --tensor-parallel-size 1 \
+{{- if .EnableToolCalling }}
+{{- if or (eq $hw "b200")
+      (eq $hw "b300")
+      (eq $hw "gb200")
+      (eq $hw "gb300")
+      (eq $hw "h100")
+      (eq $hw "h200")
+      (eq $hw "mi300x")
+      (eq $hw "mi325x")
+      (eq $hw "mi355x") }}
+        --enable-auto-tool-choice \
+        --tool-call-parser lfm2 \
+{{- end }}
+{{- end }}
+{{- if gt .MaxModelLen 0 }}
+        --max-model-len {{ .MaxModelLen }} \
+{{- end }}
+{{- if trim .ExtraVllmArgs }}
+        {{ trim .ExtraVllmArgs }} \
+{{- end }}
+        {{- /* Stable client-facing name, whatever variant is served. */}}
+        --served-model-name LiquidAI/LFM2.5-350M
+    readiness-probe:
+      http-get:
+        path: /health
+        port: {{ $vllm_port }}
+        scheme: http
+      initial-delay-seconds: 60
+      period-seconds: 30
+      failure-threshold: {{ .ReadinessFailureThreshold }}
+      success-threshold: 1
+
+{{- if $proxy }}
+
+  litellm:
+    # No depends-on: the proxy must answer while the pool sits at zero
+    # replicas, because that request is what wakes the pool.
+    image:
+      uri: {{ trim .LiteLLMImage }}
+    persist: true
+    network:
+      ports:
+        - name: openai-api
+          port: {{ $proxy_port }}
+          protocol: tcp
+      endpoints:
+        - name: openai
+          port-name: openai-api
+          protocol: http
+          type: subdomain
+          scope: {{ $scope }}
+    resource:
+      cpu:
+        cores: {{ .ProxyCores }}
+      memory:
+        size: {{ trim .ProxyMemory }}
+    env:
+      - VLLM_API_KEY={{ $vllm_key }}
+{{- if $api_key }}
+      - LITELLM_MASTER_KEY={{ $api_key }}
+{{- end }}
+    files:
+      /etc/litellm/config.yaml: |
+        model_list:
+          - model_name: LiquidAI/LFM2.5-350M
+            litellm_params:
+              model: openai/LiquidAI/LFM2.5-350M
+              api_base: {{ $pool_base }}
+              api_key: os.environ/VLLM_API_KEY
+        litellm_settings:
+          callbacks: ["prometheus"]
+          # The autoscaler scrapes /metrics without credentials.
+          require_auth_for_metrics_endpoint: false
+          num_retries: {{ .ProxyRetries }}
+          request_timeout: {{ .ProxyRequestTimeoutSeconds }}
+    autoscaler:
+      # A cross-service scaling source: it owns no replicas and only
+      # drives the vllm pool.
+      metrics:
+        enabled: true
+        path: /metrics
+        port: {{ $proxy_port }}
+        interval: {{ .MetricsIntervalSeconds }}
+      scale-up:
+        triggers:
+          # Any request arriving at the proxy wakes the first replica, the
+          # only signal available while the pool is idle at zero.
+          - metrics-query: 'sum(rate(litellm_proxy_total_requests_metric_total[1m])) > bool 0'
+            cooldown-period: {{ .ActivationCooldownSeconds }}
+            services: [vllm]
+          # Once replicas are up, their own queue depth grows the pool.
+          - metrics-query: 'max(vllm:num_requests_waiting) >= bool {{ .ScaleUpPendingRequests }}'
+            cooldown-period: {{ .ScaleUpCooldownSeconds }}
+            services: [vllm]
+    script: |
+      #!/bin/sh
+      exec litellm \
+        --config /etc/litellm/config.yaml \
+        --host 0.0.0.0 \
+        --port {{ $proxy_port }}
+    readiness-probe:
+      http-get:
+        path: /health/liveliness
+        port: {{ $proxy_port }}
+        scheme: http
+      initial-delay-seconds: 15
+      period-seconds: 15
+      failure-threshold: 20
+      success-threshold: 1
+{{- end }}
