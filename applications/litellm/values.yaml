@@ -8,6 +8,16 @@ values:
       reference: ""
     display_category: "Secrets"
 
+  - name: "DatabasePasswordSecret"
+    display_name: >-
+      Optional reference to a user-scoped secret holding the gateway database password
+      (URL-safe characters only). Defaults to a well-known development credential; set it
+      on any cluster shared with other users, since the database is reachable on its node.
+      With a persistent DataVolume the password must stay the same across restarts.
+    secret_value:
+      reference: ""
+    display_category: "Secrets"
+
   - name: "ClusterCASecret"
     display_name: >-
       Reference to a user-scoped secret holding a PEM certificate authority. Effectively

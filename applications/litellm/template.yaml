@@ -5,6 +5,10 @@
 {{- fail "MasterKeySecret is required: store the LiteLLM master key (sk-...) in a user-scoped secret and pass its reference, e.g. secret://user/litellm-master" }}
 {{- end }}
 {{- $clusterCA := trim .ClusterCASecret }}
+{{- $dbPassword := trim .DatabasePasswordSecret }}
+{{- if not $dbPassword }}
+{{- $dbPassword = "litellm" }}
+{{- end }}
 {{- $dbPort := randInt 10000 17000 }}
 {{- $llmPort := randInt 17000 24000 }}
 {{- $dbUser := "litellm" }}
@@ -29,7 +33,7 @@ services:
     command: ["docker-entrypoint.sh", "postgres", "-p", "{{ $dbPort }}"]
     env:
       - POSTGRES_USER={{ $dbUser }}
-      - POSTGRES_PASSWORD={{ $dbUser }}
+      - POSTGRES_PASSWORD={{ $dbPassword }}
       - POSTGRES_DB={{ $dbName }}
     mounts:
       {{ $dbMount }}:
@@ -58,7 +62,7 @@ services:
       uri: docker://ghcr.io/berriai/litellm-database:{{ .LiteLLMVersion }}
     env:
       - STORE_MODEL_IN_DB=True
-      - DATABASE_URL=postgresql://{{ $dbUser }}:{{ $dbUser }}@database.svc:{{ $dbPort }}/{{ $dbName }}
+      - DB_PASSWORD={{ $dbPassword }}
       - LITELLM_MASTER_KEY={{ $masterKey }}
       - LITELLM_LOG=INFO
       - SSL_CERT_FILE={{ $caBundle }}
@@ -91,6 +95,10 @@ services:
           scope: {{ .ServiceScope }}
     script: |
       #!/bin/bash
+      set -e
+      # The password may come from a secret, which the platform only substitutes
+      # as a whole env value -- so the URL is composed here rather than templated.
+      export DATABASE_URL="postgresql://{{ $dbUser }}:${DB_PASSWORD}@database.svc:{{ $dbPort }}/{{ $dbName }}"
       # Prisma's query engines were cached under the image user's HOME. Fuzzball
       # runs the container under a different uid, so without this LiteLLM's schema
       # push tries to re-download them.
