@@ -1,11 +1,11 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 
-{{- $masterKey := trim .MasterKeySecret }}
+{{- $masterKey := trim (index . "master-key-secret") }}
 {{- if not $masterKey }}
-{{- fail "MasterKeySecret is required: store the LiteLLM master key (sk-...) in a user-scoped secret and pass its reference, e.g. secret://user/litellm-master" }}
+{{- fail "master-key-secret is required: store the LiteLLM master key (sk-...) in a user-scoped secret and pass its reference, e.g. secret://user/litellm-master" }}
 {{- end }}
-{{- $clusterCA := trim .ClusterCASecret }}
-{{- $dbPassword := trim .DatabasePasswordSecret }}
+{{- $clusterCA := trim (index . "cluster-ca-secret") }}
+{{- $dbPassword := trim (index . "database-password-secret") }}
 {{- if not $dbPassword }}
 {{- $dbPassword = "litellm" }}
 {{- end }}
@@ -20,7 +20,7 @@ version: v4
 
 volumes:
   db:
-    reference: {{ .DataVolume }}
+    reference: {{ index . "data-volume" }}
 
 services:
   # The gateway's state -- virtual keys, per-team budgets, spend history, and the
@@ -29,7 +29,7 @@ services:
   # versions: a mismatched release accepts writes and then never routes the model.
   database:
     image:
-      uri: docker://postgres:{{ .PostgresVersion }}
+      uri: docker://postgres:{{ index . "postgres-version" }}
     command: ["docker-entrypoint.sh", "postgres", "-p", "{{ $dbPort }}"]
     env:
       - POSTGRES_USER={{ $dbUser }}
@@ -53,13 +53,13 @@ services:
       failure-threshold: 60
     resource:
       cpu:
-        cores: {{ .DatabaseCores }}
+        cores: {{ index . "database-cores" }}
       memory:
-        size: {{ .DatabaseMemory }}
+        size: {{ index . "database-memory" }}
 
   gateway:
     image:
-      uri: docker://ghcr.io/berriai/litellm-database:{{ .LiteLLMVersion }}
+      uri: docker://ghcr.io/berriai/litellm-database:{{ index . "litellm-version" }}
     env:
       - STORE_MODEL_IN_DB=True
       - DB_PASSWORD={{ $dbPassword }}
@@ -67,10 +67,10 @@ services:
       - LITELLM_LOG=INFO
       - SSL_CERT_FILE={{ $caBundle }}
       - LLM_PORT={{ $llmPort }}
-      - DISCOVERY_VALUE={{ .DiscoveryApiValue }}
-      - REFRESH_INTERVAL={{ .RefreshInterval }}
-      - TOKEN_TTL={{ .TokenLifetime }}
-      - COLD_START_RETRIES={{ .ColdStartRetries }}
+      - DISCOVERY_VALUE={{ index . "discovery-api-value" }}
+      - REFRESH_INTERVAL={{ index . "refresh-interval" }}
+      - TOKEN_TTL={{ index . "token-lifetime" }}
+      - COLD_START_RETRIES={{ index . "cold-start-retries" }}
       - FB_CA_BUNDLE={{ $caBundle }}
 {{- if $clusterCA }}
       - CLUSTER_CA_PEM={{ $clusterCA }}
@@ -92,7 +92,7 @@ services:
           port-name: llm
           protocol: http
           type: subdomain
-          scope: {{ .ServiceScope }}
+          scope: {{ .scope }}
     script: |
       #!/bin/bash
       set -e
@@ -313,9 +313,9 @@ services:
       failure-threshold: 60
     resource:
       cpu:
-        cores: {{ .GatewayCores }}
+        cores: {{ index . "gateway-cores" }}
       memory:
-        size: {{ .GatewayMemory }}
+        size: {{ index . "gateway-memory" }}
 
 jobs:
   show-gateway:

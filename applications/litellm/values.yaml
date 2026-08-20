@@ -1,5 +1,5 @@
 values:
-  - name: "MasterKeySecret"
+  - name: "master-key-secret"
     display_name: >-
       Reference to a user-scoped secret holding the LiteLLM master key, which must begin
       with "sk-" (e.g. secret://user/litellm-master). Required. Used to create virtual keys
@@ -8,17 +8,17 @@ values:
       reference: ""
     display_category: "Secrets"
 
-  - name: "DatabasePasswordSecret"
+  - name: "database-password-secret"
     display_name: >-
       Optional reference to a user-scoped secret holding the gateway database password
       (URL-safe characters only). Defaults to a well-known development credential; set it
       on any cluster shared with other users, since the database is reachable on its node.
-      With a persistent DataVolume the password must stay the same across restarts.
+      With a persistent data-volume the password must stay the same across restarts.
     secret_value:
       reference: ""
     display_category: "Secrets"
 
-  - name: "ClusterCASecret"
+  - name: "cluster-ca-secret"
     display_name: >-
       Reference to a user-scoped secret holding a PEM certificate authority. Effectively
       required on any cluster whose API is served with a private CA: without it the gateway
@@ -28,7 +28,7 @@ values:
       reference: ""
     display_category: "Secrets"
 
-  - name: "ServiceScope"
+  - name: "scope"
     display_name: >-
       Who can reach the gateway endpoint. Callers additionally need a LiteLLM virtual key.
     string_value: group
@@ -36,7 +36,7 @@ values:
       options: [user, group, organization]
     display_category: "Access"
 
-  - name: "DataVolume"
+  - name: "data-volume"
     display_name: >-
       Volume holding the gateway database (virtual keys, budgets, spend history). The
       default is ephemeral, so all of it is lost when the workflow stops -- use a persistent
@@ -44,21 +44,21 @@ values:
     string_value: volume://user/ephemeral
     display_category: "Storage"
 
-  - name: "DiscoveryApiValue"
+  - name: "discovery-api-value"
     display_name: >-
       Value of the ciq.com/api endpoint annotation the gateway looks for. Endpoints without
       it are ignored.
     string_value: openai
     display_category: "Discovery"
 
-  - name: "RefreshInterval"
+  - name: "refresh-interval"
     display_name: >-
       Seconds between endpoint discovery passes. Must stay well below the drain-period of
       the pools being served, so a retiring replica leaves the gateway before it stops.
     uint_value: 25
     display_category: "Discovery"
 
-  - name: "TokenLifetime"
+  - name: "token-lifetime"
     display_name: >-
       Seconds an endpoint access token is minted for. The gateway re-mints at half this
       value, so it also sets how long discovered models keep serving through a Fuzzball API
@@ -66,7 +66,7 @@ values:
     uint_value: 14400
     display_category: "Discovery"
 
-  - name: "ColdStartRetries"
+  - name: "cold-start-retries"
     display_name: >-
       Retries LiteLLM makes against a model whose pool is scaling up from zero. Each retry
       backs off, so this is what turns a cold start into a successful first request rather
@@ -74,27 +74,27 @@ values:
     uint_value: 8
     display_category: "Discovery"
 
-  - name: "GatewayCores"
+  - name: "gateway-cores"
     display_name: "Cores for the gateway service."
     uint_value: 2
     display_category: "Resources"
 
-  - name: "GatewayMemory"
+  - name: "gateway-memory"
     display_name: "Memory for the gateway service."
     string_value: 3GiB
     display_category: "Resources"
 
-  - name: "DatabaseCores"
+  - name: "database-cores"
     display_name: "Cores for the database service."
     uint_value: 1
     display_category: "Resources"
 
-  - name: "DatabaseMemory"
+  - name: "database-memory"
     display_name: "Memory for the database service."
     string_value: 1GiB
     display_category: "Resources"
 
-  - name: "LiteLLMVersion"
+  - name: "litellm-version"
     display_name: >-
       LiteLLM container image tag. v1.97.0 or later is required: earlier releases ignore the
       x-litellm-api-key header the gateway endpoint depends on. Changing this requires a
@@ -102,7 +102,7 @@ values:
     string_value: "v1.97.0"
     display_category: "Container Versions"
 
-  - name: "PostgresVersion"
+  - name: "postgres-version"
     display_name: "PostgreSQL container image tag."
     string_value: "16"
     display_category: "Container Versions"

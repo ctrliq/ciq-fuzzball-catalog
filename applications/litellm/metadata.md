@@ -62,11 +62,11 @@ scope is the access control.
 
 - **The database is pinned to the LiteLLM version.** A different LiteLLM release reading
   another release's schema accepts writes and then never routes the model. Changing
-  `LiteLLMVersion` means starting with a fresh database.
+  `litellm-version` means starting with a fresh database.
 - **The default volume is ephemeral**, so virtual keys, budgets and spend history are lost
-  when the workflow stops. Point `DataVolume` at a persistent volume for anything you rely
+  when the workflow stops. Point `data-volume` at a persistent volume for anything you rely
   on.
-- **`ClusterCASecret` is effectively required on a cluster whose API is served with a
+- **`cluster-ca-secret` is effectively required on a cluster whose API is served with a
   private CA.** Without it discovery never reaches the Fuzzball API: the gateway serves no
   models at all and only logs `DISCOVERY-FAILED` SSL errors, while the workflow itself looks
   healthy.
