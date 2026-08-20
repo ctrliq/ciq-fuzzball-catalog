@@ -7,3 +7,5 @@
 
 # other
 .claude
+
+__pycache__
