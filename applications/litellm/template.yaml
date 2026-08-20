@@ -1,0 +1,363 @@
+# Copyright 2026 CIQ, Inc. All rights reserved.
+
+{{- $masterKey := trim .MasterKeySecret }}
+{{- if not $masterKey }}
+{{- fail "MasterKeySecret is required: store the LiteLLM master key (sk-...) in a user-scoped secret and pass its reference, e.g. secret://user/litellm-master" }}
+{{- end }}
+{{- $clusterCA := trim .ClusterCASecret }}
+{{- $dbPort := randInt 10000 17000 }}
+{{- $llmPort := randInt 17000 24000 }}
+{{- $dbUser := "litellm" }}
+{{- $dbName := "litellm" }}
+{{- $dbMount := "/var/lib/postgresql/data" }}
+{{- $caBundle := "/tmp/fuzzball-ca.pem" }}
+
+version: v4
+
+volumes:
+  db:
+    reference: {{ .DataVolume }}
+
+services:
+  # The gateway's state -- virtual keys, per-team budgets, spend history, and the
+  # discovered model list -- all live here. LiteLLM applies its own schema at
+  # startup, which is why one database must never be shared across LiteLLM
+  # versions: a mismatched release accepts writes and then never routes the model.
+  database:
+    image:
+      uri: docker://postgres:{{ .PostgresVersion }}
+    command: ["docker-entrypoint.sh", "postgres", "-p", "{{ $dbPort }}"]
+    env:
+      - POSTGRES_USER={{ $dbUser }}
+      - POSTGRES_PASSWORD={{ $dbUser }}
+      - POSTGRES_DB={{ $dbName }}
+    mounts:
+      {{ $dbMount }}:
+        volume: db
+    network:
+      host: true
+      ports:
+        - name: postgres
+          port: {{ $dbPort }}
+          protocol: tcp
+    persist: true
+    readiness-probe:
+      tcp-socket:
+        port: {{ $dbPort }}
+      initial-delay-seconds: 5
+      period-seconds: 5
+      failure-threshold: 60
+    resource:
+      cpu:
+        cores: {{ .DatabaseCores }}
+      memory:
+        size: {{ .DatabaseMemory }}
+
+  gateway:
+    image:
+      uri: docker://ghcr.io/berriai/litellm-database:{{ .LiteLLMVersion }}
+    env:
+      - STORE_MODEL_IN_DB=True
+      - DATABASE_URL=postgresql://{{ $dbUser }}:{{ $dbUser }}@database.svc:{{ $dbPort }}/{{ $dbName }}
+      - LITELLM_MASTER_KEY={{ $masterKey }}
+      - LITELLM_LOG=INFO
+      - SSL_CERT_FILE={{ $caBundle }}
+      - LLM_PORT={{ $llmPort }}
+      - DISCOVERY_VALUE={{ .DiscoveryApiValue }}
+      - REFRESH_INTERVAL={{ .RefreshInterval }}
+      - TOKEN_TTL={{ .TokenLifetime }}
+      - COLD_START_RETRIES={{ .ColdStartRetries }}
+      - FB_CA_BUNDLE={{ $caBundle }}
+{{- if $clusterCA }}
+      - CLUSTER_CA_PEM={{ $clusterCA }}
+{{- end }}
+    depends-on:
+      - name: database
+        status: RUNNING
+        description: "LiteLLM applies its schema at startup"
+    network:
+      host: true
+      ports:
+        - name: llm
+          port: {{ $llmPort }}
+          protocol: tcp
+      endpoints:
+        # No ciq.com/api annotation here on purpose: it is how the gateway
+        # recognises its own endpoint and leaves itself out of its model list.
+        - name: openai
+          port-name: llm
+          protocol: http
+          type: subdomain
+          scope: {{ .ServiceScope }}
+    script: |
+      #!/bin/bash
+      # Prisma's query engines were cached under the image user's HOME. Fuzzball
+      # runs the container under a different uid, so without this LiteLLM's schema
+      # push tries to re-download them.
+      export HOME=/root
+
+      # SSL_CERT_FILE replaces the trust store wholesale rather than adding to it,
+      # so a private cluster CA is appended to the system bundle. Public TLS has
+      # to keep working: LiteLLM reaches real providers and its own engine
+      # downloads over it.
+      if [ -f /etc/ssl/certs/ca-certificates.crt ]; then
+        cp /etc/ssl/certs/ca-certificates.crt {{ $caBundle }}
+      else
+        cp /etc/ssl/cert.pem {{ $caBundle }}
+      fi
+      if [ -n "${CLUSTER_CA_PEM}" ]; then
+        printf '%s\n' "${CLUSTER_CA_PEM}" >> {{ $caBundle }}
+      fi
+
+      cat > /tmp/reconcile.py <<'PYEOF'
+      # Keeps LiteLLM's deployment list equal to the set of annotated endpoints
+      # this workflow's identity can reach. LiteLLM itself is the state of record
+      # (read back through /model/info each pass), so a restart of this loop
+      # cannot lose track of what is registered.
+      import json, os, ssl, threading, time, urllib.error, urllib.request
+
+      API = os.environ["FB_OPENAPI_URL"].rstrip("/")
+      OWN_WORKFLOW = os.environ.get("FB_WORKFLOW_ID", "")
+      MASTER = os.environ["LITELLM_MASTER_KEY"]
+      LLM = "http://127.0.0.1:" + os.environ["LLM_PORT"]
+      WANT_API = os.environ["DISCOVERY_VALUE"]
+      INTERVAL = int(os.environ["REFRESH_INTERVAL"])
+      TTL = int(os.environ["TOKEN_TTL"])
+      RETRIES = int(os.environ["COLD_START_RETRIES"])
+      API_ANNOTATION = "ciq.com/api"
+      MODEL_ANNOTATION = "ciq.com/model"
+
+      CTX = ssl.create_default_context(cafile=os.environ.get("FB_CA_BUNDLE") or None)
+
+      # The workflow token is injected once and expires; a gateway is meant to
+      # outlive it, so it is held in a cell the refresher can replace.
+      TOKEN = [os.environ["FB_TOKEN"]]
+
+      def call(url, token, method="GET", body=None, ctx=None):
+          payload = json.dumps(body).encode() if body is not None else None
+          request = urllib.request.Request(url, method=method, data=payload)
+          request.add_header("Authorization", "Bearer " + token)
+          request.add_header("Content-Type", "application/json")
+          with urllib.request.urlopen(request, context=ctx, timeout=30) as response:
+              raw = response.read()
+          return json.loads(raw) if raw else None
+
+      def refresh_token():
+          # Service tokens last seven days. Renew well inside that, and keep the
+          # old one on failure -- it stays valid until its original expiry.
+          while True:
+              time.sleep(4 * 24 * 3600)
+              try:
+                  fresh = call(API + "/v4/workflows:refreshToken", TOKEN[0],
+                               method="POST", body=dict(), ctx=CTX)
+                  if fresh and fresh.get("token"):
+                      TOKEN[0] = fresh["token"]
+                      print("TOKEN-REFRESHED", flush=True)
+              except Exception as err:
+                  print("TOKEN-REFRESH-FAILED", repr(err), flush=True)
+
+      def list_endpoints():
+          # Every page, or none of them. A truncated walk looks identical to
+          # models having disappeared, and acting on it would deregister live
+          # models, so a failure here propagates and the caller keeps what it has.
+          rows = []
+          page_token = ""
+          while True:
+              url = API + "/v4/endpoints?pageSize=500"
+              if page_token:
+                  url = url + "&pageToken=" + page_token
+              page = call(url, TOKEN[0], ctx=CTX)
+              rows.extend(page.get("endpoints") or [])
+              page_token = page.get("pageToken") or ""
+              if not page_token:
+                  return rows
+
+      def desired(rows):
+          # api_base -> model name and the endpoint id to mint a token against.
+          serving = []
+          for row in rows:
+              annotations = row.get("annotations") or {}
+              if annotations.get(API_ANNOTATION) != WANT_API:
+                  continue
+              if row.get("workflowId") == OWN_WORKFLOW:
+                  continue
+              serving.append(row)
+
+          replicas_of = dict()
+          for row in serving:
+              pool = row.get("poolEndpointId") or ""
+              if pool:
+                  replicas_of.setdefault(pool, []).append(row)
+
+          wanted = dict()
+          for row in serving:
+              # A pool with live per-replica endpoints is addressed one replica at
+              # a time so this gateway does the balancing. Its own endpoint is
+              # registered only while it has no ready replicas, where it is what
+              # turns a request into a wake.
+              if not (row.get("poolEndpointId") or "") and replicas_of.get(row.get("id")):
+                  continue
+              model = (row.get("annotations") or {}).get(MODEL_ANNOTATION)
+              url = row.get("url") or ""
+              if not model or not url:
+                  continue
+              wanted[url.rstrip("/") + "/v1"] = dict(model=model, endpoint=row.get("id"))
+          return wanted
+
+      def registered():
+          # api_base -> the LiteLLM model ids pointing at it.
+          try:
+              info = call(LLM + "/model/info", MASTER)
+          except urllib.error.HTTPError as err:
+              # An empty model table answers 500, not an empty list, and that is
+              # the state the first registration has to run in. Every other error
+              # propagates: reading a broken gateway as empty re-registers models.
+              if err.code == 500 and "LLM Model List not loaded" in err.read().decode("utf-8", "replace"):
+                  return dict()
+              raise
+          current = dict()
+          for entry in info.get("data") or []:
+              params = entry.get("litellm_params") or {}
+              base = params.get("api_base")
+              model_id = (entry.get("model_info") or {}).get("id")
+              if base and model_id:
+                  current.setdefault(base, []).append(model_id)
+          return current
+
+      def register(base, model, endpoint_id):
+          token = call(API + "/v4/endpoints/" + endpoint_id + "/token", TOKEN[0],
+                       method="POST", body=dict(expirationSeconds=TTL), ctx=CTX)
+          params = dict(model="openai/" + model, api_base=base,
+                        api_key=token.get("token"), num_retries=RETRIES)
+          call(LLM + "/model/new", MASTER, method="POST",
+               body=dict(model_name=model, litellm_params=params))
+
+      def deregister(model_id):
+          call(LLM + "/model/delete", MASTER, method="POST", body=dict(id=model_id))
+
+      threading.Thread(target=refresh_token, daemon=True).start()
+
+      minted_at = dict()
+      while True:
+          try:
+              wanted = desired(list_endpoints())
+          except Exception as err:
+              print("DISCOVERY-FAILED keeping current models", repr(err), flush=True)
+              time.sleep(INTERVAL)
+              continue
+          try:
+              current = registered()
+          except Exception as err:
+              print("MODEL-INFO-FAILED", repr(err), flush=True)
+              time.sleep(INTERVAL)
+              continue
+
+          for base, spec in wanted.items():
+              known = base in current
+              expiring = known and time.time() - minted_at.get(base, 0) > TTL / 2
+              if known and not expiring:
+                  continue
+              try:
+                  # Rotation adds the replacement before dropping the original,
+                  # so the model is never left without a route. Both point at the
+                  # same replica, so the momentary duplicate is harmless.
+                  register(base, spec["model"], spec["endpoint"])
+                  minted_at[base] = time.time()
+                  if expiring:
+                      for model_id in current[base]:
+                          deregister(model_id)
+                      print("ROTATED", spec["model"], base, flush=True)
+                  else:
+                      print("REGISTERED", spec["model"], base, flush=True)
+              except Exception as err:
+                  print("REGISTER-FAILED", base, repr(err), flush=True)
+
+          for base, model_ids in current.items():
+              if base in wanted:
+                  continue
+              for model_id in model_ids:
+                  try:
+                      deregister(model_id)
+                      print("REMOVED", base, flush=True)
+                  except Exception as err:
+                      print("REMOVE-FAILED", base, repr(err), flush=True)
+              minted_at.pop(base, None)
+
+          time.sleep(INTERVAL)
+      PYEOF
+
+      litellm --port "${LLM_PORT}" &
+      gateway_pid=$!
+
+      # Discovery only makes sense once the admin API answers, and it must not
+      # outlive the process it configures.
+      python3 /tmp/reconcile.py &
+
+      wait "${gateway_pid}"
+    persist: true
+    readiness-probe:
+      http-get:
+        path: /health/liveliness
+        port: {{ $llmPort }}
+      initial-delay-seconds: 20
+      period-seconds: 10
+      timeout-seconds: 5
+      failure-threshold: 60
+    resource:
+      cpu:
+        cores: {{ .GatewayCores }}
+      memory:
+        size: {{ .GatewayMemory }}
+
+jobs:
+  show-gateway:
+    image:
+      uri: docker://curlimages/curl:8.17.0
+    env:
+      - GATEWAY=http://gateway.svc:{{ $llmPort }}
+      - MASTER_KEY={{ $masterKey }}
+    depends-on:
+      - name: gateway
+        status: RUNNING
+        description: "Wait for the gateway to answer"
+    script: |
+      #!/bin/sh
+      set -e
+
+      echo "Get the gateway base URL with:"
+      echo "   fuzzball workflow endpoints list"
+      echo ""
+
+      echo "Models discovered so far:"
+      curl -sf -H "Authorization: Bearer ${MASTER_KEY}" "${GATEWAY}/v1/models" || \
+        echo "   (none yet -- annotate a model endpoint with ciq.com/api and ciq.com/model)"
+      echo ""
+
+      echo "Every call through the endpoint carries two credentials: a Fuzzball"
+      echo "credential in Authorization, and a LiteLLM key in x-litellm-api-key."
+      echo ""
+      echo "Create a virtual key:"
+      echo "   curl -X POST \\"
+      echo "     -H \"Authorization: Bearer <fuzzball token>\" \\"
+      echo "     -H \"x-litellm-api-key: <master key>\" \\"
+      echo "     -H \"Content-Type: application/json\" \\"
+      echo "     <gateway url>key/generate -d '{\"models\": []}'"
+      echo ""
+      echo "Then call the gateway with:"
+      echo "   Authorization: Bearer <fuzzball token>"
+      echo "   x-litellm-api-key: <virtual key>"
+      echo ""
+      echo "A Fuzzball token is your user token, or an endpoint token from:"
+      echo "   fuzzball workflow endpoints generate-token <endpoint id>"
+      echo ""
+      echo "The gateway runs until the workflow is cancelled."
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 128MB
+    policy:
+      timeout:
+        execute: 10m
+
+defaults: {}

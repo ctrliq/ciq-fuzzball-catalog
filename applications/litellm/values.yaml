@@ -1,0 +1,98 @@
+values:
+  - name: "MasterKeySecret"
+    display_name: >-
+      Reference to a user-scoped secret holding the LiteLLM master key, which must begin
+      with "sk-" (e.g. secret://user/litellm-master). Required. Used to create virtual keys
+      and to administer the gateway.
+    secret_value:
+      reference: ""
+    display_category: "Secrets"
+
+  - name: "ClusterCASecret"
+    display_name: >-
+      Reference to a user-scoped secret holding a PEM certificate authority. Effectively
+      required on any cluster whose API is served with a private CA: without it the gateway
+      discovers no models and only logs DISCOVERY-FAILED SSL errors. Leave empty only when
+      the cluster API uses a publicly trusted certificate.
+    secret_value:
+      reference: ""
+    display_category: "Secrets"
+
+  - name: "ServiceScope"
+    display_name: >-
+      Who can reach the gateway endpoint. Callers additionally need a LiteLLM virtual key.
+    string_value: group
+    options_input:
+      options: [user, group, organization]
+    display_category: "Access"
+
+  - name: "DataVolume"
+    display_name: >-
+      Volume holding the gateway database (virtual keys, budgets, spend history). The
+      default is ephemeral, so all of it is lost when the workflow stops -- use a persistent
+      volume for anything you rely on. Mounted at /var/lib/postgresql/data
+    string_value: volume://user/ephemeral
+    display_category: "Storage"
+
+  - name: "DiscoveryApiValue"
+    display_name: >-
+      Value of the ciq.com/api endpoint annotation the gateway looks for. Endpoints without
+      it are ignored.
+    string_value: openai
+    display_category: "Discovery"
+
+  - name: "RefreshInterval"
+    display_name: >-
+      Seconds between endpoint discovery passes. Must stay well below the drain-period of
+      the pools being served, so a retiring replica leaves the gateway before it stops.
+    uint_value: 25
+    display_category: "Discovery"
+
+  - name: "TokenLifetime"
+    display_name: >-
+      Seconds an endpoint access token is minted for. The gateway re-mints at half this
+      value, so it also sets how long discovered models keep serving through a Fuzzball API
+      outage.
+    uint_value: 14400
+    display_category: "Discovery"
+
+  - name: "ColdStartRetries"
+    display_name: >-
+      Retries LiteLLM makes against a model whose pool is scaling up from zero. Each retry
+      backs off, so this is what turns a cold start into a successful first request rather
+      than an error.
+    uint_value: 8
+    display_category: "Discovery"
+
+  - name: "GatewayCores"
+    display_name: "Cores for the gateway service."
+    uint_value: 2
+    display_category: "Resources"
+
+  - name: "GatewayMemory"
+    display_name: "Memory for the gateway service."
+    string_value: 3GiB
+    display_category: "Resources"
+
+  - name: "DatabaseCores"
+    display_name: "Cores for the database service."
+    uint_value: 1
+    display_category: "Resources"
+
+  - name: "DatabaseMemory"
+    display_name: "Memory for the database service."
+    string_value: 1GiB
+    display_category: "Resources"
+
+  - name: "LiteLLMVersion"
+    display_name: >-
+      LiteLLM container image tag. v1.97.0 or later is required: earlier releases ignore the
+      x-litellm-api-key header the gateway endpoint depends on. Changing this requires a
+      fresh database.
+    string_value: "v1.97.0"
+    display_category: "Container Versions"
+
+  - name: "PostgresVersion"
+    display_name: "PostgreSQL container image tag."
+    string_value: "16"
+    display_category: "Container Versions"
