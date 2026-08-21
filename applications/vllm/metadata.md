@@ -1,7 +1,7 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 ---
 id: "ciq/ml_and_ai/vllm"
-name: "vLLM autoscaled inference"
+name: "vllm"
 category: "ML_AND_AI"
 tags:
 - LLM
