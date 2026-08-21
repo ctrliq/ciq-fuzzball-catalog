@@ -80,6 +80,12 @@ values:
     display_name: The fraction of GPU memory to be used for the model.
     string_value: "0.9"
     display_category: Model Configuration
+  - name: extra-args
+    display_name: >-
+      Additional command-line arguments appended to vllm serve, for tuning knobs the
+      entry does not expose (e.g. --enforce-eager --max-num-batched-tokens 512).
+    string_value: ""
+    display_category: Model Configuration
 
   - name: gpus-per-replica
     display_name: >-

@@ -52,6 +52,10 @@
 {{- $gpus_per_replica := int (index . "gpus-per-replica") }}
 {{- $tensor_parallel := max 1 $gpus_per_replica }}
 {{- $gpu_model := trim (index . "gpu-model") }}
+{{- $extra_args := trim (index . "extra-args") }}
+{{- if and $extra_args (not (regexMatch "^[A-Za-z0-9 ._=/-]+$" $extra_args)) }}
+  {{- fail "extra-args may contain only letters, digits, spaces, and . _ = / -" }}
+{{- end }}
 {{- $hf_token_secret := trim (index . "hf-token-secret") }}
 
 {{- $api_key := trim (index . "api-key") }}
@@ -110,7 +114,7 @@ services:
         --max-model-len {{ index . "max-context-size" }} \
         --gpu-memory-utilization {{ index . "gpu-memory-utilization" }} \
         --host 0.0.0.0 \
-        --port {{ $vllm_port }}
+        --port {{ $vllm_port }}{{ if $extra_args }} {{ $extra_args }}{{ end }}
     resource:
       cpu:
         cores: {{ index . "replica-cores" }}
