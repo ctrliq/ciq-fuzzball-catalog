@@ -1,0 +1,117 @@
+values:
+  - name: model
+    display_name: HuggingFace model to serve, as an hf:// URI.
+    string_value: hf://openai/gpt-oss-20b
+    display_category: Model
+  - name: gpu
+    display_name: "GPU platform: nvidia or amd."
+    string_value: nvidia
+    display_category: Model
+  - name: hf-token-secret
+    display_name: >-
+      Fuzzball secret holding a HuggingFace token (secret://user/<name>), used only
+      during model download. Required only for gated or private models.
+    secret_value:
+      reference: ""
+    display_category: Model
+
+  - name: proxy
+    display_name: Front the replica pool with an in-workflow LiteLLM proxy holding the endpoint.
+    bool_value: true
+    display_category: Access
+  - name: scope
+    display_name: "Authorization scope of the service endpoint: user, group, organization, or public."
+    string_value: group
+    display_category: Access
+  - name: api-key
+    display_name: >-
+      OpenAI API key enforced by the LiteLLM proxy (master key). Must start with sk-.
+      Auto-generated when left empty; set an explicit strong key for public endpoints.
+      Unused when proxy is disabled; access is then governed by the endpoint scope.
+    string_value: ""
+    display_category: Access
+
+  - name: min-replicas
+    display_name: Minimum number of vLLM replicas. 0 enables scale-to-zero.
+    uint_value: 1
+    display_category: Scaling
+  - name: max-replicas
+    display_name: Maximum number of vLLM replicas.
+    uint_value: 4
+    display_category: Scaling
+  - name: scale-up-requests-per-minute
+    display_name: >-
+      Request rate through the LiteLLM proxy (requests observed within a minute, at or
+      above this count) that adds a replica. Must be at least 1. Only used when proxy is
+      enabled.
+    uint_value: 30
+    display_category: Scaling
+  - name: scale-up-cooldown
+    display_name: >-
+      Minimum seconds between scale-up actions. Replicas released while earlier ones are
+      still cold-starting count toward the pool, so during a long model load a low value
+      can provision more replicas than the eventual load needs; raise this toward your
+      model's cold-start time to limit overshoot. Only used when proxy is enabled.
+    uint_value: 120
+    display_category: Scaling
+  - name: drain-period
+    display_name: >-
+      Seconds a retiring replica keeps running after leaving rotation, so streaming
+      generations in flight can complete (maximum 600).
+    uint_value: 300
+    display_category: Scaling
+
+  - name: volume
+    display_name: >-
+      Volume holding the downloaded model. The default is ephemeral; use a persistent
+      volume to avoid re-downloading the model on every workflow start. Mounted at /data.
+    string_value: volume://user/ephemeral
+    display_category: Storage
+  - name: ingress-timeout
+    display_name: Timeout for the model download at workflow start.
+    string_value: 2h
+    display_category: Storage
+
+  - name: max-context-size
+    display_name: Maximum context size. This will impact GPU memory usage.
+    uint_value: 131072
+    display_category: Model Configuration
+  - name: gpu-memory-utilization
+    display_name: The fraction of GPU memory to be used for the model.
+    string_value: "0.9"
+    display_category: Model Configuration
+
+  - name: gpus-per-replica
+    display_name: >-
+      Number of GPU devices per replica (also the tensor-parallel size). 0 requests no
+      GPU; note the default images are GPU builds, so 0 also requires overriding
+      vllm-image with a CPU-build image (testing only).
+    uint_value: 1
+    display_category: Resources
+  - name: gpu-model
+    display_name: GPU model to request (e.g. NVIDIA L40S). Empty requests any GPU of the selected platform.
+    string_value: ""
+    display_category: Resources
+  - name: replica-cores
+    display_name: CPU cores per replica.
+    uint_value: 8
+    display_category: Resources
+  - name: replica-memory
+    display_name: Memory per replica.
+    string_value: 32GiB
+    display_category: Resources
+
+  - name: vllm-image
+    display_name: vLLM container image used on the nvidia platform.
+    string_value: docker://vllm/vllm-openai:v0.10.1
+    display_category: Versions
+  - name: vllm-rocm-image
+    display_name: >-
+      vLLM container image used on the amd platform. Pick a build matching the GPU family
+      (this default is an RDNA build; MI-series CDNA GPUs need a CDNA build).
+    string_value: docker://rocm/vllm:rocm7.14.0_rdna_ubuntu24.04_py3.14_pytorch_2.11.0_vllm_0.23.0
+    display_category: Versions
+  - name: litellm-image
+    display_name: LiteLLM container image used when proxy is enabled.
+    string_value: docker://ghcr.io/berriai/litellm:v1.97.0
+    display_category: Versions
