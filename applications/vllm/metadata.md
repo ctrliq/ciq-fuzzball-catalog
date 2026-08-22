@@ -101,8 +101,8 @@ header.
 
 Resource, image-version, scaling, and vLLM tuning knobs are available under
 the Resources, Versions, Scaling, and Model Configuration categories. Under
-Storage, point `volume` at a persistent volume to keep the downloaded model
-across workflow restarts instead of re-downloading it each start.
+Storage, set `volume` to the name of a persistent volume (e.g.
+`volume=my-models`) to keep the downloaded model across workflow restarts.
 
 The workflow runs until it is cancelled. The rendered workflow also serves as a
 working example of fronting an autoscaled service pool with an in-workflow

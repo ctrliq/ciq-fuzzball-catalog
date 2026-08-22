@@ -63,9 +63,10 @@ values:
 
   - name: volume
     display_name: >-
-      Volume holding the downloaded model. The default is ephemeral; use a persistent
-      volume to avoid re-downloading the model on every workflow start. Mounted at /data.
-    string_value: volume://user/ephemeral
+      Volume holding the downloaded model: 'ephemeral' (default), or the name of an
+      existing persistent volume to keep the model across workflow restarts.
+      Mounted at /data.
+    string_value: ephemeral
     display_category: Storage
   - name: ingress-timeout
     display_name: Timeout for the model download at workflow start.

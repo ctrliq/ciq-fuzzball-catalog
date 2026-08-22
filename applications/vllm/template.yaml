@@ -25,22 +25,18 @@
 {{- end }}
 
 {{- $volume := trim .volume }}
-{{- if not (hasPrefix "volume://" $volume) }}
-  {{- fail "volume must be a volume:// reference, e.g. volume://user/ephemeral" }}
+{{- if not $volume }}
+  {{- fail "volume must be 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+{{- /* Only structural integrity: name validity is the server's job, but a quote
+       or backslash would corrupt the rendered YAML before the server sees it. */}}
+{{- if or (contains "\"" $volume) (contains "\\" $volume) }}
+  {{- fail "volume must not contain quotes or backslashes" }}
 {{- end }}
 
 {{- $min_replicas := int (index . "min-replicas") }}
 {{- $max_replicas := int (index . "max-replicas") }}
-{{- if lt $max_replicas 1 }}
-  {{- fail "max-replicas must be at least 1" }}
-{{- end }}
-{{- if gt $min_replicas $max_replicas }}
-  {{- fail "min-replicas must not exceed max-replicas" }}
-{{- end }}
 {{- $drain_period := int (index . "drain-period") }}
-{{- if gt $drain_period 600 }}
-  {{- fail "drain-period must not exceed 600 seconds" }}
-{{- end }}
 {{- $scale_up_rpm := int (index . "scale-up-requests-per-minute") }}
 {{- if lt $scale_up_rpm 1 }}
   {{- fail "scale-up-requests-per-minute must be at least 1" }}
@@ -78,7 +74,12 @@ version: v4
 
 volumes:
   data:
-    reference: {{ $volume }}
+    {{- if eq (lower $volume) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    use: persistent
+    name: "{{ $volume }}"
+    {{- end }}
     ingress:
       - source:
           uri: {{ $model }}
