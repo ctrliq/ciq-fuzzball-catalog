@@ -1,0 +1,300 @@
+# Copyright 2026 CIQ, Inc. All rights reserved.
+
+{{- $model := trim .Model }}
+{{- if not (hasPrefix "hf://" $model) }}
+  {{- fail "Model must be an hf:// URI, e.g. hf://openai/gpt-oss-20b" }}
+{{- end }}
+{{- $model_name := trim (trimPrefix "hf://" $model) }}
+{{- if not $model_name }}
+  {{- fail "Model must name a repository, e.g. hf://openai/gpt-oss-20b" }}
+{{- end }}
+{{- $model_dir := $model_name | lower | replace "/" "--" }}
+
+{{- $gpu := lower (trim .Gpu) }}
+{{- if and (ne $gpu "nvidia") (ne $gpu "amd") }}
+  {{- fail "Gpu must be one of: nvidia, amd" }}
+{{- end }}
+{{- $gpu_device := "nvidia.com/gpu" }}
+{{- if eq $gpu "amd" }}
+  {{- $gpu_device = "amd.com/gpu" }}
+{{- end }}
+
+{{- $scope := lower (trim .Scope) }}
+{{- if not (has $scope (list "user" "group" "organization" "public")) }}
+  {{- fail "Scope must be one of: user, group, organization, public" }}
+{{- end }}
+
+{{- $volume := trim .Volume }}
+{{- if not $volume }}
+  {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+{{- /* Only structural integrity: name validity is the server's job, but a quote
+       or backslash would corrupt the rendered YAML before the server sees it. */}}
+{{- if or (contains "\"" $volume) (contains "\\" $volume) }}
+  {{- fail "Volume must not contain quotes or backslashes" }}
+{{- end }}
+
+{{- $min_replicas := int .MinReplicas }}
+{{- $max_replicas := int .MaxReplicas }}
+{{- $drain_period := int .DrainPeriod }}
+{{- $scale_up_rpm := int .ScaleUpRequestsPerMinute }}
+{{- if lt $scale_up_rpm 1 }}
+  {{- fail "ScaleUpRequestsPerMinute must be at least 1" }}
+{{- end }}
+{{- $scale_up_cooldown := int .ScaleUpCooldown }}
+{{- if lt $scale_up_cooldown 15 }}
+  {{- fail "ScaleUpCooldown must be at least 15 seconds" }}
+{{- end }}
+{{- $gpus_per_replica := int .GpusPerReplica }}
+{{- $tensor_parallel := max 1 $gpus_per_replica }}
+{{- $gpu_model := trim .GpuModel }}
+{{- $extra_args := trim .ExtraArgs }}
+{{- if and $extra_args (not (regexMatch "^[A-Za-z0-9 ._=/-]+$" $extra_args)) }}
+  {{- fail "ExtraArgs may contain only letters, digits, spaces, and . _ = / -" }}
+{{- end }}
+{{- $hf_token_secret := trim .HfTokenSecret }}
+
+{{- $api_key := trim .ApiKey }}
+{{- if .Proxy }}
+  {{- if $api_key }}
+    {{- if not (regexMatch "^sk-[A-Za-z0-9_-]+$" $api_key) }}
+      {{- fail "ApiKey must start with sk- and contain only letters, digits, '-' and '_'" }}
+    {{- end }}
+  {{- else }}
+    {{- $api_key = printf "sk-fb-%d%d%d%d" (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) }}
+  {{- end }}
+{{- end }}
+
+{{- $vllm_port := 8000 }}
+{{- $litellm_port := randInt 24001 32000 }}
+{{- $data_mount := "/data" }}
+{{- $model_path := printf "%s/models/%s" $data_mount $model_dir }}
+
+version: v4
+
+volumes:
+  data:
+    {{- if eq (lower $volume) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    use: persistent
+    name: "{{ $volume }}"
+    {{- end }}
+    ingress:
+      - source:
+          uri: {{ $model }}
+          {{- if $hf_token_secret }}
+          secret: {{ $hf_token_secret }}
+          {{- end }}
+        destination:
+          uri: file://models/{{ $model_dir }}
+        policy:
+          timeout:
+            execute: {{ .IngressTimeout }}
+
+services:
+  vllm:
+    persist: true
+    image:
+      uri: {{ if eq $gpu "amd" }}{{ .VllmRocmImage }}{{ else }}{{ .VllmImage }}{{ end }}
+    mounts:
+      {{ $data_mount }}:
+        volume: data
+    env:
+      # The model is already local (ingressed); serve fully offline.
+      - HF_HUB_OFFLINE=1
+      - HF_HOME={{ $data_mount }}/.cache/huggingface
+      {{- if eq $gpu "amd" }}
+      - PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
+      {{- end }}
+    script: |
+      #!/bin/sh
+      exec vllm serve "{{ $model_path }}" \
+        --served-model-name "{{ $model_name }}" \
+        --tensor-parallel-size {{ $tensor_parallel }} \
+        --max-model-len {{ .MaxContextSize }} \
+        --gpu-memory-utilization {{ .GpuMemoryUtilization }} \
+        --host 0.0.0.0 \
+        --port {{ $vllm_port }}{{ if $extra_args }} {{ $extra_args }}{{ end }}
+    resource:
+      cpu:
+        cores: {{ .ReplicaCores }}
+      memory:
+        size: {{ .ReplicaMemory }}
+      {{- if gt $gpus_per_replica 0 }}
+      devices:
+        {{ $gpu_device }}: {{ $gpus_per_replica }}
+      {{- if $gpu_model }}
+      annotations:
+        {{ $gpu_device }}.model: "{{ $gpu_model }}"
+      {{- end }}
+      {{- end }}
+    network:
+      ports:
+        - name: openai-api
+          port: {{ $vllm_port }}
+          protocol: tcp
+      {{- if not .Proxy }}
+      endpoints:
+        - name: openai
+          port-name: openai-api
+          protocol: http
+          type: subdomain
+          scope: {{ $scope }}
+          per-replica: true
+          # Discovery contract shared with the litellm gateway entry: it
+          # registers endpoints carrying these two annotations.
+          annotations:
+            ciq.com/api: openai
+            ciq.com/model: "{{ $model_name }}"
+      {{- end }}
+    readiness-probe:
+      http-get:
+        path: /health
+        port: {{ $vllm_port }}
+        scheme: HTTP
+      initial-delay-seconds: 60
+      period-seconds: 15
+      timeout-seconds: 5
+      failure-threshold: 120
+      success-threshold: 1
+    autoscaler:
+      replicas:
+        min: {{ $min_replicas }}
+        max: {{ $max_replicas }}
+      metrics:
+        enabled: true
+        path: /metrics
+        port: {{ $vllm_port }}
+        interval: 15
+      {{- if not .Proxy }}
+      scale-up:
+        triggers:
+          - metrics-query: vllm:num_requests_waiting >= bool 2
+            cooldown-period: 60
+      {{- end }}
+      scale-down:
+        # Sustained idleness, not an instantaneous sample: a replica between
+        # two requests reports 0 running at a scrape instant, which would
+        # retire busy replicas every cooldown.
+        metrics-query: max_over_time(vllm:num_requests_running[5m]) == bool 0
+        cooldown-period: 300
+        drain-period: {{ $drain_period }}
+
+  {{- if .Proxy }}
+
+  litellm:
+    persist: true
+    image:
+      uri: {{ .LitellmImage }}
+    resource:
+      cpu:
+        cores: 2
+      memory:
+        size: 4GiB
+    network:
+      ports:
+        - name: openai-api
+          port: {{ $litellm_port }}
+          protocol: tcp
+      endpoints:
+        - name: openai
+          port-name: openai-api
+          protocol: http
+          type: subdomain
+          scope: {{ $scope }}
+    dynamic-config:
+      path: /etc/litellm/config.yaml
+      services: [vllm]
+      script: |
+        if [ "${#SERVICES_VLLM_OPENAI_API[@]}" -eq 0 ]; then
+          cat <<'EOF'
+        model_list: []
+        EOF
+        else
+          cat <<'EOF'
+        model_list:
+        EOF
+          for addr in "${SERVICES_VLLM_OPENAI_API[@]}"; do
+            cat <<EOF
+          - model_name: "{{ $model_name }}"
+            litellm_params:
+              model: "hosted_vllm/{{ $model_name }}"
+              api_base: "http://${addr}/v1"
+        EOF
+          done
+        fi
+        cat <<'EOF'
+        general_settings:
+          master_key: "{{ $api_key }}"
+        litellm_settings:
+          callbacks: ["prometheus"]
+          num_retries: 2
+          # The autoscaler's scraper sends no credentials; without this the
+          # scrape gets 401 and no scale trigger can ever fire.
+          require_auth_for_metrics_endpoint: false
+        EOF
+    script: |
+      #!/bin/bash
+      # LiteLLM reads its config only at startup, while Fuzzball re-renders the
+      # dynamic-config file in place as the pool scales; watch the file and
+      # restart LiteLLM whenever the backend list changes.
+      config=/etc/litellm/config.yaml
+      start() {
+        litellm --config "$config" --host 0.0.0.0 --port {{ $litellm_port }} &
+        litellm_pid=$!
+      }
+      current() { md5sum "$config" | cut -d' ' -f1; }
+      start
+      last=$(current)
+      while true; do
+        sleep 5
+        now=$(current)
+        if [ "$now" != "$last" ]; then
+          # Settle: the file is rewritten in place, so re-read once in case we
+          # hashed a partial write.
+          sleep 1
+          now=$(current)
+          last=$now
+          kill "$litellm_pid" 2>/dev/null
+          wait "$litellm_pid" 2>/dev/null
+          start
+        elif ! kill -0 "$litellm_pid" 2>/dev/null; then
+          wait "$litellm_pid" 2>/dev/null
+          start
+        fi
+      done
+    readiness-probe:
+      http-get:
+        path: /health/readiness
+        port: {{ $litellm_port }}
+        scheme: HTTP
+      initial-delay-seconds: 10
+      period-seconds: 10
+      timeout-seconds: 5
+      failure-threshold: 30
+      success-threshold: 1
+    autoscaler:
+      metrics:
+        enabled: true
+        # LiteLLM serves the Prometheus exporter at /metrics/ (the bare path
+        # 307-redirects there); scrape the canonical path directly.
+        path: /metrics/
+        port: {{ $litellm_port }}
+        interval: 15
+      scale-up:
+        triggers:
+          # One trigger only: submit-time validation allows a target service to
+          # be named by at most one trigger. Scale-policy queries are evaluated
+          # against the owning replica's own scraped series, so only
+          # LiteLLM-visible signals can appear here: failed requests wake an
+          # empty or failing pool, sustained request rate grows it under load.
+          # Route filter: metrics scrapes and readiness probes are counted in
+          # these counters too and would satisfy the rate threshold on their
+          # own; only real API traffic may scale the pool.
+          - metrics-query: >-
+              ((sum(increase(litellm_proxy_failed_requests_metric_total{route=~"/v1/.*"}[1m])) or vector(0)) > bool 0)
+              + ((sum(increase(litellm_proxy_total_requests_metric_total{route=~"/v1/.*"}[1m])) or vector(0)) >= bool {{ $scale_up_rpm }})
+            cooldown-period: {{ $scale_up_cooldown }}
+            services: [vllm]
+  {{- end }}
