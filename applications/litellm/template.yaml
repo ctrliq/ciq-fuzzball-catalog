@@ -1,14 +1,11 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 
-{{- $masterKey := trim (index . "master-key-secret") }}
-{{- if not $masterKey }}
-{{- fail "master-key-secret is required: store the LiteLLM master key (sk-...) in a user-scoped secret and pass its reference, e.g. secret://user/litellm-master" }}
-{{- end }}
-{{- $clusterCA := trim (index . "cluster-ca-secret") }}
-{{- $dbPassword := trim (index . "database-password-secret") }}
-{{- if not $dbPassword }}
-{{- $dbPassword = "litellm" }}
-{{- end }}
+{{- /* Both credentials are generated at submit time and live in the rendered
+       definition; the show-gateway job prints the master key. slim-sprig has
+       no randAlphaNum, so they are built as hex from 63-bit randInt draws. */}}
+{{- $masterKey := printf "sk-%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+{{- $dbPassword := printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+{{- $clusterCA := trim .ClusterCASecret }}
 {{- $dbPort := randInt 10000 17000 }}
 {{- $llmPort := randInt 17000 24000 }}
 {{- $dbUser := "litellm" }}
@@ -20,7 +17,7 @@ version: v4
 
 volumes:
   db:
-    reference: {{ index . "data-volume" }}
+    reference: {{ .DataVolume }}
 
 services:
   # The gateway's state -- virtual keys, per-team budgets, spend history, and the
@@ -29,8 +26,19 @@ services:
   # versions: a mismatched release accepts writes and then never routes the model.
   database:
     image:
-      uri: docker://postgres:{{ index . "postgres-version" }}
-    command: ["docker-entrypoint.sh", "postgres", "-p", "{{ $dbPort }}"]
+      uri: docker://postgres:{{ .PostgresVersion }}
+    script: |
+      #!/bin/bash
+      set -e
+      docker-entrypoint.sh postgres -p {{ $dbPort }} &
+      db_pid=$!
+      # The password is generated fresh at every submit, but a persistent data
+      # volume keeps the one it was initialized with. Re-set it on every start
+      # over the local socket, which the image trusts without a password.
+      until psql -h /var/run/postgresql -p {{ $dbPort }} -U {{ $dbUser }} -d {{ $dbName }} -c "ALTER USER {{ $dbUser }} WITH PASSWORD '{{ $dbPassword }}'" > /dev/null 2>&1; do
+        sleep 2
+      done
+      wait "${db_pid}"
     env:
       - POSTGRES_USER={{ $dbUser }}
       - POSTGRES_PASSWORD={{ $dbPassword }}
@@ -53,24 +61,24 @@ services:
       failure-threshold: 60
     resource:
       cpu:
-        cores: {{ index . "database-cores" }}
+        cores: {{ .DatabaseCores }}
       memory:
-        size: {{ index . "database-memory" }}
+        size: {{ .DatabaseMemory }}
 
   gateway:
     image:
-      uri: docker://ghcr.io/berriai/litellm-database:{{ index . "litellm-version" }}
+      uri: docker://ghcr.io/berriai/litellm-database:{{ .LiteLLMVersion }}
     env:
       - STORE_MODEL_IN_DB=True
-      - DB_PASSWORD={{ $dbPassword }}
+      - DATABASE_URL=postgresql://{{ $dbUser }}:{{ $dbPassword }}@database.svc:{{ $dbPort }}/{{ $dbName }}
       - LITELLM_MASTER_KEY={{ $masterKey }}
       - LITELLM_LOG=INFO
       - SSL_CERT_FILE={{ $caBundle }}
       - LLM_PORT={{ $llmPort }}
-      - DISCOVERY_VALUE={{ index . "discovery-api-value" }}
-      - REFRESH_INTERVAL={{ index . "refresh-interval" }}
-      - TOKEN_TTL={{ index . "token-lifetime" }}
-      - COLD_START_RETRIES={{ index . "cold-start-retries" }}
+      - DISCOVERY_VALUE={{ .DiscoveryApiValue }}
+      - REFRESH_INTERVAL={{ .RefreshInterval }}
+      - TOKEN_TTL={{ .TokenLifetime }}
+      - COLD_START_RETRIES={{ .ColdStartRetries }}
       - FB_CA_BUNDLE={{ $caBundle }}
 {{- if $clusterCA }}
       - CLUSTER_CA_PEM={{ $clusterCA }}
@@ -92,13 +100,10 @@ services:
           port-name: llm
           protocol: http
           type: subdomain
-          scope: {{ .scope }}
+          scope: {{ .ServiceScope }}
     script: |
       #!/bin/bash
       set -e
-      # The password may come from a secret, which the platform only substitutes
-      # as a whole env value -- so the URL is composed here rather than templated.
-      export DATABASE_URL="postgresql://{{ $dbUser }}:${DB_PASSWORD}@database.svc:{{ $dbPort }}/{{ $dbName }}"
       # Prisma's query engines were cached under the image user's HOME. Fuzzball
       # runs the container under a different uid, so without this LiteLLM's schema
       # push tries to re-download them.
@@ -110,8 +115,11 @@ services:
       # downloads over it.
       if [ -f /etc/ssl/certs/ca-certificates.crt ]; then
         cp /etc/ssl/certs/ca-certificates.crt {{ $caBundle }}
-      else
+      elif [ -f /etc/ssl/cert.pem ]; then
         cp /etc/ssl/cert.pem {{ $caBundle }}
+      else
+        echo "FATAL: no system CA bundle found in the gateway image" >&2
+        exit 1
       fi
       if [ -n "${CLUSTER_CA_PEM}" ]; then
         printf '%s\n' "${CLUSTER_CA_PEM}" >> {{ $caBundle }}
@@ -295,13 +303,17 @@ services:
       PYEOF
 
       litellm --port "${LLM_PORT}" &
-      gateway_pid=$!
-
-      # Discovery only makes sense once the admin API answers, and it must not
-      # outlive the process it configures.
       python3 /tmp/reconcile.py &
 
-      wait "${gateway_pid}"
+      # Either process dying takes the service down: litellm without the
+      # reconcile loop keeps answering while its model list and the tokens
+      # behind it silently go stale.
+      set +e
+      wait -n
+      status=$?
+      kill $(jobs -p) 2> /dev/null
+      wait
+      exit "${status}"
     persist: true
     readiness-probe:
       http-get:
@@ -313,9 +325,9 @@ services:
       failure-threshold: 60
     resource:
       cpu:
-        cores: {{ index . "gateway-cores" }}
+        cores: {{ .GatewayCores }}
       memory:
-        size: {{ index . "gateway-memory" }}
+        size: {{ .GatewayMemory }}
 
 jobs:
   show-gateway:
@@ -336,6 +348,10 @@ jobs:
       echo "   fuzzball workflow endpoints list"
       echo ""
 
+      echo "Master key for this gateway (also in the definition: fuzzball workflow get <workflow id>):"
+      echo "   ${MASTER_KEY}"
+      echo ""
+
       echo "Models discovered so far:"
       curl -sf -H "Authorization: Bearer ${MASTER_KEY}" "${GATEWAY}/v1/models" || \
         echo "   (none yet -- annotate a model endpoint with ciq.com/api and ciq.com/model)"
@@ -347,9 +363,9 @@ jobs:
       echo "Create a virtual key:"
       echo "   curl -X POST \\"
       echo "     -H \"Authorization: Bearer <fuzzball token>\" \\"
-      echo "     -H \"x-litellm-api-key: <master key>\" \\"
+      echo "     -H \"x-litellm-api-key: ${MASTER_KEY}\" \\"
       echo "     -H \"Content-Type: application/json\" \\"
-      echo "     <gateway url>key/generate -d '{\"models\": []}'"
+      echo "     <gateway url>/key/generate -d '{\"models\": []}'"
       echo ""
       echo "Then call the gateway with:"
       echo "   Authorization: Bearer <fuzzball token>"

@@ -24,19 +24,42 @@ Python, meant to be copied as the starting point for your own gateway.
 
 ## Using it
 
-Create a virtual key against the gateway, then point any OpenAI client at the endpoint
-URL. Callers send two credentials: the Fuzzball endpoint token in `Authorization`, and the
-LiteLLM virtual key in `x-litellm-api-key`.
+Every call to the gateway carries two credentials: a Fuzzball token in `Authorization`
+(the endpoint's scope is the access control), and a LiteLLM key in `x-litellm-api-key`.
 
-```sh
-curl -H "Authorization: Bearer ${FUZZBALL_ENDPOINT_TOKEN}" \
-     -H "x-litellm-api-key: ${VIRTUAL_KEY}" \
-     -H "Content-Type: application/json" \
-     "${GATEWAY_URL}v1/chat/completions" \
-     -d '{"model": "<alias>", "messages": [{"role": "user", "content": "hello"}]}'
-```
+1. Get the gateway URL:
 
-`GET /v1/models` lists whatever the gateway has discovered.
+   ```sh
+   fuzzball workflow endpoints list
+   ```
+
+2. Get the master key. It is generated at submit time; the `show-gateway` job prints it,
+   and it is in the workflow definition via `fuzzball workflow get <workflow>`.
+
+3. Get a Fuzzball token: your own user token works, or mint one bound to the gateway's
+   endpoint with `fuzzball workflow endpoints generate-token <endpoint id>`.
+
+4. Mint a virtual key for each caller, so the master key never leaves the operator:
+
+   ```sh
+   curl -X POST \
+        -H "Authorization: Bearer ${FUZZBALL_TOKEN}" \
+        -H "x-litellm-api-key: ${MASTER_KEY}" \
+        -H "Content-Type: application/json" \
+        "${GATEWAY_URL}/key/generate" -d '{"models": []}'
+   ```
+
+5. Point any OpenAI client at the gateway with the virtual key:
+
+   ```sh
+   curl -H "Authorization: Bearer ${FUZZBALL_TOKEN}" \
+        -H "x-litellm-api-key: ${VIRTUAL_KEY}" \
+        -H "Content-Type: application/json" \
+        "${GATEWAY_URL}/v1/chat/completions" \
+        -d '{"model": "<alias>", "messages": [{"role": "user", "content": "hello"}]}'
+   ```
+
+`GET /v1/models` (same two credentials) lists whatever the gateway has discovered.
 
 ## Publishing a model to it
 
@@ -62,11 +85,11 @@ scope is the access control.
 
 - **The database is pinned to the LiteLLM version.** A different LiteLLM release reading
   another release's schema accepts writes and then never routes the model. Changing
-  `litellm-version` means starting with a fresh database.
+  `LiteLLMVersion` means starting with a fresh database.
 - **The default volume is ephemeral**, so virtual keys, budgets and spend history are lost
-  when the workflow stops. Point `data-volume` at a persistent volume for anything you rely
+  when the workflow stops. Point `DataVolume` at a persistent volume for anything you rely
   on.
-- **`cluster-ca-secret` is effectively required on a cluster whose API is served with a
+- **`ClusterCASecret` is effectively required on a cluster whose API is served with a
   private CA.** Without it discovery never reaches the Fuzzball API: the gateway serves no
   models at all and only logs `DISCOVERY-FAILED` SSL errors, while the workflow itself looks
   healthy.
@@ -78,4 +101,6 @@ scope is the access control.
 - **Generation length is bounded by the cluster's endpoint ingress timeout.** A response
   that produces nothing for longer than that window is cut off. Ask your cluster
   administrator what it is set to.
-- The master key must live in a **user-scoped** secret (`secret://user/...`).
+- **Anyone who can read the workflow can read the master key.** It is generated fresh on
+  every workflow start and embedded in the workflow definition. Hand callers virtual keys,
+  never the master key.
