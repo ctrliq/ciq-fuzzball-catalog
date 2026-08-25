@@ -1,0 +1,248 @@
+# Copyright 2026 CIQ, Inc. All rights reserved.
+
+{{- /* Structural integrity only: a quote or backslash in a value would corrupt
+       the rendered YAML (workflow doc and the embedded haiku.rag config file);
+       semantic validity is the server's / haiku.rag's job. */}}
+{{- $endpoint := trim .Endpoint }}
+{{- if or (contains "\"" $endpoint) (contains "\\" $endpoint) (contains "\n" $endpoint) }}
+  {{- fail "Endpoint must not contain quotes or backslashes" }}
+{{- end }}
+{{- $embedding_model := trim .EmbeddingModel }}
+{{- if not $embedding_model }}
+  {{- fail "EmbeddingModel must not be empty" }}
+{{- end }}
+{{- if or (contains "\"" $embedding_model) (contains "\\" $embedding_model) (contains "\n" $embedding_model) }}
+  {{- fail "EmbeddingModel must not contain quotes or backslashes" }}
+{{- end }}
+{{- $embedding_dim := int .EmbeddingDim }}
+{{- if lt $embedding_dim 1 }}
+  {{- fail "EmbeddingDim must be at least 1" }}
+{{- end }}
+{{- $generation_model := trim .GenerationModel }}
+{{- if or (contains "\"" $generation_model) (contains "\\" $generation_model) (contains "\n" $generation_model) }}
+  {{- fail "GenerationModel must not contain quotes or backslashes" }}
+{{- end }}
+{{- $endpoint_token_secret := trim .EndpointTokenSecret }}
+{{- if or (contains "\"" $endpoint_token_secret) (contains "\\" $endpoint_token_secret) (contains "\n" $endpoint_token_secret) }}
+  {{- fail "EndpointTokenSecret must not contain quotes or backslashes" }}
+{{- end }}
+{{- $endpoint_token := trim .EndpointToken }}
+{{- if or (contains "\"" $endpoint_token) (contains "\\" $endpoint_token) (contains "\n" $endpoint_token) }}
+  {{- fail "EndpointToken must not contain quotes or backslashes" }}
+{{- end }}
+
+{{- $scope := lower (trim .Scope) }}
+{{- if not (has $scope (list "user" "group" "organization" "public")) }}
+  {{- fail "Scope must be one of: user, group, organization, public" }}
+{{- end }}
+
+{{- $volume := trim .Volume }}
+{{- if not $volume }}
+  {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+{{- if or (contains "\"" $volume) (contains "\\" $volume) (contains "\n" $volume) }}
+  {{- fail "Volume must not contain quotes or backslashes" }}
+{{- end }}
+
+{{- $chunk_size := int .ChunkSize }}
+{{- if lt $chunk_size 16 }}
+  {{- fail "ChunkSize must be at least 16 tokens" }}
+{{- end }}
+
+{{- $mcp_memory := trim .McpMemory }}
+{{- $ingester_memory := trim .IngesterMemory }}
+{{- $image := trim .Image }}
+{{- range $v := list $mcp_memory $ingester_memory $image }}
+  {{- if or (not $v) (contains "\"" $v) (contains "\\" $v) (contains "\n" $v) (contains "#" $v) }}
+    {{- fail "McpMemory, IngesterMemory, and Image must be non-empty and free of quotes, backslashes, and comments" }}
+  {{- end }}
+{{- end }}
+{{- $image_secret := trim .ImageSecret }}
+{{- if or (contains "\"" $image_secret) (contains "\\" $image_secret) (contains "\n" $image_secret) (contains "#" $image_secret) }}
+  {{- fail "ImageSecret must not contain quotes, backslashes, or comments" }}
+{{- end }}
+
+{{- $read_only := .ReadOnly }}
+{{- $api_key := $endpoint_token }}
+{{- if $endpoint_token_secret }}
+  {{- /* Secret injected as an env var (env supports secret:// references);
+         haiku.rag substitutes it at runtime so it never appears in the
+         rendered definition. */}}
+  {{- $api_key = "${RAG_ENDPOINT_TOKEN}" }}
+{{- end }}
+{{- if and (not $api_key) $endpoint }}
+  {{- /* haiku.rag substitutes ${FB_TOKEN} from the environment at runtime; the
+         workflow-scoped token is injected into every container and is the right
+         credential when the endpoint is another Fuzzball workflow endpoint.
+         Only defaulted when an endpoint is set: with no endpoint, OpenAI-style
+         clients fall back to api.openai.com, and the workflow token must never
+         be sent there. */}}
+  {{- $api_key = "${FB_TOKEN}" }}
+{{- end }}
+{{- $mcp_port := randInt 24001 28000 }}
+{{- $ingester_port := randInt 28001 32000 }}
+{{- $ingester_token := printf "rt-%d%d%d%d" (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) }}
+
+version: v4
+
+volumes:
+  data:
+    {{- if eq (lower $volume) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    use: persistent
+    name: "{{ $volume }}"
+    {{- end }}
+
+files:
+  haiku-config: |
+    environment: production
+    storage:
+      data_dir: /data
+    embeddings:
+      model:
+        provider: openai
+        name: "{{ $embedding_model }}"
+        vector_dim: {{ $embedding_dim }}
+        base_url: "{{ $endpoint }}"
+        api_key: "{{ $api_key }}"
+      batch_size: 64
+    {{- if $generation_model }}
+    qa:
+      model:
+        provider: openai
+        name: "{{ $generation_model }}"
+        base_url: "{{ $endpoint }}"
+        api_key: "{{ $api_key }}"
+    {{- end }}
+    analysis:
+      enabled: false
+    processing:
+      chunk_size: {{ $chunk_size }}
+      converter: docling-local
+      chunker: docling-local
+      chunker_type: hybrid
+      auto_title: false
+    {{- if $read_only }}
+    ingester:
+      queue:
+        path: /data/ingester.db
+      api:
+        host: 0.0.0.0
+        port: {{ $ingester_port }}
+        auth_token: "{{ $ingester_token }}"
+      sources:
+        - type: fs
+          id: inbox
+          root: /data/inbox
+          delete_orphans: false
+    {{- end }}
+
+services:
+  {{- if $read_only }}
+
+  # The single LanceDB writer: owns database creation and all ingestion (async
+  # job queue + the /data/inbox watch directory). The MCP service reads the
+  # same database read-only.
+  ingester:
+    persist: true
+    image:
+      uri: {{ $image }}
+      {{- if $image_secret }}
+      secret: {{ $image_secret }}
+      {{- end }}
+    files:
+      /app/haiku.rag.yaml: file://haiku-config
+    {{- if $endpoint_token_secret }}
+    env:
+      - RAG_ENDPOINT_TOKEN={{ $endpoint_token_secret }}
+    {{- end }}
+    mounts:
+      /data:
+        volume: data
+    resource:
+      cpu:
+        cores: {{ .IngesterCores }}
+      memory:
+        size: {{ $ingester_memory }}
+    network:
+      ports:
+        - name: ingest-api
+          port: {{ $ingester_port }}
+          protocol: tcp
+      endpoints:
+        - name: ingest
+          port-name: ingest-api
+          protocol: http
+          type: subdomain
+          scope: {{ $scope }}
+    script: |
+      #!/bin/sh
+      set -e
+      mkdir -p /data/inbox
+      haiku-rag --config /app/haiku.rag.yaml init
+      exec haiku-ingester --config /app/haiku.rag.yaml serve
+    readiness-probe:
+      tcp-socket:
+        port: {{ $ingester_port }}
+      initial-delay-seconds: 15
+      period-seconds: 10
+      timeout-seconds: 5
+      failure-threshold: 30
+      success-threshold: 1
+  {{- end }}
+
+  mcp:
+    persist: true
+    {{- if $read_only }}
+    depends-on:
+      - name: ingester
+        status: running
+    {{- end }}
+    image:
+      uri: {{ $image }}
+      {{- if $image_secret }}
+      secret: {{ $image_secret }}
+      {{- end }}
+    files:
+      /app/haiku.rag.yaml: file://haiku-config
+    {{- if $endpoint_token_secret }}
+    env:
+      - RAG_ENDPOINT_TOKEN={{ $endpoint_token_secret }}
+    {{- end }}
+    mounts:
+      /data:
+        volume: data
+    resource:
+      cpu:
+        cores: {{ .McpCores }}
+      memory:
+        size: {{ $mcp_memory }}
+    network:
+      ports:
+        - name: mcp
+          port: {{ $mcp_port }}
+          protocol: tcp
+      endpoints:
+        - name: mcp
+          port-name: mcp
+          protocol: http
+          type: subdomain
+          scope: {{ $scope }}
+          annotations:
+            ciq.com/api: mcp
+    script: |
+      #!/bin/sh
+      set -e
+      {{- if not $read_only }}
+      haiku-rag --config /app/haiku.rag.yaml init
+      {{- end }}
+      exec haiku-rag --config /app/haiku.rag.yaml {{ if $read_only }}--read-only {{ end }}mcp --host 0.0.0.0 --port {{ $mcp_port }}
+    readiness-probe:
+      tcp-socket:
+        port: {{ $mcp_port }}
+      initial-delay-seconds: 15
+      period-seconds: 10
+      timeout-seconds: 5
+      failure-threshold: 30
+      success-threshold: 1

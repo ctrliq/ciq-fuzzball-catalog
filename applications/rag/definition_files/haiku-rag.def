@@ -1,0 +1,114 @@
+# tag: 0.78.0-0
+#
+# haiku.rag runtime for the rag catalog entry: full haiku.rag (in-process
+# docling parsing + OCR) plus the slim package's ingester extra, with parsing
+# models baked in so workflows need no egress beyond their configured model
+# endpoint, and the analysis-gate patch (analysis.enabled config for the
+# code-execution MCP tool; submitted upstream -- drop the patch step once a
+# release carries it).
+
+Bootstrap: docker
+From: python:3.13-slim
+
+%post
+set -e
+
+# Runtime shared libraries for opencv (cv2), which docling's tableformer and
+# rapidocr both import; the slim base omits them ("No OCR engine found" at
+# parse time is the cv2 import failing, not a missing OCR package).
+apt-get update
+apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libxcb1
+rm -rf /var/lib/apt/lists/*
+
+# CPU-only torch, pinned first so the haiku.rag install below treats it as
+# satisfied: parsing runs on CPU and embeddings/generation are remote, while
+# the default wheels drag in the multi-GB CUDA stack.
+pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
+    torch==2.13.0 torchvision==0.28.0
+
+HAIKU_RAG_VERSION=0.78.0
+pip install --no-cache-dir \
+    "haiku.rag==${HAIKU_RAG_VERSION}" \
+    "haiku.rag-slim[ingester]==${HAIKU_RAG_VERSION}"
+
+# Analysis-gate patch: adds analysis.enabled and deregisters the analyze
+# (code-execution) MCP tool when disabled. Anchored so an upstream layout
+# change fails the build instead of silently shipping unpatched.
+cat <<'__EOF__' > /tmp/analyze-gate.py
+import re
+import sys
+from pathlib import Path
+
+import haiku.rag as pkg
+
+root = Path(pkg.__file__).parent
+
+models = root / "config" / "models.py"
+s = models.read_text()
+m = re.search(
+    r'class AnalysisConfig\(ConfigModel\):\n(?:    """(?:.|\n)*?"""\n)?((?:    .*\n|\n)*)', s
+)
+if not m:
+    sys.exit("AnalysisConfig anchor not found -- upstream layout changed")
+if "enabled: bool" not in m.group(1):
+    insert_at = m.start(1)
+    models.write_text(s[:insert_at] + "\n    enabled: bool = True\n" + s[insert_at:])
+
+mcp = root / "mcp.py"
+s = mcp.read_text()
+if "analysis.enabled" not in s:
+    if s.count("    return mcp") != 1:
+        sys.exit("mcp.py return anchor not found -- upstream layout changed")
+    s = s.replace(
+        "    return mcp",
+        '    if not config.analysis.enabled:\n        mcp.remove_tool("analyze")\n\n    return mcp',
+        1,
+    )
+    mcp.write_text(s)
+
+print("analyze gate applied")
+__EOF__
+python /tmp/analyze-gate.py
+rm /tmp/analyze-gate.py
+
+# Bake parsing models for air-gapped operation. All three env knobs matter:
+# docling ignores XDG/HF paths and caches its model weights (the bulk,
+# including RapidOCR) under $HOME/.cache/docling unless DOCLING_CACHE_DIR is
+# set; HF_HOME only ends up holding hub references. DOCLING_ARTIFACTS_PATH
+# makes runtime load straight from the bake with no download attempt. The
+# same three are exported in %environment so any runtime UID sees them.
+export HF_HOME=/opt/models/hf
+export DOCLING_CACHE_DIR=/opt/models/docling
+export DOCLING_ARTIFACTS_PATH=/opt/models/docling/models
+cat <<'__EOF__' > /tmp/bake-config.yaml
+environment: production
+storage:
+  data_dir: /tmp/bake
+processing:
+  converter: docling-local
+  chunker: docling-local
+  chunker_type: hybrid
+  auto_title: false
+__EOF__
+haiku-rag --config /tmp/bake-config.yaml download-models
+rm -rf /tmp/bake-config.yaml /tmp/bake
+chmod -R a+rX /opt/models
+
+# Fail the build rather than ship a SIF that breaks at first parse.
+python - <<'__EOF__'
+import os
+
+from haiku.rag.config.models import AnalysisConfig
+
+assert "enabled" in AnalysisConfig.model_fields, "analyze gate missing"
+import cv2  # noqa: F401  (docling tableformer + rapidocr both need it)
+import rapidocr  # noqa: F401
+models = "/opt/models/docling/models"
+assert os.path.isdir(models) and os.listdir(models), "docling model bake missing"
+print("build verification ok")
+__EOF__
+
+%environment
+export HF_HOME=/opt/models/hf
+export DOCLING_CACHE_DIR=/opt/models/docling
+export DOCLING_ARTIFACTS_PATH=/opt/models/docling/models

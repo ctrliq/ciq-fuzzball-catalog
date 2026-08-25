@@ -1,0 +1,104 @@
+values:
+  - name: Endpoint
+    display_name: >-
+      Base URL of an OpenAI-compatible endpoint serving the embedding model (and the
+      generation model, if set) -- e.g. the vllm catalog entry's endpoint URL. When
+      empty the services start but ingestion and search fail with a provider error;
+      start a new workflow with endpoint set for real use.
+    string_value: ""
+    display_category: Models
+  - name: EmbeddingModel
+    display_name: >-
+      Embedding model name served by the endpoint. The corpus is permanently bound to
+      this model: changing it against an existing corpus fails at startup (rebuild
+      with 'haiku-rag rebuild --set-embedder' to migrate).
+    string_value: nomic-embed-text
+    display_category: Models
+  - name: EmbeddingDim
+    display_name: Vector dimension of the embedding model.
+    uint_value: 768
+    display_category: Models
+  - name: GenerationModel
+    display_name: >-
+      Generation model name for the ask_question tool. Optional; when empty,
+      ask_question is not usable and retrieval tools are unaffected.
+    string_value: ""
+    display_category: Models
+  - name: EndpointTokenSecret
+    display_name: >-
+      Fuzzball secret (secret://user/<name>) holding the bearer token for the model
+      endpoint; injected at runtime and never stored in the rendered definition.
+      Preferred over EndpointToken for real credentials.
+    secret_value:
+      reference: ""
+    display_category: Models
+  - name: EndpointToken
+    display_name: >-
+      Bearer token for the model endpoint, stored in plain text in the rendered
+      definition (prefer EndpointTokenSecret). When both are empty, the workflow's
+      injected FB_TOKEN is used -- correct when the endpoint is another Fuzzball
+      workflow endpoint (e.g. the vllm entry) in your scope.
+    string_value: ""
+    display_category: Models
+
+  - name: ReadOnly
+    display_name: >-
+      When true (default), the MCP surface exposes retrieval only and ingestion runs
+      through a separate ingester service (async jobs API + watched inbox directory on
+      the volume). When false, no ingester runs and the MCP surface also exposes
+      document management tools.
+    bool_value: true
+    display_category: Access
+  - name: Scope
+    display_name: "Authorization scope of the service endpoints: user, group, organization, or public."
+    string_value: group
+    display_category: Access
+
+  - name: Volume
+    display_name: >-
+      Volume holding the corpus and index: 'ephemeral' (default; evaluation only --
+      cancelling the workflow destroys the corpus) or the name of an existing
+      persistent volume. Mounted at /data.
+    string_value: ephemeral
+    display_category: Storage
+
+  - name: ChunkSize
+    display_name: >-
+      Chunk size (tokens) for document splitting. Corpus-specific: raise for long-form
+      context, lower for precise fact retrieval. Changing it affects newly ingested
+      documents only.
+    uint_value: 256
+    display_category: Ingestion
+
+  - name: McpCores
+    display_name: CPU cores for the MCP service.
+    uint_value: 2
+    display_category: Resources
+  - name: McpMemory
+    display_name: Memory for the MCP service.
+    string_value: 4GiB
+    display_category: Resources
+  - name: IngesterCores
+    display_name: CPU cores for the ingester service (document parsing is CPU-heavy).
+    uint_value: 4
+    display_category: Resources
+  - name: IngesterMemory
+    display_name: Memory for the ingester service.
+    string_value: 8GiB
+    display_category: Resources
+
+  - name: Image
+    display_name: >-
+      haiku.rag container image, built from this entry's definition_files/haiku-rag.def
+      by the catalog's container CI; must bundle the full package, the ingester extra,
+      and pre-downloaded parsing models for air-gapped operation.
+    string_value: oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/rag-haiku-rag:0.78.0-0-amd64
+    display_category: Versions
+  - name: ImageSecret
+    display_name: >-
+      Fuzzball image secret (secret://user/<name>, type image with username/password
+      and trusted-domains) for pulling the haiku.rag image from a private registry.
+      Leave empty for public registries.
+    secret_value:
+      reference: ""
+    display_category: Versions

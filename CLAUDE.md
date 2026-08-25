@@ -86,6 +86,10 @@ docs may show them. Write new instructions against `fuzzball workflow catalog`.
 
 ## Style guide
 
+- Value names in `values.yaml` are **PascalCase** (`MinReplicas`,
+  `HfTokenSecret`), referenced in `template.yaml` as direct fields
+  (`.MinReplicas`, never `index . "min-replicas"`). Keep `metadata.md`
+  usage examples (`--values Name=...`) in the same casing.
 - Application templates should follow a style consistent with the existing
   templates listed below and the [style guide](StyleGuide.md).
   - bwa_alignment
