@@ -81,6 +81,15 @@ values:
     display_name: The fraction of GPU memory to be used for the model.
     string_value: "0.9"
     display_category: Model Configuration
+  - name: Ep
+    display_name: >-
+      Expert parallelism across the replica's GPUs: auto (enabled when the downloaded
+      model's config.json indicates a mixture-of-experts model), true (require a MoE
+      model; the service fails at start otherwise), or false (tensor parallelism only).
+      When enabled, the replica serves attention data-parallel and experts
+      expert-parallel across GpusPerReplica GPUs.
+    string_value: auto
+    display_category: Model Configuration
   - name: ExtraArgs
     display_name: >-
       Additional command-line arguments appended to vllm serve, for tuning knobs the
@@ -90,7 +99,8 @@ values:
 
   - name: GpusPerReplica
     display_name: >-
-      Number of GPU devices per replica (also the tensor-parallel size). 0 requests no
+      Number of GPU devices per replica (the tensor-parallel size, or the
+      data-parallel size when expert parallelism is enabled). 0 requests no
       GPU; note the default images are GPU builds, so 0 also requires overriding
       VllmImage with a CPU-build image (testing only).
     uint_value: 1

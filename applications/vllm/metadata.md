@@ -18,6 +18,8 @@ replica churn.
 fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-20b
 fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-120b,Gpu=amd
 fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-120b,MinReplicas=1,MaxReplicas=10
+fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-120b,GpusPerReplica=4
+fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-20b,GpusPerReplica=2,Ep=true
 ```
 
 The model is downloaded from the HuggingFace Hub once, at workflow start, into
@@ -82,11 +84,31 @@ Gateway catalog entry (`litellm`) picks the pool up automatically. An authentica
 idles at zero starts the first replica and returns `503` with a `Retry-After`
 header.
 
+## Expert parallelism
+
+For mixture-of-experts models the replica follows the
+[llm-d wide expert parallelism](https://llm-d.ai/docs/well-lit-paths/foundations/wide-expert-parallelism)
+layout on one node: attention runs data-parallel across the replica's GPUs and
+the expert layers are sharded expert-parallel
+(`--data-parallel-size GpusPerReplica --enable-expert-parallel`), instead of
+tensor parallelism. Whether the model is MoE is detected at service start from
+the downloaded model's `config.json`; with the default `Ep=auto` the right
+layout is picked automatically, and `Ep=true` on a non-MoE model fails the
+service at start with a message naming the model's architecture. The replica
+still serves one OpenAI-compatible API on the same port, so endpoints, the
+LiteLLM proxy, and autoscaling behave exactly as without expert parallelism.
+Multi-node expert-parallel serving groups are future work (FUZZ-8399 Phase 2).
+See [BENCHMARK.md](BENCHMARK.md) for the EP-versus-TP throughput comparison.
+
 ## Parameters
 
 - `Model`: HuggingFace model to serve, as an `hf://` URI (e.g.
   `hf://openai/gpt-oss-20b`).
 - `Gpu`: GPU platform, `nvidia` or `amd`.
+- `Ep`: expert parallelism — `auto` (default; enabled when the downloaded
+  model's `config.json` indicates a mixture-of-experts model), `true` (require
+  a MoE model; on a dense model the service fails at start naming the model's
+  architecture), or `false` (tensor parallelism only).
 - `Proxy`: whether to front the pool with an in-workflow LiteLLM proxy.
 - `Scope`: authorization scope of the service endpoint (`user`, `group`,
   `organization`, `public`). Note that a `public` pool endpoint is served
