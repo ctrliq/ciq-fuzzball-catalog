@@ -107,14 +107,17 @@ files:
         base_url: "{{ $endpoint }}"
         api_key: "{{ $api_key }}"
       batch_size: 64
-    {{- if $generation_model }}
+    {{- /* Always pin qa to the openai provider: haiku.rag's built-in default
+           is an ollama model, so leaving qa unset would make ask_question
+           dial a nonexistent localhost ollama. With no GenerationModel the
+           placeholder name turns the failure into a self-explanatory
+           "model 'generation-model-not-configured' not found". */}}
     qa:
       model:
         provider: openai
-        name: "{{ $generation_model }}"
+        name: "{{ $generation_model | default "generation-model-not-configured" }}"
         base_url: "{{ $endpoint }}"
         api_key: "{{ $api_key }}"
-    {{- end }}
     analysis:
       enabled: false
     processing:

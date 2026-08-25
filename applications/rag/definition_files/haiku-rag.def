@@ -80,10 +80,28 @@ rm /tmp/analyze-gate.py
 export HF_HOME=/opt/models/hf
 export DOCLING_CACHE_DIR=/opt/models/docling
 export DOCLING_ARTIFACTS_PATH=/opt/models/docling/models
+# The embeddings/qa blocks pin the openai provider with placeholder targets:
+# haiku.rag's DEFAULTS are ollama models, and download-models pulls every
+# ollama-provider model in the effective config -- with the defaults it dials
+# localhost:11434 and fails the build. openai-provider models are remote, so
+# nothing is downloaded for them (mirrors the entry's runtime config).
 cat <<'__EOF__' > /tmp/bake-config.yaml
 environment: production
 storage:
   data_dir: /tmp/bake
+embeddings:
+  model:
+    provider: openai
+    name: bake-placeholder
+    vector_dim: 768
+    base_url: http://bake-placeholder.invalid/v1
+    api_key: bake
+qa:
+  model:
+    provider: openai
+    name: bake-placeholder
+    base_url: http://bake-placeholder.invalid/v1
+    api_key: bake
 processing:
   converter: docling-local
   chunker: docling-local
