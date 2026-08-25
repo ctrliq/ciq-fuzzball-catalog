@@ -6,6 +6,10 @@
 {{- $masterKey := printf "sk-%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
 {{- $dbPassword := printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
 {{- $clusterCA := trim .ClusterCASecret }}
+{{- $dataVolume := trim .DataVolume }}
+{{- if not (hasPrefix "volume://" $dataVolume) }}
+{{- fail "DataVolume must be a volume:// reference, e.g. volume://user/ephemeral" }}
+{{- end }}
 {{- $dbPort := randInt 10000 17000 }}
 {{- $llmPort := randInt 17000 24000 }}
 {{- $dbUser := "litellm" }}
@@ -17,7 +21,7 @@ version: v4
 
 volumes:
   db:
-    reference: {{ .DataVolume }}
+    reference: {{ $dataVolume }}
 
 services:
   # The gateway's state -- virtual keys, per-team budgets, spend history, and the
@@ -32,17 +36,39 @@ services:
       set -e
       docker-entrypoint.sh postgres -p {{ $dbPort }} &
       db_pid=$!
+      # Forward shutdown so postgres exits cleanly; killed with the container
+      # it would leave a persistent volume needing recovery on the next start.
+      trap 'kill -TERM "${db_pid}" 2> /dev/null' TERM INT
       # The password is generated fresh at every submit, but a persistent data
       # volume keeps the one it was initialized with. Re-set it on every start
       # over the local socket, which the image trusts without a password.
-      until psql -h /var/run/postgresql -p {{ $dbPort }} -U {{ $dbUser }} -d {{ $dbName }} -c "ALTER USER {{ $dbUser }} WITH PASSWORD '{{ $dbPassword }}'" > /dev/null 2>&1; do
+      tries=0
+      until psql -h /var/run/postgresql -p {{ $dbPort }} -U {{ $dbUser }} -d {{ $dbName }} -c "ALTER USER {{ $dbUser }} WITH PASSWORD '{{ $dbPassword }}'" > /dev/null 2> /tmp/password-reset.err; do
+        kill -0 "${db_pid}" 2> /dev/null || { echo "FATAL: postgres exited before the password was reset" >&2; exit 1; }
+        tries=$((tries + 1))
+        if [ "${tries}" -ge 60 ]; then
+          echo "FATAL: password reset keeps failing; was the volume initialized by something else?" >&2
+          cat /tmp/password-reset.err >&2
+          exit 1
+        fi
         sleep 2
       done
+      set +e
       wait "${db_pid}"
+      status=$?
+      if [ "${status}" -gt 128 ]; then
+        wait "${db_pid}"
+        status=$?
+      fi
+      exit "${status}"
     env:
       - POSTGRES_USER={{ $dbUser }}
       - POSTGRES_PASSWORD={{ $dbPassword }}
       - POSTGRES_DB={{ $dbName }}
+      # With host networking 127.0.0.1 is the node's loopback, and initdb's
+      # default pg_hba trusts it -- any process on the node would get in as
+      # superuser without the password. Keep trust only on the local socket.
+      - POSTGRES_INITDB_ARGS=--auth-local=trust --auth-host=scram-sha-256
     mounts:
       {{ $dbMount }}:
         volume: db
@@ -130,7 +156,7 @@ services:
       # this workflow's identity can reach. LiteLLM itself is the state of record
       # (read back through /model/info each pass), so a restart of this loop
       # cannot lose track of what is registered.
-      import json, os, ssl, threading, time, urllib.error, urllib.request
+      import datetime, json, os, ssl, threading, time, urllib.error, urllib.request
 
       API = os.environ["FB_OPENAPI_URL"].rstrip("/")
       OWN_WORKFLOW = os.environ.get("FB_WORKFLOW_ID", "")
@@ -159,16 +185,22 @@ services:
           return json.loads(raw) if raw else None
 
       def refresh_token():
-          # Service tokens last seven days. Renew well inside that, and keep the
-          # old one on failure -- it stays valid until its original expiry.
+          # Service tokens last seven days. Renew well inside that; after a
+          # failure retry hourly -- the old token stays valid until its
+          # original expiry, but another four-day sleep would overshoot it.
+          delay = 4 * 24 * 3600
           while True:
-              time.sleep(4 * 24 * 3600)
+              time.sleep(delay)
+              delay = 3600
               try:
                   fresh = call(API + "/v4/workflows:refreshToken", TOKEN[0],
                                method="POST", body=dict(), ctx=CTX)
                   if fresh and fresh.get("token"):
                       TOKEN[0] = fresh["token"]
+                      delay = 4 * 24 * 3600
                       print("TOKEN-REFRESHED", flush=True)
+                  else:
+                      print("TOKEN-REFRESH-FAILED unexpected response", flush=True)
               except Exception as err:
                   print("TOKEN-REFRESH-FAILED", repr(err), flush=True)
 
@@ -241,19 +273,27 @@ services:
           return current
 
       def register(base, model, endpoint_id):
-          token = call(API + "/v4/endpoints/" + endpoint_id + "/token", TOKEN[0],
-                       method="POST", body=dict(expirationSeconds=TTL), ctx=CTX)
+          # Returns the epoch time the minted token really expires: the server
+          # grants at most the workflow token's remaining lifetime, which can
+          # be far less than the TTL requested here.
+          minted = call(API + "/v4/endpoints/" + endpoint_id + "/token", TOKEN[0],
+                        method="POST", body=dict(expirationSeconds=TTL), ctx=CTX)
           params = dict(model="openai/" + model, api_base=base,
-                        api_key=token.get("token"), num_retries=RETRIES)
+                        api_key=minted.get("token"), num_retries=RETRIES)
           call(LLM + "/model/new", MASTER, method="POST",
                body=dict(model_name=model, litellm_params=params))
+          try:
+              stamp = (minted.get("expiresAt") or "").replace("Z", "+00:00")
+              return datetime.datetime.fromisoformat(stamp).timestamp()
+          except ValueError:
+              return time.time() + TTL
 
       def deregister(model_id):
           call(LLM + "/model/delete", MASTER, method="POST", body=dict(id=model_id))
 
       threading.Thread(target=refresh_token, daemon=True).start()
 
-      minted_at = dict()
+      rotate_at = dict()
       while True:
           try:
               wanted = desired(list_endpoints())
@@ -270,23 +310,31 @@ services:
 
           for base, spec in wanted.items():
               known = base in current
-              expiring = known and time.time() - minted_at.get(base, 0) > TTL / 2
+              expiring = known and time.time() >= rotate_at.get(base, 0)
               if known and not expiring:
                   continue
               try:
                   # Rotation adds the replacement before dropping the original,
                   # so the model is never left without a route. Both point at the
                   # same replica, so the momentary duplicate is harmless.
-                  register(base, spec["model"], spec["endpoint"])
-                  minted_at[base] = time.time()
-                  if expiring:
-                      for model_id in current[base]:
-                          deregister(model_id)
-                      print("ROTATED", spec["model"], base, flush=True)
-                  else:
-                      print("REGISTERED", spec["model"], base, flush=True)
+                  granted = register(base, spec["model"], spec["endpoint"])
               except Exception as err:
                   print("REGISTER-FAILED", base, repr(err), flush=True)
+                  continue
+              removed_all = True
+              for model_id in (current.get(base) or []):
+                  try:
+                      deregister(model_id)
+                  except Exception as err:
+                      removed_all = False
+                      print("REMOVE-FAILED stale route kept", base, repr(err), flush=True)
+              if removed_all:
+                  # Halfway to the granted expiry, so a short grant rotates
+                  # early instead of serving a dead token. A failed removal
+                  # leaves rotate_at in the past and the next pass retries the
+                  # whole rotation, stale routes included.
+                  rotate_at[base] = time.time() + (granted - time.time()) / 2
+                  print("ROTATED" if expiring else "REGISTERED", spec["model"], base, flush=True)
 
           for base, model_ids in current.items():
               if base in wanted:
@@ -297,7 +345,7 @@ services:
                       print("REMOVED", base, flush=True)
                   except Exception as err:
                       print("REMOVE-FAILED", base, repr(err), flush=True)
-              minted_at.pop(base, None)
+              rotate_at.pop(base, None)
 
           time.sleep(INTERVAL)
       PYEOF
@@ -305,6 +353,8 @@ services:
       litellm --port "${LLM_PORT}" &
       python3 /tmp/reconcile.py &
 
+      # Forward shutdown to both children so litellm can flush in-flight state.
+      trap 'kill -TERM $(jobs -p) 2> /dev/null' TERM INT
       # Either process dying takes the service down: litellm without the
       # reconcile loop keeps answering while its model list and the tokens
       # behind it silently go stale.
@@ -319,6 +369,7 @@ services:
       http-get:
         path: /health/liveliness
         port: {{ $llmPort }}
+        scheme: HTTP
       initial-delay-seconds: 20
       period-seconds: 10
       timeout-seconds: 5
@@ -383,5 +434,3 @@ jobs:
     policy:
       timeout:
         execute: 10m
-
-defaults: {}

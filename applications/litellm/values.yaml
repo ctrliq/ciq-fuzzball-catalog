@@ -19,9 +19,11 @@ values:
 
   - name: "DataVolume"
     display_name: >-
-      Volume holding the gateway database (virtual keys, budgets, spend history). The
-      default is ephemeral, so all of it is lost when the workflow stops -- use a persistent
-      volume for anything you rely on. Mounted at /var/lib/postgresql/data
+      Volume holding the gateway database (virtual keys, budgets, spend history), as
+      volume://<scope>/<provisioner>[/<volume-name>]. The default is ephemeral, so all of
+      it is lost when the workflow stops -- for anything you rely on, name an existing
+      persistent volume, e.g. volume://user/default/my-gateway-db. Mounted at
+      /var/lib/postgresql/data
     string_value: volume://user/ephemeral
     display_category: "Storage"
 
@@ -41,9 +43,10 @@ values:
 
   - name: "TokenLifetime"
     display_name: >-
-      Seconds an endpoint access token is minted for. The gateway re-mints at half this
-      value, so it also sets how long discovered models keep serving through a Fuzzball API
-      outage.
+      Seconds an endpoint access token is minted for. The gateway re-mints at half the
+      granted lifetime, so it also sets how long discovered models keep serving through a
+      Fuzzball API outage. The server caps grants at the gateway's own token lifetime, at
+      most 7 days.
     uint_value: 14400
     display_category: "Discovery"
 

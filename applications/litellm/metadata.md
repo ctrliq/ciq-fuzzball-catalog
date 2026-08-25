@@ -33,8 +33,9 @@ Every call to the gateway carries two credentials: a Fuzzball token in `Authoriz
    fuzzball workflow endpoints list
    ```
 
-2. Get the master key. It is generated at submit time; the `show-gateway` job prints it,
-   and it is in the workflow definition via `fuzzball workflow get <workflow>`.
+2. Get the master key. It is generated at submit time; read it with
+   `fuzzball workflow log <workflow> show-gateway`, or from the workflow definition via
+   `fuzzball workflow get <workflow>`.
 
 3. Get a Fuzzball token: your own user token works, or mint one bound to the gateway's
    endpoint with `fuzzball workflow endpoints generate-token <endpoint id>`.
@@ -73,13 +74,21 @@ annotations:
 ```
 
 `ciq.com/model` is the name callers ask for, and it must match the name the server serves
-under (for vLLM, `--served-model-name`). Set `per-replica: true` on the endpoint to let the
-gateway balance across replicas itself, and a `scale-down.drain-period` comfortably above
-the gateway's refresh interval so a retiring replica leaves the rotation before it stops.
+under (for vLLM, `--served-model-name`). The endpoint must not be `public`: the gateway
+authenticates to models with minted endpoint tokens, and tokens cannot be minted for
+public endpoints. Set `per-replica: true` (which requires `type: subdomain` and an
+autoscaler on the service) to let the gateway balance across replicas itself, and an
+`autoscaler.scale-down.drain-period` comfortably above the gateway's refresh interval
+(`RefreshInterval`, default 25s) so a retiring replica leaves the rotation before it
+stops.
 
 Do not set an API key on the served model. Fuzzball's proxy consumes the `Authorization`
 header on a non-public endpoint, so the model server never sees one -- the endpoint's own
-scope is the access control.
+scope is the access control. A model server in the same workflow as the gateway is always
+skipped: the gateway only serves other workflows' endpoints.
+
+To confirm a model was picked up, watch `fuzzball workflow log <workflow> gateway` for a
+`REGISTERED` line on the next discovery pass, or list `/v1/models`.
 
 ## Things to know before you start it
 
@@ -96,11 +105,13 @@ scope is the access control.
 - **A pool that scales to zero surfaces LiteLLM's router cooldown to callers.** Such a
   model has a single LiteLLM deployment, so each drain produces a short burst of 429
   "No deployments available" responses until the next discovery pass swaps the route.
-  Clients should retry on 429; `cooldown_time` and `allowed_fails` in
-  `router_settings` are the tuning knobs if the bursts matter.
-- **Generation length is bounded by the cluster's endpoint ingress timeout.** A response
-  that produces nothing for longer than that window is cut off. Ask your cluster
-  administrator what it is set to.
+  Clients should retry on 429. Tuning the router's cooldown means adding a LiteLLM config
+  file to a copy of this entry; it is not exposed as a value.
+- **Generation length is bounded by the endpoint proxy's 10-minute idle timeout.** A
+  response that produces nothing for longer than that window is cut off.
+- **Callers borrow the owner's reach.** The gateway discovers and authenticates to models
+  as the identity that started it, so the gateway's endpoint scope (`ServiceScope`)
+  decides who can use every model it serves -- regardless of the callers' own grants.
 - **Anyone who can read the workflow can read the master key.** It is generated fresh on
   every workflow start and embedded in the workflow definition. Hand callers virtual keys,
   never the master key.
