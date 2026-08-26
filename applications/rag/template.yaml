@@ -156,10 +156,14 @@ services:
       {{- end }}
     files:
       /app/haiku.rag.yaml: file://haiku-config
-    {{- if $endpoint_token_secret }}
     env:
+      # Parsing models are baked into the image; offline mode stops the
+      # chunking tokenizer's online HF metadata check (air-gap has no HF
+      # egress, and the check adds nothing when the cache is baked).
+      - HF_HUB_OFFLINE=1
+      {{- if $endpoint_token_secret }}
       - RAG_ENDPOINT_TOKEN={{ $endpoint_token_secret }}
-    {{- end }}
+      {{- end }}
     mounts:
       /data:
         volume: data
@@ -209,10 +213,14 @@ services:
       {{- end }}
     files:
       /app/haiku.rag.yaml: file://haiku-config
-    {{- if $endpoint_token_secret }}
     env:
+      # Parsing models are baked into the image; offline mode stops the
+      # chunking tokenizer's online HF metadata check (air-gap has no HF
+      # egress, and the check adds nothing when the cache is baked).
+      - HF_HUB_OFFLINE=1
+      {{- if $endpoint_token_secret }}
       - RAG_ENDPOINT_TOKEN={{ $endpoint_token_secret }}
-    {{- end }}
+      {{- end }}
     mounts:
       /data:
         volume: data
