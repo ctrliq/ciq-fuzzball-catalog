@@ -35,9 +35,12 @@ values:
   - name: EndpointToken
     display_name: >-
       Bearer token for the model endpoint, stored in plain text in the rendered
-      definition (prefer EndpointTokenSecret). When both are empty, the workflow's
-      injected FB_TOKEN is used -- correct when the endpoint is another Fuzzball
-      workflow endpoint (e.g. the vllm entry) in your scope.
+      definition (prefer EndpointTokenSecret). For a Fuzzball workflow endpoint
+      (e.g. the vllm entry), mint one with 'fuzzball workflow endpoints
+      generate-token <endpoint-id> --expiration <lifetime>' -- size the lifetime
+      to this service's lifetime; the default is short. Requires Endpoint. When
+      both token values are empty and an endpoint is set, a placeholder is sent
+      (fine for endpoints that ignore auth).
     string_value: ""
     display_category: Models
 
@@ -50,8 +53,13 @@ values:
     bool_value: true
     display_category: Access
   - name: Scope
-    display_name: "Authorization scope of the service endpoints: user, group, organization, or public."
+    display_name: >-
+      Authorization scope of the service endpoints. With 'public', the ingest
+      jobs API is protected only by the generated token in the rendered
+      definition.
     string_value: group
+    options_input:
+      options: [user, group, organization, public]
     display_category: Access
 
   - name: Volume

@@ -2,7 +2,7 @@
 
 Catalog entry for a RAG corpus service built on haiku.rag (see metadata.md).
 
-The container image this entry consumes (`image` value) is built from
+The container image this entry consumes (`Image` value) is built from
 `definition_files/haiku-rag.def` by this repo's container CI
 (`.github/workflows/build-containers.yaml`): PRs touching the definition get a
 PR-scoped tag for testing, and merging retags that exact image to the release

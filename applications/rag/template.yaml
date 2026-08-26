@@ -23,12 +23,17 @@
   {{- fail "GenerationModel must not contain quotes or backslashes" }}
 {{- end }}
 {{- $endpoint_token_secret := trim .EndpointTokenSecret }}
-{{- if or (contains "\"" $endpoint_token_secret) (contains "\\" $endpoint_token_secret) (contains "\n" $endpoint_token_secret) }}
-  {{- fail "EndpointTokenSecret must not contain quotes or backslashes" }}
+{{- if or (contains "\"" $endpoint_token_secret) (contains "\\" $endpoint_token_secret) (contains "\n" $endpoint_token_secret) (contains "#" $endpoint_token_secret) }}
+  {{- fail "EndpointTokenSecret must not contain quotes, backslashes, or comments" }}
 {{- end }}
 {{- $endpoint_token := trim .EndpointToken }}
 {{- if or (contains "\"" $endpoint_token) (contains "\\" $endpoint_token) (contains "\n" $endpoint_token) }}
   {{- fail "EndpointToken must not contain quotes or backslashes" }}
+{{- end }}
+{{- if and (or $endpoint_token $endpoint_token_secret) (not $endpoint) }}
+  {{- /* Without an endpoint the OpenAI client dials api.openai.com; a real
+         credential must never be sent there by accident. */}}
+  {{- fail "EndpointToken/EndpointTokenSecret require Endpoint to be set" }}
 {{- end }}
 
 {{- $scope := lower (trim .Scope) }}
@@ -71,13 +76,12 @@
   {{- $api_key = "${RAG_ENDPOINT_TOKEN}" }}
 {{- end }}
 {{- if and (not $api_key) $endpoint }}
-  {{- /* haiku.rag substitutes ${FB_TOKEN} from the environment at runtime; the
-         workflow-scoped token is injected into every container and is the right
-         credential when the endpoint is another Fuzzball workflow endpoint.
-         Only defaulted when an endpoint is set: with no endpoint, OpenAI-style
-         clients fall back to api.openai.com, and the workflow token must never
-         be sent there. */}}
-  {{- $api_key = "${FB_TOKEN}" }}
+  {{- /* The OpenAI client requires a non-empty key even against endpoints
+         that ignore it, so default a placeholder. Deliberately NOT the
+         workflow's FB_TOKEN: the endpoint proxy rejects other workflows'
+         tokens (verified), and a real credential must never be sent to an
+         arbitrary user-configured endpoint by default. */}}
+  {{- $api_key = "unused" }}
 {{- end }}
 {{- $mcp_port := randInt 24001 28000 }}
 {{- $ingester_port := randInt 28001 32000 }}
@@ -150,9 +154,9 @@ services:
   ingester:
     persist: true
     image:
-      uri: {{ $image }}
+      uri: "{{ $image }}"
       {{- if $image_secret }}
-      secret: {{ $image_secret }}
+      secret: "{{ $image_secret }}"
       {{- end }}
     files:
       /app/haiku.rag.yaml: file://haiku-config
@@ -192,8 +196,10 @@ services:
       # entries, so httpx misses it. Merge it with the bundled public CAs so
       # both cluster-internal and public endpoints verify.
       if ls /run/fuzzball-substrate/trusted-certs/*.crt >/dev/null 2>&1 && [ -z "${SSL_CERT_FILE:-}" ]; then
-        cat "$(python -c 'import certifi; print(certifi.where())')" \
-            /run/fuzzball-substrate/trusted-certs/*.crt > /tmp/ca-bundle.pem
+        cat "$(python -c 'import certifi; print(certifi.where())')" > /tmp/ca-bundle.pem
+        for f in /run/fuzzball-substrate/trusted-certs/*.crt; do
+          cat "$f" >> /tmp/ca-bundle.pem; echo >> /tmp/ca-bundle.pem
+        done
         export SSL_CERT_FILE=/tmp/ca-bundle.pem
       fi
       mkdir -p /data/inbox
@@ -217,9 +223,9 @@ services:
         status: running
     {{- end }}
     image:
-      uri: {{ $image }}
+      uri: "{{ $image }}"
       {{- if $image_secret }}
-      secret: {{ $image_secret }}
+      secret: "{{ $image_secret }}"
       {{- end }}
     files:
       /app/haiku.rag.yaml: file://haiku-config
@@ -257,8 +263,10 @@ services:
       set -e
       # See the ingester script: explicit CA file for python TLS stacks.
       if ls /run/fuzzball-substrate/trusted-certs/*.crt >/dev/null 2>&1 && [ -z "${SSL_CERT_FILE:-}" ]; then
-        cat "$(python -c 'import certifi; print(certifi.where())')" \
-            /run/fuzzball-substrate/trusted-certs/*.crt > /tmp/ca-bundle.pem
+        cat "$(python -c 'import certifi; print(certifi.where())')" > /tmp/ca-bundle.pem
+        for f in /run/fuzzball-substrate/trusted-certs/*.crt; do
+          cat "$f" >> /tmp/ca-bundle.pem; echo >> /tmp/ca-bundle.pem
+        done
         export SSL_CERT_FILE=/tmp/ca-bundle.pem
       fi
       {{- if not $read_only }}

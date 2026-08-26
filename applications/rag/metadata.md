@@ -20,18 +20,19 @@ LanceDB) — there is no database service to operate.
 
 ```
 fuzzball workflow catalog start rag
-fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=https://<vllm-endpoint-url>/v1
+fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=https://<vllm-endpoint-url>/v1,EndpointTokenSecret=secret://user/<name>
 fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=...,EmbeddingModel=Qwen/Qwen3-Embedding-8B,EmbeddingDim=4096
 fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=...,ReadOnly=false
 ```
 
 Embeddings (and generation, when `GenerationModel` is set) are served by the
 OpenAI-compatible `Endpoint` — typically the `vllm` catalog entry or a LiteLLM
-gateway. When the endpoint is another Fuzzball workflow endpoint in your scope,
-authentication works out of the box: the workflow's injected `FB_TOKEN` is used
-as the bearer token unless you set `EndpointToken`. The workflow makes no
-network connections beyond the configured endpoint, so it operates air-gapped
-(document-parsing models are baked into the image).
+gateway. When the endpoint is another Fuzzball workflow endpoint, mint a bearer
+token for it (`fuzzball workflow endpoints generate-token <endpoint-id>
+--expiration <lifetime>` — size the lifetime to this service's; the default is
+short), store it in a secret, and pass it as `EndpointTokenSecret`. The
+workflow makes no network connections beyond the configured endpoint, so it
+operates air-gapped (document-parsing models are baked into the image).
 
 ## Ingestion
 

@@ -26,6 +26,7 @@ rm -rf /var/lib/apt/lists/*
 pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
     torch==2.13.0 torchvision==0.28.0
 
+# Keep in sync with the '# tag:' comment at the top of this file.
 HAIKU_RAG_VERSION=0.78.0
 pip install --no-cache-dir \
     "haiku.rag==${HAIKU_RAG_VERSION}" \
