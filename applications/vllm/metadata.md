@@ -125,6 +125,9 @@ Resource, image-version, scaling, and vLLM tuning knobs are available under
 the Resources, Versions, Scaling, and Model Configuration categories. Under
 Storage, set `Volume` to the name of a persistent volume (e.g.
 `Volume=my-models`) to keep the downloaded model across workflow restarts.
+On small or shared vGPU slices, lower `GpuMemoryUtilization` (e.g. to 0.8):
+vLLM requires that fraction of *total* VRAM to be free at start, and driver
+overhead on a small slice can make the 0.9 default unsatisfiable.
 
 The workflow runs until it is cancelled. The rendered workflow also serves as a
 working example of fronting an autoscaled service pool with an in-workflow

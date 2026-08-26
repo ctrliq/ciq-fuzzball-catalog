@@ -78,7 +78,12 @@ values:
     uint_value: 131072
     display_category: Model Configuration
   - name: GpuMemoryUtilization
-    display_name: The fraction of GPU memory to be used for the model.
+    display_name: >-
+      The fraction of GPU memory to be used for the model. vLLM requires this
+      fraction of total VRAM to be free at start, so on small or shared vGPU
+      slices, where driver overhead is a large fraction of VRAM, 0.9 can be
+      unsatisfiable — lower it (e.g. 0.8) if vLLM aborts with "Free memory on
+      device ... is less than desired GPU memory utilization".
     string_value: "0.9"
     display_category: Model Configuration
   - name: ExpertParallelism
