@@ -186,6 +186,16 @@ services:
     script: |
       #!/bin/sh
       set -e
+      # Python TLS stacks need an explicit CA file: the platform mounts the
+      # cluster CA under /run/fuzzball-substrate/trusted-certs and sets
+      # SSL_CERT_DIR, but OpenSSL-style directory lookup needs hash-named
+      # entries, so httpx misses it. Merge it with the bundled public CAs so
+      # both cluster-internal and public endpoints verify.
+      if ls /run/fuzzball-substrate/trusted-certs/*.crt >/dev/null 2>&1 && [ -z "${SSL_CERT_FILE:-}" ]; then
+        cat "$(python -c 'import certifi; print(certifi.where())')" \
+            /run/fuzzball-substrate/trusted-certs/*.crt > /tmp/ca-bundle.pem
+        export SSL_CERT_FILE=/tmp/ca-bundle.pem
+      fi
       mkdir -p /data/inbox
       haiku-rag --config /app/haiku.rag.yaml init
       exec haiku-ingester --config /app/haiku.rag.yaml serve
@@ -245,6 +255,12 @@ services:
     script: |
       #!/bin/sh
       set -e
+      # See the ingester script: explicit CA file for python TLS stacks.
+      if ls /run/fuzzball-substrate/trusted-certs/*.crt >/dev/null 2>&1 && [ -z "${SSL_CERT_FILE:-}" ]; then
+        cat "$(python -c 'import certifi; print(certifi.where())')" \
+            /run/fuzzball-substrate/trusted-certs/*.crt > /tmp/ca-bundle.pem
+        export SSL_CERT_FILE=/tmp/ca-bundle.pem
+      fi
       {{- if not $read_only }}
       haiku-rag --config /app/haiku.rag.yaml init
       {{- end }}
