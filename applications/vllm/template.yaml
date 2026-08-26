@@ -47,12 +47,12 @@
 {{- end }}
 {{- $gpus_per_replica := int .GpusPerReplica }}
 {{- $tensor_parallel := max 1 $gpus_per_replica }}
-{{- $ep := lower (trim .Ep) }}
+{{- $ep := lower (trim .ExpertParallelism) }}
 {{- if not (has $ep (list "auto" "true" "false")) }}
-  {{- fail "Ep must be one of: auto, true, false" }}
+  {{- fail "ExpertParallelism must be one of: auto, true, false" }}
 {{- end }}
 {{- if and (eq $ep "true") (lt $gpus_per_replica 1) }}
-  {{- fail "Ep=true requires GpusPerReplica >= 1" }}
+  {{- fail "ExpertParallelism=true requires GpusPerReplica >= 1" }}
 {{- end }}
 {{- $gpu_model := trim .GpuModel }}
 {{- $extra_args := trim .ExtraArgs }}
@@ -137,10 +137,10 @@ services:
       use_ep=0
       if [ "{{ $ep }}" = "true" ]; then
         if [ "$is_moe" != "moe" ]; then
-          echo "ERROR: Ep=true, but model '{{ $model_name }}' (architecture: $arch)" \
+          echo "ERROR: ExpertParallelism=true, but model '{{ $model_name }}' (architecture: $arch)" \
                "is not a mixture-of-experts model: config.json has no expert-count" \
                "field (num_local_experts / n_routed_experts / num_experts > 1)." \
-               "Use Ep=auto or Ep=false." >&2
+               "Use ExpertParallelism=auto or ExpertParallelism=false." >&2
           exit 1
         fi
         use_ep=1

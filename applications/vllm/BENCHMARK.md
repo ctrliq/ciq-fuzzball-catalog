@@ -1,20 +1,20 @@
 # Expert parallelism vs. tensor parallelism — throughput comparison
 
 FUZZ-8399 Phase 1 acceptance requires a documented throughput comparison
-between the expert-parallel layout (`Ep=true`: attention data-parallel,
-experts expert-parallel) and the tensor-parallel default (`Ep=false`) for a
+between the expert-parallel layout (`ExpertParallelism=true`: attention data-parallel,
+experts expert-parallel) and the tensor-parallel default (`ExpertParallelism=false`) for a
 MoE model on a single node. This file records the methodology and results so
 the comparison is reproducible when images, models, or hardware change.
 
 ## Methodology
 
-One workflow per configuration, identical except for `Ep`:
+One workflow per configuration, identical except for `ExpertParallelism`:
 
 ```sh
 fuzzball workflow catalog start vllm --name bench-ep --values \
-  Model=hf://openai/gpt-oss-20b,GpusPerReplica=2,Ep=true,Proxy=false,MinReplicas=1,MaxReplicas=1
+  Model=hf://openai/gpt-oss-20b,GpusPerReplica=2,ExpertParallelism=true,Proxy=false,MinReplicas=1,MaxReplicas=1
 fuzzball workflow catalog start vllm --name bench-tp --values \
-  Model=hf://openai/gpt-oss-20b,GpusPerReplica=2,Ep=false,Proxy=false,MinReplicas=1,MaxReplicas=1
+  Model=hf://openai/gpt-oss-20b,GpusPerReplica=2,ExpertParallelism=false,Proxy=false,MinReplicas=1,MaxReplicas=1
 ```
 
 - `Proxy=false` and a fixed single replica (`MinReplicas=MaxReplicas=1`), so
@@ -43,8 +43,8 @@ fuzzball workflow catalog start vllm --name bench-tp --values \
 
 | Concurrency | Layout | Output tok/s | TTFT p50 / p99 (ms) | ITL p50 / p99 (ms) |
 |---|---|---|---|---|
-| 8 | EP (`Ep=true`) | TBD | TBD | TBD |
-| 8 | TP (`Ep=false`) | TBD | TBD | TBD |
+| 8 | EP (`ExpertParallelism=true`) | TBD | TBD | TBD |
+| 8 | TP (`ExpertParallelism=false`) | TBD | TBD | TBD |
 | 32 | EP | TBD | TBD | TBD |
 | 32 | TP | TBD | TBD | TBD |
 | 128 | EP | TBD | TBD | TBD |

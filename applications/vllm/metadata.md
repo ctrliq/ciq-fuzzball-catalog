@@ -19,7 +19,7 @@ fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-20b
 fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-120b,Gpu=amd
 fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-120b,MinReplicas=1,MaxReplicas=10
 fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-120b,GpusPerReplica=4
-fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-20b,GpusPerReplica=2,Ep=true
+fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-20b,GpusPerReplica=2,ExpertParallelism=true
 ```
 
 The model is downloaded from the HuggingFace Hub once, at workflow start, into
@@ -92,8 +92,8 @@ layout on one node: attention runs data-parallel across the replica's GPUs and
 the expert layers are sharded expert-parallel
 (`--data-parallel-size GpusPerReplica --enable-expert-parallel`), instead of
 tensor parallelism. Whether the model is MoE is detected at service start from
-the downloaded model's `config.json`; with the default `Ep=auto` the right
-layout is picked automatically, and `Ep=true` on a non-MoE model fails the
+the downloaded model's `config.json`; with the default `ExpertParallelism=auto` the right
+layout is picked automatically, and `ExpertParallelism=true` on a non-MoE model fails the
 service at start with a message naming the model's architecture. The replica
 still serves one OpenAI-compatible API on the same port, so endpoints, the
 LiteLLM proxy, and autoscaling behave exactly as without expert parallelism.
@@ -105,7 +105,7 @@ See [BENCHMARK.md](BENCHMARK.md) for the EP-versus-TP throughput comparison.
 - `Model`: HuggingFace model to serve, as an `hf://` URI (e.g.
   `hf://openai/gpt-oss-20b`).
 - `Gpu`: GPU platform, `nvidia` or `amd`.
-- `Ep`: expert parallelism — `auto` (default; enabled when the downloaded
+- `ExpertParallelism`: `auto` (default; enabled when the downloaded
   model's `config.json` indicates a mixture-of-experts model), `true` (require
   a MoE model; on a dense model the service fails at start naming the model's
   architecture), or `false` (tensor parallelism only).

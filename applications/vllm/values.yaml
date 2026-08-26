@@ -81,7 +81,7 @@ values:
     display_name: The fraction of GPU memory to be used for the model.
     string_value: "0.9"
     display_category: Model Configuration
-  - name: Ep
+  - name: ExpertParallelism
     display_name: >-
       Expert parallelism across the replica's GPUs: auto (enabled when the downloaded
       model's config.json indicates a mixture-of-experts model), true (require a MoE
