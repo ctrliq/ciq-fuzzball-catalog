@@ -20,19 +20,24 @@ LanceDB) — there is no database service to operate.
 
 ```
 fuzzball workflow catalog start rag
-fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=https://<vllm-endpoint-url>/v1,EndpointTokenSecret=secret://user/<name>
+fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=https://<vllm-endpoint-url>/v1
 fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=...,EmbeddingModel=Qwen/Qwen3-Embedding-8B,EmbeddingDim=4096
 fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=...,ReadOnly=false
 ```
 
 Embeddings (and generation, when `GenerationModel` is set) are served by the
 OpenAI-compatible `Endpoint` — typically the `vllm` catalog entry or a LiteLLM
-gateway. When the endpoint is another Fuzzball workflow endpoint, mint a bearer
-token for it (`fuzzball workflow endpoints generate-token <endpoint-id>
---expiration <lifetime>` — size the lifetime to this service's; the default is
-short), store it in a secret, and pass it as `EndpointTokenSecret`. The
-workflow makes no network connections beyond the configured endpoint, so it
-operates air-gapped (document-parsing models are baked into the image).
+gateway. For a Fuzzball endpoint in your scope, authentication is automatic:
+with no token configured, each service mints an endpoint access token at
+startup using this workflow's own identity, so no credential is stored
+anywhere. The minted token is valid for up to 7 days and is not renewed —
+restart the workflow for a longer-lived corpus service, or pass a token minted
+with `fuzzball workflow endpoints generate-token <endpoint-id> --expiration
+<lifetime>` via `EndpointTokenSecret`. That value is also the path for
+credentials the endpoint itself requires (a LiteLLM virtual key, a third-party
+API key). The workflow makes no network connections beyond the configured
+endpoint, so it operates air-gapped (document-parsing models are baked into
+the image).
 
 ## Ingestion
 

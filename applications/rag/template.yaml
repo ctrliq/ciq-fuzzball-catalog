@@ -69,6 +69,7 @@
 
 {{- $read_only := .ReadOnly }}
 {{- $api_key := $endpoint_token }}
+{{- $mint := false }}
 {{- if $endpoint_token_secret }}
   {{- /* Secret injected as an env var (env supports secret:// references);
          haiku.rag substitutes it at runtime so it never appears in the
@@ -76,12 +77,15 @@
   {{- $api_key = "${RAG_ENDPOINT_TOKEN}" }}
 {{- end }}
 {{- if and (not $api_key) $endpoint }}
-  {{- /* The OpenAI client requires a non-empty key even against endpoints
-         that ignore it, so default a placeholder. Deliberately NOT the
-         workflow's FB_TOKEN: the endpoint proxy rejects other workflows'
-         tokens (verified), and a real credential must never be sent to an
-         arbitrary user-configured endpoint by default. */}}
-  {{- $api_key = "unused" }}
+  {{- /* No credential given: each service mints its own endpoint access token
+         at startup with the workflow's injected identity (the endpoint proxy
+         rejects raw workflow tokens), falling back to a harmless placeholder
+         for endpoints that are not Fuzzball endpoints or take no token. The
+         script exports RAG_ENDPOINT_TOKEN either way; never default the
+         workflow's FB_TOKEN itself — a real credential must not be sent to an
+         arbitrary user-configured endpoint. */}}
+  {{- $mint = true }}
+  {{- $api_key = "${RAG_ENDPOINT_TOKEN}" }}
 {{- end }}
 {{- $mcp_port := randInt 24001 28000 }}
 {{- $ingester_port := randInt 28001 32000 }}
@@ -202,6 +206,39 @@ services:
         done
         export SSL_CERT_FILE=/tmp/ca-bundle.pem
       fi
+      {{- if $mint }}
+      # Mint an endpoint access token for the configured endpoint using this
+      # workflow's identity (valid up to 7 days; restart the workflow to
+      # renew). Non-Fuzzball hostnames and refused mints (e.g. a public
+      # endpoint, which takes no token) fall back to a placeholder key.
+      RAG_ENDPOINT_TOKEN=$(python - <<'__MINT__' || true
+      import os
+      import sys
+
+      import httpx
+
+      host = "{{ $endpoint }}".split("://", 1)[-1].split("/", 1)[0]
+      endpoint_id = host.split(".", 1)[0]
+      api = os.environ.get("FB_OPENAPI_URL")
+      token = os.environ.get("FB_TOKEN")
+      if not (endpoint_id.startswith("endpoint-") and api and token):
+          sys.exit(0)
+      try:
+          r = httpx.post(
+              api.rstrip("/") + "/v4/endpoints/" + endpoint_id + "/token",
+              json={"expirationSeconds": 604800},
+              headers={"Authorization": "Bearer " + token},
+              timeout=30,
+          )
+          r.raise_for_status()
+          print(r.json()["token"], end="")
+      except Exception as exc:
+          print(f"endpoint token mint failed ({exc}); continuing without", file=sys.stderr)
+      __MINT__
+      )
+      [ -n "${RAG_ENDPOINT_TOKEN}" ] || RAG_ENDPOINT_TOKEN="unused"
+      export RAG_ENDPOINT_TOKEN
+      {{- end }}
       mkdir -p /data/inbox
       haiku-rag --config /app/haiku.rag.yaml init
       exec haiku-ingester --config /app/haiku.rag.yaml serve
@@ -269,6 +306,39 @@ services:
         done
         export SSL_CERT_FILE=/tmp/ca-bundle.pem
       fi
+      {{- if $mint }}
+      # Mint an endpoint access token for the configured endpoint using this
+      # workflow's identity (valid up to 7 days; restart the workflow to
+      # renew). Non-Fuzzball hostnames and refused mints (e.g. a public
+      # endpoint, which takes no token) fall back to a placeholder key.
+      RAG_ENDPOINT_TOKEN=$(python - <<'__MINT__' || true
+      import os
+      import sys
+
+      import httpx
+
+      host = "{{ $endpoint }}".split("://", 1)[-1].split("/", 1)[0]
+      endpoint_id = host.split(".", 1)[0]
+      api = os.environ.get("FB_OPENAPI_URL")
+      token = os.environ.get("FB_TOKEN")
+      if not (endpoint_id.startswith("endpoint-") and api and token):
+          sys.exit(0)
+      try:
+          r = httpx.post(
+              api.rstrip("/") + "/v4/endpoints/" + endpoint_id + "/token",
+              json={"expirationSeconds": 604800},
+              headers={"Authorization": "Bearer " + token},
+              timeout=30,
+          )
+          r.raise_for_status()
+          print(r.json()["token"], end="")
+      except Exception as exc:
+          print(f"endpoint token mint failed ({exc}); continuing without", file=sys.stderr)
+      __MINT__
+      )
+      [ -n "${RAG_ENDPOINT_TOKEN}" ] || RAG_ENDPOINT_TOKEN="unused"
+      export RAG_ENDPOINT_TOKEN
+      {{- end }}
       {{- if not $read_only }}
       haiku-rag --config /app/haiku.rag.yaml init
       {{- end }}

@@ -28,19 +28,20 @@ values:
     display_name: >-
       Fuzzball secret (secret://user/<name>) holding the bearer token for the model
       endpoint; injected at runtime and never stored in the rendered definition.
-      Preferred over EndpointToken for real credentials.
+      Preferred over EndpointToken for real credentials. Usually unnecessary for a
+      Fuzzball endpoint: with no token configured, the services mint their own
+      endpoint access token at startup.
     secret_value:
       reference: ""
     display_category: Models
   - name: EndpointToken
     display_name: >-
       Bearer token for the model endpoint, stored in plain text in the rendered
-      definition (prefer EndpointTokenSecret). For a Fuzzball workflow endpoint
-      (e.g. the vllm entry), mint one with 'fuzzball workflow endpoints
-      generate-token <endpoint-id> --expiration <lifetime>' -- size the lifetime
-      to this service's lifetime; the default is short. Requires Endpoint. When
-      both token values are empty and an endpoint is set, a placeholder is sent
-      (fine for endpoints that ignore auth).
+      definition (prefer EndpointTokenSecret). Requires Endpoint. Usually
+      unnecessary for a Fuzzball endpoint: when both token values are empty, the
+      services mint their own endpoint access token at startup (valid up to 7
+      days; restart to renew), falling back to a harmless placeholder for
+      endpoints that take no token.
     string_value: ""
     display_category: Models
 
