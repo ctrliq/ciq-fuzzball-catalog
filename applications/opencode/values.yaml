@@ -2,8 +2,8 @@ values:
   - name: Endpoint
     display_name: >-
       Base URL of the OpenAI-compatible endpoint to code against, e.g. the endpoint URL of a
-      vllm or litellm workflow (no /v1 suffix). When empty the server still starts, but no
-      model is usable; start a new workflow with the endpoint set.
+      vllm or litellm workflow (no /v1 suffix). Required: left empty, the workflow stops at
+      once rather than running an agent with no model behind it.
     string_value: ""
     display_category: Model
   - name: Model
@@ -12,7 +12,7 @@ values:
       the hf:// prefix, e.g. openai/gpt-oss-20b.
     string_value: openai/gpt-oss-20b
     display_category: Model
-  - name: ContextSize
+  - name: MaxContextSize
     display_name: >-
       Maximum input tokens the model accepts. OpenCode tracks remaining context against this,
       so a value above what the endpoint serves produces requests the model rejects. Match the
@@ -54,20 +54,22 @@ values:
   - name: TokenLifetime
     display_name: >-
       Seconds the minted endpoint access token is requested for, when
-      EndpointAuth=fuzzball-token. The token is minted once at start and not renewed, so this
-      bounds how long the server keeps working; restart the workflow to mint a fresh one. The
-      server caps the grant at its own limit, at most 7 days.
+      EndpointAuth=fuzzball-token. The grant is clamped to what is left of this workflow's own
+      API token, which for a service with no walltime is 7 days from workflow start. The token
+      is minted once at startup and not renewed, so it bounds how long the agent can reach the
+      model; restart the workflow for a fresh one.
     uint_value: 604800
     display_category: Model
 
   - name: ServiceScope
     display_name: >-
       Who can reach the OpenCode server endpoint. Anyone who reaches it can run shell commands
-      and edit files in this workflow's container, so keep it as narrow as the people using it.
-      Note 'public' is served without any Fuzzball authentication, leaving the generated server
-      password as the only barrier -- but it is the only scope a local 'opencode attach' can
-      use, because the Fuzzball endpoint proxy consumes the Authorization header that attach's
-      basic-auth credentials would travel in.
+      and edit files in this workflow's container. The server always enforces its own basic-auth
+      password, printed by the show-server job, because the service also listens on its node's
+      port where no endpoint proxy sits in front of it. At 'public' scope that password is the
+      only barrier, and it is also the only scope a local 'opencode attach' can reach from
+      outside the cluster: at every other scope the endpoint proxy consumes the Authorization
+      header attach's credentials travel in.
     string_value: user
     options_input:
       options: [user, group, organization, public]
@@ -92,10 +94,13 @@ values:
     display_category: Resources
 
   - name: Image
-    display_name: OpenCode container image.
+    display_name: >-
+      OpenCode container image. The default is the image the OpenCode project publishes itself;
+      it is not built or mirrored by this repository, so a deployment that will not run
+      third-party images should point this at its own build.
     string_value: docker://ghcr.io/anomalyco/opencode:1.18.23
     display_category: Versions
   - name: CurlImage
-    display_name: Image used by the short-lived job that mints the endpoint access token.
+    display_name: Image used by the short-lived job that prints how to reach the server.
     string_value: docker://curlimages/curl:8.17.0
     display_category: Versions

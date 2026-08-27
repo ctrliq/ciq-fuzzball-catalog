@@ -29,19 +29,26 @@ that is its `Model` value without the `hf://` prefix.
 ## Attaching to the model
 
 With the default `EndpointAuth=fuzzball-token`, the workflow authenticates to the
-model endpoint itself: a short job mints an endpoint access token using this
-workflow's own injected identity, so no user credential is stored anywhere in the
-definition. Because the Fuzzball endpoint proxy consumes the `Authorization`
+model endpoint itself: at startup the server mints an endpoint access token using
+this workflow's own injected identity, so no user credential is stored anywhere in
+the definition. Because the Fuzzball endpoint proxy consumes the `Authorization`
 header on any endpoint whose scope is not public, the model's own key (`ApiKey`
 or `ApiKeySecret`) is sent in the `x-litellm-api-key` header, which LiteLLM
 v1.97.0 and later honour and the proxy leaves untouched.
 
 Set `EndpointAuth=api-key` for a public Fuzzball endpoint or a third-party API,
-where the key is sent as the bearer token and nothing is minted.
+where the key is sent as the bearer token and nothing is minted. A public
+endpoint needs no token and the server refuses to mint one for it, so
+`fuzzball-token` against a public endpoint stops the workflow with that message.
 
-The minted token is not renewed. `TokenLifetime` therefore bounds how long the
-server keeps working, up to the seven days the server will grant; restart the
-workflow to mint a fresh one.
+The token is minted by the service itself rather than a preparatory job, because
+the server grants an endpoint token no more lifetime than the calling workflow
+token has left: a job's token lives only as long as the job, while a service
+without a walltime holds one for seven days. It is minted once and never renewed,
+so `TokenLifetime` clamped to that seven days bounds how long the agent can reach
+the model. When it lapses the agent starts failing against the model while the
+server itself stays healthy -- the readiness probe never touches the endpoint --
+so restart the workflow to mint a fresh one.
 
 ## Reaching the server
 
@@ -49,20 +56,25 @@ The service publishes one endpoint serving both an HTTP API and a web
 application. How you reach it depends on `ServiceScope`, and the choice is not
 symmetric:
 
-- At `user`, `group`, or `organization` scope, requests need a Fuzzball
-  credential: an [endpoint access
+- At `user`, `group`, or `organization` scope, requests through the endpoint URL
+  need a Fuzzball credential: an [endpoint access
   token](https://ui.stable.fuzzball.ciq.dev/docs/advanced-features/workflow-endpoints/)
   for API clients, or a browser session for the web application.
-- At `public` scope, Fuzzball performs no authentication and the server's own
-  basic-auth password -- generated at submit time and printed by the
-  `show-server` job -- is the only barrier. This is the only scope a local
-  `opencode attach <url> -p <password>` can use, because attach sends basic-auth
-  credentials in the `Authorization` header that a non-public endpoint's proxy
-  consumes.
+- At `public` scope, Fuzzball performs no authentication of its own.
+
+The server always enforces a basic-auth password, generated at submit time and
+printed by the `show-server` job. That is not redundant with the endpoint scope: a
+plain service binds its port on the node it runs on, so the server is reachable
+directly at that address with no proxy in front of it, whatever the scope says. At
+`public` scope the password is the only barrier at all.
+
+`opencode attach <url> -p <password>` therefore works from outside the cluster
+only at `public` scope: attach sends its credentials in the `Authorization` header,
+which a non-public endpoint's proxy consumes.
 
 Anyone who reaches the server can run shell commands and edit files inside the
-container, so treat the endpoint scope as the security boundary and prefer the
-narrowest one that fits.
+container, so prefer the narrowest scope that fits and treat the password as a
+real credential.
 
 ## Known limitations
 
