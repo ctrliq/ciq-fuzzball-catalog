@@ -98,7 +98,7 @@ jobs:
     depends-on:
       - name: opencode
         status: RUNNING
-        description: "Wait for the server to answer"
+        description: "Print connection details once the server is running"
     script: |
       #!/bin/sh
       echo "Get the server URL with:"
@@ -170,7 +170,7 @@ services:
       {{- end }}
       {{- if $mint }}
 
-      endpoint_id=$(echo "{{ $endpoint }}" | sed -e 's#^https\?://##' -e 's#/.*##' | cut -d. -f1)
+      endpoint_id=$(echo "{{ $endpoint }}" | sed -e 's#^[a-z]*://##' -e 's#/.*##' -e 's#:.*##' | cut -d. -f1)
       case "${endpoint_id}" in
         endpoint-*) ;;
         *)
