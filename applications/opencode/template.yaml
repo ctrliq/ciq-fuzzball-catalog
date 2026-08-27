@@ -1,0 +1,305 @@
+# Copyright 2026 CIQ, Inc. All rights reserved.
+
+{{- $endpoint := trim .Endpoint }}
+{{- if or (contains "\"" $endpoint) (contains "\\" $endpoint) }}
+  {{- fail "Endpoint must not contain quotes or backslashes" }}
+{{- end }}
+{{- $endpoint = trimSuffix "/" $endpoint }}
+
+{{- $model := trim .Model }}
+{{- if not $model }}
+  {{- fail "Model must name the model as the endpoint serves it, e.g. openai/gpt-oss-20b" }}
+{{- end }}
+{{- if or (contains "\"" $model) (contains "\\" $model) }}
+  {{- fail "Model must not contain quotes or backslashes" }}
+{{- end }}
+
+{{- $context_size := int .ContextSize }}
+{{- if lt $context_size 1024 }}
+  {{- fail "ContextSize must be at least 1024" }}
+{{- end }}
+{{- $output_limit := int .OutputLimit }}
+{{- if lt $output_limit 256 }}
+  {{- fail "OutputLimit must be at least 256" }}
+{{- end }}
+
+{{- $auth := lower (trim .EndpointAuth) }}
+{{- if not (has $auth (list "fuzzball-token" "api-key")) }}
+  {{- fail "EndpointAuth must be one of: fuzzball-token, api-key" }}
+{{- end }}
+
+{{- $api_key_secret := trim .ApiKeySecret }}
+{{- $api_key := trim .ApiKey }}
+{{- if or (contains "\"" $api_key) (contains "\\" $api_key) }}
+  {{- fail "ApiKey must not contain quotes or backslashes" }}
+{{- end }}
+{{- if and (eq $auth "api-key") $endpoint (not (or $api_key_secret $api_key)) }}
+  {{- fail "EndpointAuth=api-key needs ApiKeySecret or ApiKey" }}
+{{- end }}
+
+{{- $token_lifetime := int .TokenLifetime }}
+{{- if lt $token_lifetime 300 }}
+  {{- fail "TokenLifetime must be at least 300 seconds" }}
+{{- end }}
+
+{{- $scope := lower (trim .ServiceScope) }}
+{{- if not (has $scope (list "user" "group" "organization" "public")) }}
+  {{- fail "ServiceScope must be one of: user, group, organization, public" }}
+{{- end }}
+
+{{- $volume := trim .Volume }}
+{{- if not $volume }}
+  {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+{{- if or (contains "\"" $volume) (contains "\\" $volume) }}
+  {{- fail "Volume must not contain quotes or backslashes" }}
+{{- end }}
+
+{{- $cluster_ca := trim .ClusterCASecret }}
+
+{{- /* Minting only makes sense against a Fuzzball endpoint, which this workflow
+       reaches with its own injected identity. */}}
+{{- $mint := and (eq $auth "fuzzball-token") (ne $endpoint "") }}
+
+{{- /* The server's basic-auth password. It can only be presented through a
+       public endpoint -- every other scope has the Fuzzball proxy consuming the
+       Authorization header -- so it is set there and nowhere else. Generated as
+       hex from 63-bit randInt draws; slim-sprig has no randAlphaNum. */}}
+{{- $password := printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+
+{{- $port := randInt 24001 32000 }}
+{{- $trust_store := "/run/fuzzball-substrate/trusted-certs/root-ca.crt" }}
+
+version: v4
+
+volumes:
+  data:
+    {{- if eq (lower $volume) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    use: persistent
+    name: "{{ $volume }}"
+    {{- end }}
+
+jobs:
+{{- if $mint }}
+  mint-token:
+    image:
+      uri: {{ .CurlImage }}
+    mounts:
+      /data:
+        volume: data
+    env:
+      - ENDPOINT_URL={{ $endpoint }}
+      - TOKEN_TTL={{ $token_lifetime }}
+      {{- if $cluster_ca }}
+      - CLUSTER_CA_PEM={{ $cluster_ca }}
+      {{- end }}
+    script: |
+      #!/bin/sh
+      set -e
+      mkdir -p /data/auth
+
+      # The endpoint id is the first hostname label of an endpoint URL.
+      host=$(echo "${ENDPOINT_URL}" | sed -e 's#^https\?://##' -e 's#/.*##')
+      endpoint_id=$(echo "${host}" | cut -d. -f1)
+      case "${endpoint_id}" in
+        endpoint-*) ;;
+        *)
+          echo "FATAL: ${ENDPOINT_URL} is not a Fuzzball endpoint URL; use EndpointAuth=api-key" >&2
+          exit 1
+          ;;
+      esac
+
+      # The Fuzzball API is served with the cluster's own CA. Newer clusters
+      # mount the node trust store here; older ones need ClusterCASecret.
+      ca=""
+      if [ -f {{ $trust_store }} ]; then
+        ca="--cacert {{ $trust_store }}"
+      elif [ -n "${CLUSTER_CA_PEM}" ]; then
+        printf '%s\n' "${CLUSTER_CA_PEM}" > /data/auth/cluster-ca.pem
+        ca="--cacert /data/auth/cluster-ca.pem"
+      fi
+
+      curl -sf ${ca} -X POST \
+        -H "Authorization: Bearer ${FB_TOKEN}" \
+        -H "Content-Type: application/json" \
+        -d "{\"expirationSeconds\": ${TOKEN_TTL}}" \
+        "${FB_OPENAPI_URL%/}/v4/endpoints/${endpoint_id}/token" > /data/auth/token.json
+
+      grep -o '"token":"[^"]*"' /data/auth/token.json | cut -d'"' -f4 > /data/auth/endpoint-token
+      if [ ! -s /data/auth/endpoint-token ]; then
+        echo "FATAL: no token in the mint response" >&2
+        head -c 400 /data/auth/token.json >&2
+        exit 1
+      fi
+      rm -f /data/auth/token.json
+      echo "minted an access token for ${endpoint_id}"
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 128MB
+    policy:
+      timeout:
+        execute: 5m
+{{- end }}
+
+  show-server:
+    image:
+      uri: {{ .CurlImage }}
+    depends-on:
+      - name: opencode
+        status: RUNNING
+        description: "Wait for the server to answer"
+    script: |
+      #!/bin/sh
+      echo "Get the server URL with:"
+      echo "   fuzzball workflow endpoints list"
+      echo ""
+      {{- if eq $scope "public" }}
+      echo "Attach a local OpenCode to it (opencode 1.18 or later):"
+      echo "   opencode attach <server url> -p {{ $password }}"
+      echo ""
+      echo "This endpoint is public: the password above is the only thing"
+      echo "protecting a service that can run shell commands. Rotate it by"
+      echo "restarting the workflow."
+      {{- else }}
+      echo "The endpoint scope is {{ $scope }}, so requests need a Fuzzball"
+      echo "credential in the Authorization header:"
+      echo "   fuzzball workflow endpoints generate-token <endpoint id>"
+      echo ""
+      echo "Local 'opencode attach' cannot be used at this scope: it sends only"
+      echo "basic-auth credentials, and the endpoint proxy consumes that header."
+      echo "Start this entry with ServiceScope=public to attach a local client."
+      {{- end }}
+      echo ""
+      echo "Model configured for this server: fuzzball/{{ $model }}"
+      {{- if not $endpoint }}
+      echo ""
+      echo "WARNING: Endpoint was left empty, so no model is reachable. Start a"
+      echo "new workflow with Endpoint set to an OpenAI-compatible base URL."
+      {{- end }}
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 128MB
+    policy:
+      timeout:
+        execute: 10m
+
+services:
+  opencode:
+    image:
+      uri: {{ .Image }}
+    mounts:
+      /data:
+        volume: data
+    {{- if $mint }}
+    depends-on:
+      - name: mint-token
+        status: FINISHED
+        description: "The endpoint access token is minted before the server starts"
+    {{- end }}
+    env:
+      # The image runs as a different uid under Fuzzball, so every writable path
+      # OpenCode uses is redirected onto the volume.
+      - HOME=/data/home
+      - XDG_CONFIG_HOME=/data/home/.config
+      - XDG_DATA_HOME=/data/home/.local/share
+      - XDG_CACHE_HOME=/data/home/.cache
+      - XDG_STATE_HOME=/data/home/.local/state
+      - OPENCODE_CONFIG=/data/home/opencode.json
+      {{- if eq $scope "public" }}
+      - OPENCODE_SERVER_PASSWORD={{ $password }}
+      {{- end }}
+      {{- if $api_key_secret }}
+      - MODEL_API_KEY={{ $api_key_secret }}
+      {{- else if $api_key }}
+      - MODEL_API_KEY={{ $api_key }}
+      {{- end }}
+      {{- if $cluster_ca }}
+      - CLUSTER_CA_PEM={{ $cluster_ca }}
+      {{- end }}
+    script: |
+      #!/bin/sh
+      set -e
+      mkdir -p /data/home /data/workspace
+
+      # OpenCode is a Bun binary, which reads NODE_EXTRA_CA_CERTS and ignores
+      # SSL_CERT_DIR, so the cluster CA is pointed at by file.
+      if [ -f {{ $trust_store }} ]; then
+        NODE_EXTRA_CA_CERTS={{ $trust_store }}
+        export NODE_EXTRA_CA_CERTS
+      elif [ -n "${CLUSTER_CA_PEM}" ]; then
+        printf '%s\n' "${CLUSTER_CA_PEM}" > /data/home/cluster-ca.pem
+        NODE_EXTRA_CA_CERTS=/data/home/cluster-ca.pem
+        export NODE_EXTRA_CA_CERTS
+      fi
+
+      {{- if $mint }}
+      credential=$(cat /data/auth/endpoint-token)
+      {{- else }}
+      credential="${MODEL_API_KEY}"
+      {{- end }}
+
+      # Written at runtime because the credential is not known at submit time.
+      umask 077
+      cat > /data/home/opencode.json <<EOF
+      {
+        "\$schema": "https://opencode.ai/config.json",
+        "provider": {
+          "fuzzball": {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "Fuzzball",
+            "options": {
+              "baseURL": "{{ $endpoint }}/v1",
+              "apiKey": "${credential}"
+      {{- if and $mint (or $api_key_secret $api_key) }}
+              ,"headers": { "x-litellm-api-key": "${MODEL_API_KEY}" }
+      {{- end }}
+            },
+            "models": {
+              "{{ $model }}": {
+                "name": "{{ $model }} on Fuzzball",
+                "limit": { "context": {{ $context_size }}, "output": {{ $output_limit }} }
+              }
+            }
+          }
+        },
+        "model": "fuzzball/{{ $model }}"
+      }
+      EOF
+
+      cd /data/workspace
+      exec opencode serve --hostname 0.0.0.0 --port {{ $port }} --print-logs
+    network:
+      ports:
+        - name: http
+          port: {{ $port }}
+          protocol: tcp
+      endpoints:
+        - name: server
+          port-name: http
+          protocol: http
+          type: subdomain
+          scope: {{ $scope }}
+    readiness-probe:
+      http-get:
+        # Every unknown path answers 200 with the web app's HTML, so the probe
+        # has to name a real route: this one returns JSON.
+        path: /global/health
+        port: {{ $port }}
+        scheme: HTTP
+      initial-delay-seconds: 10
+      period-seconds: 10
+      timeout-seconds: 5
+      failure-threshold: 30
+      success-threshold: 1
+    resource:
+      cpu:
+        cores: {{ .Cores }}
+      memory:
+        size: {{ .Memory }}
+    persist: true

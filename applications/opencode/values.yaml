@@ -1,0 +1,111 @@
+values:
+  - name: Endpoint
+    display_name: >-
+      Base URL of the OpenAI-compatible endpoint to code against, e.g. the endpoint URL of a
+      vllm or litellm workflow (no /v1 suffix). When empty the server still starts, but no
+      model is usable; start a new workflow with the endpoint set.
+    string_value: ""
+    display_category: Model
+  - name: Model
+    display_name: >-
+      Model name as the endpoint serves it. For the vllm entry this is its Model value without
+      the hf:// prefix, e.g. openai/gpt-oss-20b.
+    string_value: openai/gpt-oss-20b
+    display_category: Model
+  - name: ContextSize
+    display_name: >-
+      Maximum input tokens the model accepts. OpenCode tracks remaining context against this,
+      so a value above what the endpoint serves produces requests the model rejects. Match the
+      serving entry (the vllm entry's MaxContextSize).
+    uint_value: 32768
+    display_category: Model
+  - name: OutputLimit
+    display_name: >-
+      Maximum tokens the model may generate per reply. Reasoning models spend part of this
+      budget before emitting any text, so keep it generous.
+    uint_value: 8192
+    display_category: Model
+
+  - name: EndpointAuth
+    display_name: >-
+      How to authenticate to the endpoint. 'fuzzball-token' suits a Fuzzball endpoint whose
+      scope is not public: this workflow mints an endpoint access token with its own injected
+      identity, and any ApiKey rides the x-litellm-api-key header, which the Fuzzball endpoint
+      proxy leaves alone. 'api-key' suits a public Fuzzball endpoint or a third-party API,
+      where ApiKey is sent as the bearer token.
+    string_value: fuzzball-token
+    options_input:
+      options: [fuzzball-token, api-key]
+    display_category: Model
+  - name: ApiKeySecret
+    display_name: >-
+      Fuzzball secret (secret://user/<name>) holding the model API key, e.g. the LiteLLM key of
+      a vllm or litellm workflow. Injected at runtime and never stored in the rendered
+      definition. Preferred over ApiKey.
+    secret_value:
+      reference: ""
+    display_category: Model
+  - name: ApiKey
+    display_name: >-
+      Model API key in plain text, stored in the rendered definition (prefer ApiKeySecret).
+      Required with EndpointAuth=api-key.
+    string_value: ""
+    display_category: Model
+  - name: TokenLifetime
+    display_name: >-
+      Seconds the minted endpoint access token is requested for, when
+      EndpointAuth=fuzzball-token. The token is minted once at start and not renewed, so this
+      bounds how long the server keeps working; restart the workflow to mint a fresh one. The
+      server caps the grant at its own limit, at most 7 days.
+    uint_value: 604800
+    display_category: Model
+
+  - name: ServiceScope
+    display_name: >-
+      Who can reach the OpenCode server endpoint. Anyone who reaches it can run shell commands
+      and edit files in this workflow's container, so keep it as narrow as the people using it.
+      Note 'public' is served without any Fuzzball authentication, leaving the generated server
+      password as the only barrier -- but it is the only scope a local 'opencode attach' can
+      use, because the Fuzzball endpoint proxy consumes the Authorization header that attach's
+      basic-auth credentials would travel in.
+    string_value: user
+    options_input:
+      options: [user, group, organization, public]
+    display_category: Access
+
+  - name: Volume
+    display_name: >-
+      Volume holding the workspace, sessions, and message history: 'ephemeral' (default;
+      everything is destroyed when the workflow stops) or the name of an existing persistent
+      volume to keep work across restarts. Mounted at /data, with the working directory at
+      /data/workspace.
+    string_value: ephemeral
+    display_category: Storage
+
+  - name: ClusterCASecret
+    display_name: >-
+      Fuzzball secret holding the cluster's PEM certificate authority. Needed only on clusters
+      that serve a private CA and predate the node trust store being mounted into workflow
+      containers; on newer clusters leave this empty and the mounted trust store is used.
+      Without either, OpenCode cannot reach a Fuzzball endpoint over TLS.
+    secret_value:
+      reference: ""
+    display_category: Access
+
+  - name: Cores
+    display_name: CPU cores for the OpenCode server.
+    uint_value: 4
+    display_category: Resources
+  - name: Memory
+    display_name: Memory for the OpenCode server.
+    string_value: 8GiB
+    display_category: Resources
+
+  - name: Image
+    display_name: OpenCode container image.
+    string_value: docker://ghcr.io/anomalyco/opencode:1.18.23
+    display_category: Versions
+  - name: CurlImage
+    display_name: Image used by the short-lived job that mints the endpoint access token.
+    string_value: docker://curlimages/curl:8.17.0
+    display_category: Versions
