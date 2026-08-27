@@ -82,16 +82,6 @@ values:
     string_value: ephemeral
     display_category: Storage
 
-  - name: ClusterCASecret
-    display_name: >-
-      Fuzzball secret holding the cluster's PEM certificate authority. Needed only on clusters
-      that serve a private CA and predate the node trust store being mounted into workflow
-      containers; on newer clusters leave this empty and the mounted trust store is used.
-      Without either, OpenCode cannot reach a Fuzzball endpoint over TLS.
-    secret_value:
-      reference: ""
-    display_category: Access
-
   - name: Cores
     display_name: CPU cores for the OpenCode server.
     uint_value: 4

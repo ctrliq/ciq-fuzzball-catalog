@@ -78,12 +78,11 @@ narrowest one that fits.
   entry, pass the appropriate flags in `ExtraArgs` (for example
   `--tool-call-parser openai --enable-auto-tool-choice` for gpt-oss models).
   Without them the agent can converse but cannot read or edit files.
-- *Private-CA clusters.* OpenCode is a Bun binary: it reads
-  `NODE_EXTRA_CA_CERTS` and ignores `SSL_CERT_DIR`. This entry points it at the
-  node trust store mounted into workflow containers when that is present, and
-  otherwise at `ClusterCASecret`. On a cluster that predates the mounted trust
-  store, leaving `ClusterCASecret` empty means the agent cannot reach the model
-  endpoint over TLS.
+- *Private-CA clusters.* Reaching a Fuzzball endpoint over TLS relies on the node
+  trust store that Fuzzball bind-mounts into workflow containers, so this entry
+  needs a cluster new enough to provide it. OpenCode is a Bun binary and ignores
+  the injected `SSL_CERT_DIR`, so the entry points `NODE_EXTRA_CA_CERTS` at
+  `root-ca.crt` in that mount instead.
 
 ## Storage
 

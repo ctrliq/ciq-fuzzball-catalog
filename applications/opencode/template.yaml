@@ -55,8 +55,6 @@
   {{- fail "Volume must not contain quotes or backslashes" }}
 {{- end }}
 
-{{- $cluster_ca := trim .ClusterCASecret }}
-
 {{- /* Minting only makes sense against a Fuzzball endpoint, which this workflow
        reaches with its own injected identity. */}}
 {{- $mint := and (eq $auth "fuzzball-token") (ne $endpoint "") }}
@@ -92,13 +90,10 @@ jobs:
     env:
       - ENDPOINT_URL={{ $endpoint }}
       - TOKEN_TTL={{ $token_lifetime }}
-      {{- if $cluster_ca }}
-      - CLUSTER_CA_PEM={{ $cluster_ca }}
-      {{- end }}
     script: |
       #!/bin/sh
       set -e
-      mkdir -p /data/auth
+      mkdir -p /data/.auth
 
       # The endpoint id is the first hostname label of an endpoint URL.
       host=$(echo "${ENDPOINT_URL}" | sed -e 's#^https\?://##' -e 's#/.*##')
@@ -111,29 +106,19 @@ jobs:
           ;;
       esac
 
-      # The Fuzzball API is served with the cluster's own CA. Newer clusters
-      # mount the node trust store here; older ones need ClusterCASecret.
-      ca=""
-      if [ -f {{ $trust_store }} ]; then
-        ca="--cacert {{ $trust_store }}"
-      elif [ -n "${CLUSTER_CA_PEM}" ]; then
-        printf '%s\n' "${CLUSTER_CA_PEM}" > /data/auth/cluster-ca.pem
-        ca="--cacert /data/auth/cluster-ca.pem"
-      fi
-
-      curl -sf ${ca} -X POST \
+      curl -sf --cacert {{ $trust_store }} -X POST \
         -H "Authorization: Bearer ${FB_TOKEN}" \
         -H "Content-Type: application/json" \
         -d "{\"expirationSeconds\": ${TOKEN_TTL}}" \
-        "${FB_OPENAPI_URL%/}/v4/endpoints/${endpoint_id}/token" > /data/auth/token.json
+        "${FB_OPENAPI_URL%/}/v4/endpoints/${endpoint_id}/token" > /data/.auth/token.json
 
-      grep -o '"token":"[^"]*"' /data/auth/token.json | cut -d'"' -f4 > /data/auth/endpoint-token
-      if [ ! -s /data/auth/endpoint-token ]; then
+      grep -o '"token":"[^"]*"' /data/.auth/token.json | cut -d'"' -f4 > /data/.auth/endpoint-token
+      if [ ! -s /data/.auth/endpoint-token ]; then
         echo "FATAL: no token in the mint response" >&2
-        head -c 400 /data/auth/token.json >&2
+        head -c 400 /data/.auth/token.json >&2
         exit 1
       fi
-      rm -f /data/auth/token.json
+      rm -f /data/.auth/token.json
       echo "minted an access token for ${endpoint_id}"
     resource:
       cpu:
@@ -204,13 +189,18 @@ services:
     {{- end }}
     env:
       # The image runs as a different uid under Fuzzball, so every writable path
-      # OpenCode uses is redirected onto the volume.
-      - HOME=/data/home
-      - XDG_CONFIG_HOME=/data/home/.config
-      - XDG_DATA_HOME=/data/home/.local/share
-      - XDG_CACHE_HOME=/data/home/.cache
-      - XDG_STATE_HOME=/data/home/.local/state
-      - OPENCODE_CONFIG=/data/home/opencode.json
+      # OpenCode uses is redirected onto the volume. HOME is the volume root
+      # rather than a directory beside the workspace: the web application's
+      # project browser is rooted at HOME, and a workspace outside that tree
+      # cannot be opened at all.
+      - HOME=/data
+      - XDG_CONFIG_HOME=/data/.config
+      - XDG_DATA_HOME=/data/.local/share
+      - XDG_CACHE_HOME=/data/.cache
+      - XDG_STATE_HOME=/data/.local/state
+      - OPENCODE_CONFIG=/data/.config/opencode.json
+      # The Bun runtime ignores the injected SSL_CERT_DIR.
+      - NODE_EXTRA_CA_CERTS={{ $trust_store }}
       {{- if eq $scope "public" }}
       - OPENCODE_SERVER_PASSWORD={{ $password }}
       {{- end }}
@@ -219,34 +209,20 @@ services:
       {{- else if $api_key }}
       - MODEL_API_KEY={{ $api_key }}
       {{- end }}
-      {{- if $cluster_ca }}
-      - CLUSTER_CA_PEM={{ $cluster_ca }}
-      {{- end }}
     script: |
       #!/bin/sh
       set -e
-      mkdir -p /data/home /data/workspace
-
-      # OpenCode is a Bun binary, which reads NODE_EXTRA_CA_CERTS and ignores
-      # SSL_CERT_DIR, so the cluster CA is pointed at by file.
-      if [ -f {{ $trust_store }} ]; then
-        NODE_EXTRA_CA_CERTS={{ $trust_store }}
-        export NODE_EXTRA_CA_CERTS
-      elif [ -n "${CLUSTER_CA_PEM}" ]; then
-        printf '%s\n' "${CLUSTER_CA_PEM}" > /data/home/cluster-ca.pem
-        NODE_EXTRA_CA_CERTS=/data/home/cluster-ca.pem
-        export NODE_EXTRA_CA_CERTS
-      fi
+      mkdir -p /data/workspace /data/.config
 
       {{- if $mint }}
-      credential=$(cat /data/auth/endpoint-token)
+      credential=$(cat /data/.auth/endpoint-token)
       {{- else }}
       credential="${MODEL_API_KEY}"
       {{- end }}
 
       # Written at runtime because the credential is not known at submit time.
       umask 077
-      cat > /data/home/opencode.json <<EOF
+      cat > /data/.config/opencode.json <<EOF
       {
         "\$schema": "https://opencode.ai/config.json",
         "provider": {
