@@ -55,9 +55,10 @@ values:
     display_category: Access
   - name: Scope
     display_name: >-
-      Authorization scope of the service endpoints. With 'public', the ingest
-      jobs API is protected only by the generated token in the rendered
-      definition.
+      Authorization scope of the service endpoints. The ingest jobs API is
+      reachable through its endpoint URL only at 'public' (the proxy consumes
+      auth headers at other scopes), where the generated token in the rendered
+      definition is its only gate.
     string_value: group
     options_input:
       options: [user, group, organization, public]
