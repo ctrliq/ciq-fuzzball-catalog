@@ -4,7 +4,11 @@
 {{- if not (hasPrefix "hf://" $model) }}
   {{- fail "Model must be an hf:// URI, e.g. hf://openai/gpt-oss-20b" }}
 {{- end }}
-{{- $model_name := trim (trimPrefix "hf://" $model) }}
+{{- /* The URI may carry query parameters (a revision, or include/exclude
+       filters that keep the download to the files the server actually reads).
+       They belong in the ingress source, but not in the served model name or
+       the on-disk path. */}}
+{{- $model_name := trim (index (splitList "?" (trimPrefix "hf://" $model)) 0) }}
 {{- if not $model_name }}
   {{- fail "Model must name a repository, e.g. hf://openai/gpt-oss-20b" }}
 {{- end }}

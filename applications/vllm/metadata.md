@@ -103,7 +103,12 @@ See [BENCHMARK.md](BENCHMARK.md) for the EP-versus-TP throughput comparison.
 ## Parameters
 
 - `Model`: HuggingFace model to serve, as an `hf://` URI (e.g.
-  `hf://openai/gpt-oss-20b`).
+  `hf://openai/gpt-oss-20b`). Query parameters are passed through to the
+  download: pin a revision with `?revision=<rev>`, and skip files the server
+  does not read with `?exclude=<glob>` (repeatable). The latter is worth
+  setting for repositories that ship extra checkpoints alongside the weights —
+  `hf://openai/gpt-oss-120b` is roughly three times larger downloaded whole
+  than with `?exclude=original/**&exclude=metal/**`.
 - `Gpu`: GPU platform, `nvidia` or `amd`.
 - `ExpertParallelism`: `auto` (default; enabled when the downloaded
   model's `config.json` indicates a mixture-of-experts model), `true` (require

@@ -1,6 +1,11 @@
 values:
   - name: Model
-    display_name: HuggingFace model to serve, as an hf:// URI.
+    display_name: >-
+      HuggingFace model to serve, as an hf:// URI. Query parameters are passed
+      through to the download, so a revision can be pinned (?revision=<rev>)
+      and files the server does not read can be skipped
+      (?exclude=original/** — repositories that ship extra checkpoints can be
+      several times larger than the weights alone).
     string_value: hf://openai/gpt-oss-20b
     display_category: Model
   - name: Gpu
