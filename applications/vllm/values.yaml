@@ -11,6 +11,8 @@ values:
   - name: Gpu
     display_name: "GPU platform: nvidia or amd."
     string_value: nvidia
+    options_input:
+      options: ["nvidia", "amd"]
     display_category: Model
   - name: HfTokenSecret
     display_name: >-
@@ -27,6 +29,8 @@ values:
   - name: Scope
     display_name: "Authorization scope of the service endpoint: user, group, organization, or public."
     string_value: group
+    options_input:
+      options: ["user", "group", "organization", "public"]
     display_category: Access
   - name: ApiKey
     display_name: >-
@@ -70,10 +74,9 @@ values:
     display_name: >-
       Volume holding the downloaded model: 'ephemeral' (default), or the name of an
       existing persistent volume to keep the model across workflow restarts.
-      Mounted at /data. The download directory is named after the repository
-      alone, so two workflows sharing a persistent volume for the same
-      repository at different revisions write to the same directory; give them
-      separate volumes.
+      Mounted at /data. The download directory is keyed on the repository and,
+      when Model pins one with ?revision=, the revision — so several models and
+      revisions can share one persistent volume without overwriting each other.
     string_value: ephemeral
     display_category: Storage
   - name: IngressTimeout

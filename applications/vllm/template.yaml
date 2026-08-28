@@ -6,9 +6,22 @@
 {{- end }}
 {{- /* The URI may carry query parameters (a revision, or include/exclude
        filters that keep the download to the files the server actually reads).
-       They belong in the ingress source, but not in the served model name or
-       the on-disk path. */}}
-{{- $model_name := trim (index (splitList "?" (trimPrefix "hf://" $model)) 0) }}
+       They belong in the ingress source, but not in the served model name. */}}
+{{- $model_ref := trim (trimPrefix "hf://" $model) }}
+{{- $model_name := trim (index (splitList "?" $model_ref) 0) }}
+{{- /* A pinned revision decides which weights the download produces, so it has
+       to key the directory as well: without it two revisions of one repository
+       would share a directory on a persistent volume. Filters only decide which
+       files of that revision are fetched, so they are deliberately not part of
+       the key — narrowing a filter should not orphan an existing download. */}}
+{{- $revision := "" }}
+{{- if gt (len (splitList "?" $model_ref)) 1 }}
+  {{- range (splitList "&" (index (splitList "?" $model_ref) 1)) }}
+    {{- if hasPrefix "revision=" . }}
+      {{- $revision = trimPrefix "revision=" . }}
+    {{- end }}
+  {{- end }}
+{{- end }}
 {{- if not $model_name }}
   {{- fail "Model must name a repository, e.g. hf://openai/gpt-oss-20b" }}
 {{- end }}
@@ -22,6 +35,12 @@
   {{- fail "Model repository must not contain '..'" }}
 {{- end }}
 {{- $model_dir := $model_name | lower | replace "/" "--" }}
+{{- if $revision }}
+  {{- if not (regexMatch "[A-Za-z0-9]" $revision) }}
+    {{- fail "Model revision must contain at least one letter or digit" }}
+  {{- end }}
+  {{- $model_dir = printf "%s@%s" $model_dir (trunc 40 (regexReplaceAll "[^a-z0-9._-]" (lower $revision) "-")) }}
+{{- end }}
 
 {{- $gpu := lower (trim .Gpu) }}
 {{- if and (ne $gpu "nvidia") (ne $gpu "amd") }}

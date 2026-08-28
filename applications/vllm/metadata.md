@@ -108,7 +108,9 @@ compare expert- and tensor-parallel throughput (results pending).
 - `Model`: HuggingFace model to serve, as an `hf://` URI (e.g.
   `hf://openai/gpt-oss-20b`). Query parameters are passed through to the
   download: pin a revision with `?revision=<rev>`, and skip files the server
-  does not read with `?exclude=<glob>` (repeatable). The latter is worth
+  does not read with `?exclude=<glob>` (repeatable). A pinned revision also
+  keys the download directory, so revisions of one repository can share a
+  persistent `Volume` without overwriting one another. The exclude form is worth
   setting for repositories that ship extra checkpoints alongside the weights —
   `hf://openai/gpt-oss-120b` is roughly three times larger downloaded whole
   than with `?exclude=original/**&exclude=metal/**`.
