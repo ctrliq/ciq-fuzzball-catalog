@@ -3,6 +3,10 @@
 
 Workflows should follow these suggestions.
 
+- Name template values in PascalCase (`MinReplicas`, `HfTokenSecret`, `Image`)
+  and reference them in templates as direct fields (`.MinReplicas`). Do not use
+  kebab-case or snake_case names — they force `index . "min-replicas"` lookups
+  and diverge from every user-facing `--values Name=...` example.
 - Prefer `script:` over `command:` for new workflows for better readability and
   maintainability for complex operations.
 - Do not make hardware assumptions. For example, hardcoding `threads: true` in

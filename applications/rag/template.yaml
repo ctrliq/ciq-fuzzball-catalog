@@ -1,0 +1,327 @@
+# Copyright 2026 CIQ, Inc. All rights reserved.
+
+{{- /* Structural integrity only: a quote or backslash in a value would corrupt
+       the rendered YAML (workflow doc and the embedded haiku.rag config file);
+       semantic validity is the server's / haiku.rag's job. */}}
+{{- $endpoint := trim .Endpoint }}
+{{- if or (contains "\"" $endpoint) (contains "\\" $endpoint) (contains "\n" $endpoint) (contains "#" $endpoint) }}
+  {{- fail "Endpoint must not contain quotes, backslashes, or comments" }}
+{{- end }}
+{{- $embedding_model := trim .EmbeddingModel }}
+{{- if not $embedding_model }}
+  {{- fail "EmbeddingModel must not be empty" }}
+{{- end }}
+{{- if or (contains "\"" $embedding_model) (contains "\\" $embedding_model) (contains "\n" $embedding_model) (contains "#" $embedding_model) }}
+  {{- fail "EmbeddingModel must not contain quotes, backslashes, or comments" }}
+{{- end }}
+{{- $embedding_dim := int .EmbeddingDim }}
+{{- if lt $embedding_dim 1 }}
+  {{- fail "EmbeddingDim must be at least 1" }}
+{{- end }}
+{{- $generation_model := trim .GenerationModel }}
+{{- if or (contains "\"" $generation_model) (contains "\\" $generation_model) (contains "\n" $generation_model) (contains "#" $generation_model) }}
+  {{- fail "GenerationModel must not contain quotes, backslashes, or comments" }}
+{{- end }}
+{{- $endpoint_token_secret := trim .EndpointTokenSecret }}
+{{- if or (contains "\"" $endpoint_token_secret) (contains "\\" $endpoint_token_secret) (contains "\n" $endpoint_token_secret) (contains "#" $endpoint_token_secret) }}
+  {{- fail "EndpointTokenSecret must not contain quotes, backslashes, or comments" }}
+{{- end }}
+{{- $endpoint_token := trim .EndpointToken }}
+{{- if or (contains "\"" $endpoint_token) (contains "\\" $endpoint_token) (contains "\n" $endpoint_token) (contains "#" $endpoint_token) }}
+  {{- fail "EndpointToken must not contain quotes, backslashes, or comments" }}
+{{- end }}
+{{- if and (or $endpoint_token $endpoint_token_secret) (not $endpoint) }}
+  {{- /* Without an endpoint the OpenAI client dials api.openai.com; a real
+         credential must never be sent there by accident. */}}
+  {{- fail "EndpointToken/EndpointTokenSecret require Endpoint to be set" }}
+{{- end }}
+
+{{- $scope := lower (trim .Scope) }}
+{{- if not (has $scope (list "user" "group" "organization" "public")) }}
+  {{- fail "Scope must be one of: user, group, organization, public" }}
+{{- end }}
+
+{{- $volume := trim .Volume }}
+{{- if not $volume }}
+  {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+{{- if or (contains "\"" $volume) (contains "\\" $volume) (contains "\n" $volume) (contains "#" $volume) }}
+  {{- fail "Volume must not contain quotes, backslashes, or comments" }}
+{{- end }}
+
+{{- $chunk_size := int .ChunkSize }}
+{{- if lt $chunk_size 16 }}
+  {{- fail "ChunkSize must be at least 16 tokens" }}
+{{- end }}
+
+{{- $mcp_memory := trim .McpMemory }}
+{{- $ingester_memory := trim .IngesterMemory }}
+{{- $image := trim .Image }}
+{{- range $v := list $mcp_memory $ingester_memory $image }}
+  {{- if or (not $v) (contains "\"" $v) (contains "\\" $v) (contains "\n" $v) (contains "#" $v) }}
+    {{- fail "McpMemory, IngesterMemory, and Image must be non-empty and free of quotes, backslashes, and comments" }}
+  {{- end }}
+{{- end }}
+{{- $image_secret := trim .ImageSecret }}
+{{- if or (contains "\"" $image_secret) (contains "\\" $image_secret) (contains "\n" $image_secret) (contains "#" $image_secret) }}
+  {{- fail "ImageSecret must not contain quotes, backslashes, or comments" }}
+{{- end }}
+
+{{- $read_only := .ReadOnly }}
+{{- $api_key := $endpoint_token }}
+{{- $mint := false }}
+{{- if $endpoint_token_secret }}
+  {{- /* Secret injected as an env var (env supports secret:// references);
+         haiku.rag substitutes it at runtime so it never appears in the
+         rendered definition. */}}
+  {{- $api_key = "${RAG_ENDPOINT_TOKEN}" }}
+{{- end }}
+{{- if and (not $api_key) $endpoint }}
+  {{- /* No credential given: each service mints its own endpoint access token
+         at startup with the workflow's injected identity (the endpoint proxy
+         rejects raw workflow tokens), falling back to a harmless placeholder
+         for endpoints that are not Fuzzball endpoints or take no token. The
+         script exports RAG_ENDPOINT_TOKEN either way; never default the
+         workflow's FB_TOKEN itself — a real credential must not be sent to an
+         arbitrary user-configured endpoint. */}}
+  {{- $mint = true }}
+  {{- $api_key = "${RAG_ENDPOINT_TOKEN}" }}
+{{- end }}
+{{- $mcp_port := randInt 24001 28000 }}
+{{- $ingester_port := randInt 28001 32000 }}
+{{- $ingester_token := printf "rt-%d%d%d%d" (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) }}
+
+version: v4
+
+volumes:
+  data:
+    {{- if eq (lower $volume) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    use: persistent
+    name: "{{ $volume }}"
+    {{- end }}
+
+files:
+  haiku-config: |
+    environment: production
+    storage:
+      data_dir: /data
+    embeddings:
+      model:
+        provider: openai
+        name: "{{ $embedding_model }}"
+        vector_dim: {{ $embedding_dim }}
+        base_url: "{{ $endpoint }}"
+        api_key: "{{ $api_key }}"
+      batch_size: 64
+    {{- /* Always pin qa to the openai provider: haiku.rag's built-in default
+           is an ollama model, so leaving qa unset would make ask_question
+           dial a nonexistent localhost ollama. With no GenerationModel the
+           placeholder name turns the failure into a self-explanatory
+           "model 'generation-model-not-configured' not found". */}}
+    qa:
+      model:
+        provider: openai
+        name: "{{ $generation_model | default "generation-model-not-configured" }}"
+        base_url: "{{ $endpoint }}"
+        api_key: "{{ $api_key }}"
+    analysis:
+      enabled: false
+    processing:
+      chunk_size: {{ $chunk_size }}
+      converter: docling-local
+      chunker: docling-local
+      chunker_type: hybrid
+      auto_title: false
+    {{- if $read_only }}
+    ingester:
+      queue:
+        path: /data/ingester.db
+      api:
+        host: 0.0.0.0
+        port: {{ $ingester_port }}
+        auth_token: "{{ $ingester_token }}"
+      sources:
+        - type: fs
+          id: inbox
+          root: /data/inbox
+          delete_orphans: false
+    {{- end }}
+
+  {{- /* Sourced by both service scripts so the TLS and auth logic cannot
+         drift between them. */}}
+  endpoint-auth: |
+    # Python TLS stacks need an explicit CA file: the platform mounts the
+    # cluster CA under /run/fuzzball-substrate/trusted-certs and sets
+    # SSL_CERT_DIR, but OpenSSL-style directory lookup needs hash-named
+    # entries, so httpx misses it. Merge it with the bundled public CAs so
+    # both cluster-internal and public endpoints verify.
+    if ls /run/fuzzball-substrate/trusted-certs/*.crt >/dev/null 2>&1 && [ -z "${SSL_CERT_FILE:-}" ]; then
+      cat "$(python -c 'import certifi; print(certifi.where())')" > /tmp/ca-bundle.pem
+      for f in /run/fuzzball-substrate/trusted-certs/*.crt; do
+        cat "$f" >> /tmp/ca-bundle.pem; echo >> /tmp/ca-bundle.pem
+      done
+      export SSL_CERT_FILE=/tmp/ca-bundle.pem
+    fi
+    {{- if $mint }}
+    # Mint an endpoint access token for the configured endpoint using this
+    # workflow's identity (valid up to 7 days; restart the workflow to renew).
+    # Non-Fuzzball hostnames and endpoints that take no token (public scope)
+    # fall back to a placeholder key; any other mint failure stops the service
+    # here rather than surfacing later as a provider error mid-ingest.
+    RAG_ENDPOINT_TOKEN=$(python - <<'__MINT__'
+    import os
+    import sys
+
+    import httpx
+
+    host = "{{ $endpoint }}".split("://", 1)[-1].split("/", 1)[0]
+    endpoint_id = host.split(".", 1)[0]
+    api = os.environ.get("FB_OPENAPI_URL")
+    token = os.environ.get("FB_TOKEN")
+    if not (endpoint_id.startswith("endpoint-") and api and token):
+        sys.exit(0)
+    try:
+        r = httpx.post(
+            api.rstrip("/") + "/v4/endpoints/" + endpoint_id + "/token",
+            json={"expirationSeconds": 604800},
+            headers={"Authorization": "Bearer " + token},
+            timeout=30,
+        )
+        r.raise_for_status()
+        print(r.json()["token"], end="")
+    except httpx.HTTPStatusError as exc:
+        code = exc.response.status_code
+        if code in (400, 412):
+            print(f"endpoint takes no token (HTTP {code}); continuing without", file=sys.stderr)
+            sys.exit(0)
+        print(f"FATAL: endpoint token mint failed (HTTP {code}): {exc.response.text[:200]}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as exc:
+        print(f"FATAL: endpoint token mint failed ({exc})", file=sys.stderr)
+        sys.exit(1)
+    __MINT__
+    )
+    [ -n "${RAG_ENDPOINT_TOKEN}" ] || RAG_ENDPOINT_TOKEN="unused"
+    export RAG_ENDPOINT_TOKEN
+    {{- end }}
+
+services:
+  {{- if $read_only }}
+
+  # The single LanceDB writer: owns database creation and all ingestion (async
+  # job queue + the /data/inbox watch directory). The MCP service reads the
+  # same database read-only.
+  ingester:
+    persist: true
+    image:
+      uri: "{{ $image }}"
+      {{- if $image_secret }}
+      secret: "{{ $image_secret }}"
+      {{- end }}
+    files:
+      /app/haiku.rag.yaml: file://haiku-config
+      /app/endpoint-auth.sh: file://endpoint-auth
+    env:
+      # Parsing models are baked into the image; offline mode stops the
+      # chunking tokenizer's online HF metadata check (air-gap has no HF
+      # egress, and the check adds nothing when the cache is baked).
+      - HF_HUB_OFFLINE=1
+      {{- if $endpoint_token_secret }}
+      - RAG_ENDPOINT_TOKEN={{ $endpoint_token_secret }}
+      {{- end }}
+    mounts:
+      /data:
+        volume: data
+    resource:
+      cpu:
+        cores: {{ .IngesterCores }}
+      memory:
+        size: {{ $ingester_memory }}
+    network:
+      ports:
+        - name: ingest-api
+          port: {{ $ingester_port }}
+          protocol: tcp
+      endpoints:
+        - name: ingest
+          port-name: ingest-api
+          protocol: http
+          type: subdomain
+          scope: {{ $scope }}
+    script: |
+      #!/bin/sh
+      set -e
+      . /app/endpoint-auth.sh
+      mkdir -p /data/inbox
+      haiku-rag --config /app/haiku.rag.yaml init
+      exec haiku-ingester --config /app/haiku.rag.yaml serve
+    readiness-probe:
+      tcp-socket:
+        port: {{ $ingester_port }}
+      initial-delay-seconds: 15
+      period-seconds: 10
+      timeout-seconds: 5
+      failure-threshold: 30
+      success-threshold: 1
+  {{- end }}
+
+  mcp:
+    persist: true
+    {{- if $read_only }}
+    depends-on:
+      - name: ingester
+        status: RUNNING
+    {{- end }}
+    image:
+      uri: "{{ $image }}"
+      {{- if $image_secret }}
+      secret: "{{ $image_secret }}"
+      {{- end }}
+    files:
+      /app/haiku.rag.yaml: file://haiku-config
+      /app/endpoint-auth.sh: file://endpoint-auth
+    env:
+      # Parsing models are baked into the image; offline mode stops the
+      # chunking tokenizer's online HF metadata check (air-gap has no HF
+      # egress, and the check adds nothing when the cache is baked).
+      - HF_HUB_OFFLINE=1
+      {{- if $endpoint_token_secret }}
+      - RAG_ENDPOINT_TOKEN={{ $endpoint_token_secret }}
+      {{- end }}
+    mounts:
+      /data:
+        volume: data
+    resource:
+      cpu:
+        cores: {{ .McpCores }}
+      memory:
+        size: {{ $mcp_memory }}
+    network:
+      ports:
+        - name: mcp
+          port: {{ $mcp_port }}
+          protocol: tcp
+      endpoints:
+        - name: mcp
+          port-name: mcp
+          protocol: http
+          type: subdomain
+          scope: {{ $scope }}
+    script: |
+      #!/bin/sh
+      set -e
+      . /app/endpoint-auth.sh
+      {{- if not $read_only }}
+      haiku-rag --config /app/haiku.rag.yaml init
+      {{- end }}
+      exec haiku-rag --config /app/haiku.rag.yaml {{ if $read_only }}--read-only {{ end }}mcp --host 0.0.0.0 --port {{ $mcp_port }}
+    readiness-probe:
+      tcp-socket:
+        port: {{ $mcp_port }}
+      initial-delay-seconds: 15
+      period-seconds: 10
+      timeout-seconds: 5
+      failure-threshold: 30
+      success-threshold: 1
