@@ -4,11 +4,43 @@
 {{- if not (hasPrefix "hf://" $model) }}
   {{- fail "Model must be an hf:// URI, e.g. hf://openai/gpt-oss-20b" }}
 {{- end }}
-{{- $model_name := trim (trimPrefix "hf://" $model) }}
+{{- /* The URI may carry query parameters (a revision, or include/exclude
+       filters that keep the download to the files the server actually reads).
+       They belong in the ingress source, but not in the served model name. */}}
+{{- $model_ref := trim (trimPrefix "hf://" $model) }}
+{{- $model_name := trim (index (splitList "?" $model_ref) 0) }}
+{{- /* A pinned revision decides which weights the download produces, so it has
+       to key the directory as well: without it two revisions of one repository
+       would share a directory on a persistent volume. Filters only decide which
+       files of that revision are fetched, so they are deliberately not part of
+       the key — narrowing a filter should not orphan an existing download. */}}
+{{- $revision := "" }}
+{{- if gt (len (splitList "?" $model_ref)) 1 }}
+  {{- range (splitList "&" (index (splitList "?" $model_ref) 1)) }}
+    {{- if hasPrefix "revision=" . }}
+      {{- $revision = trimPrefix "revision=" . }}
+    {{- end }}
+  {{- end }}
+{{- end }}
 {{- if not $model_name }}
   {{- fail "Model must name a repository, e.g. hf://openai/gpt-oss-20b" }}
 {{- end }}
+{{- /* The repository name is interpolated into a filesystem path, a shell
+       string and a Python string literal, so restrict it to the characters a
+       HuggingFace repository id can actually contain. */}}
+{{- if not (regexMatch "^[A-Za-z0-9._/-]+$" $model_name) }}
+  {{- fail "Model repository may contain only letters, digits, and . _ / -" }}
+{{- end }}
+{{- if contains ".." $model_name }}
+  {{- fail "Model repository must not contain '..'" }}
+{{- end }}
 {{- $model_dir := $model_name | lower | replace "/" "--" }}
+{{- if $revision }}
+  {{- if not (regexMatch "[A-Za-z0-9]" $revision) }}
+    {{- fail "Model revision must contain at least one letter or digit" }}
+  {{- end }}
+  {{- $model_dir = printf "%s@%s" $model_dir (trunc 40 (regexReplaceAll "[^a-z0-9._-]" (lower $revision) "-")) }}
+{{- end }}
 
 {{- $gpu := lower (trim .Gpu) }}
 {{- if and (ne $gpu "nvidia") (ne $gpu "amd") }}
@@ -47,6 +79,16 @@
 {{- end }}
 {{- $gpus_per_replica := int .GpusPerReplica }}
 {{- $tensor_parallel := max 1 $gpus_per_replica }}
+{{- $ep := lower (trim .ExpertParallelism) }}
+{{- if not (has $ep (list "auto" "true" "false")) }}
+  {{- fail "ExpertParallelism must be one of: auto, true, false" }}
+{{- end }}
+{{- /* vLLM turns expert parallelism off when the data-parallel size is 1,
+       because a single GPU has nothing to shard the experts across. Refuse the
+       combination rather than reporting a layout the server will not use. */}}
+{{- if and (eq $ep "true") (lt $gpus_per_replica 2) }}
+  {{- fail "ExpertParallelism=true requires GpusPerReplica >= 2; expert parallelism has no effect on a single GPU" }}
+{{- end }}
 {{- $gpu_model := trim .GpuModel }}
 {{- $extra_args := trim .ExtraArgs }}
 {{- if and $extra_args (not (regexMatch "^[A-Za-z0-9 ._=/-]+$" $extra_args)) }}
@@ -109,9 +151,55 @@ services:
       {{- end }}
     script: |
       #!/bin/sh
+      set -u
+      # The parallelism layout is decided at runtime: whether the model is
+      # MoE is a property of the downloaded snapshot's config.json, which
+      # exists only after ingress, never at render time.
+      detect=$(python3 - <<'PY'
+      import json
+      cfg = json.load(open("{{ $model_path }}/config.json"))
+      arch = (cfg.get("architectures") or ["unknown"])[0]
+      KEYS = ("num_local_experts", "n_routed_experts", "num_experts", "moe_num_experts")
+      def moe(c):
+          return any(isinstance(c.get(k), int) and c[k] > 1 for k in KEYS)
+      # The expert count sits at the top level, or in a nested config block:
+      # text_config for multimodal models, ffn_config for DBRX.
+      nested = [v for v in cfg.values() if isinstance(v, dict)]
+      print(("moe" if moe(cfg) or any(moe(v) for v in nested) else "dense"), arch)
+      PY
+      ) || { echo "ERROR: cannot read {{ $model_path }}/config.json to detect the model architecture" >&2; exit 1; }
+      is_moe=${detect%% *}
+      arch=${detect#* }
+
+      use_ep=0
+      if [ "{{ $ep }}" = "true" ]; then
+        if [ "$is_moe" != "moe" ]; then
+          echo "ERROR: ExpertParallelism=true, but model '{{ $model_name }}' (architecture: $arch)" \
+               "is not a mixture-of-experts model: config.json has no expert-count field" \
+               "(num_local_experts, n_routed_experts, num_experts, moe_num_experts) greater than 1." \
+               "Use ExpertParallelism=auto or ExpertParallelism=false." >&2
+          exit 1
+        fi
+        use_ep=1
+      elif [ "{{ $ep }}" = "auto" ] && [ "$is_moe" = "moe" ] && [ {{ $gpus_per_replica }} -ge 2 ]; then
+        use_ep=1
+      fi
+
+      # llm-d wide-EP layout on one node: attention data-parallel across the
+      # replica's GPUs, experts expert-parallel (EP world size = DP x TP, so
+      # TP stays 1). Phase 2 (FUZZ-8399) extends this arg list for multi-node
+      # groups.
+      if [ "$use_ep" -eq 1 ]; then
+        parallel_args="--data-parallel-size {{ $gpus_per_replica }} --enable-expert-parallel"
+        echo "vllm: $arch ($is_moe), ExpertParallelism={{ $ep }} -> expert parallelism, data-parallel size {{ $gpus_per_replica }}"
+      else
+        parallel_args="--tensor-parallel-size {{ $tensor_parallel }}"
+        echo "vllm: $arch ($is_moe), ExpertParallelism={{ $ep }} -> tensor parallelism, size {{ $tensor_parallel }}"
+      fi
+
       exec vllm serve "{{ $model_path }}" \
         --served-model-name "{{ $model_name }}" \
-        --tensor-parallel-size {{ $tensor_parallel }} \
+        $parallel_args \
         --max-model-len {{ .MaxContextSize }} \
         --gpu-memory-utilization {{ .GpuMemoryUtilization }} \
         --host 0.0.0.0 \
@@ -170,14 +258,18 @@ services:
       {{- if not .Proxy }}
       scale-up:
         triggers:
-          - metrics-query: vllm:num_requests_waiting >= bool 2
+          # Aggregated because data-parallel serving (expert parallelism)
+          # exposes one series per engine rank; a bare vector query would
+          # feed the trigger N elements instead of one.
+          - metrics-query: sum(vllm:num_requests_waiting) >= bool 2
             cooldown-period: 60
       {{- end }}
       scale-down:
         # Sustained idleness, not an instantaneous sample: a replica between
         # two requests reports 0 running at a scrape instant, which would
-        # retire busy replicas every cooldown.
-        metrics-query: max_over_time(vllm:num_requests_running[5m]) == bool 0
+        # retire busy replicas every cooldown. max() over engines for the
+        # same per-engine-series reason as the scale-up query.
+        metrics-query: max(max_over_time(vllm:num_requests_running[5m])) == bool 0
         cooldown-period: 300
         drain-period: {{ $drain_period }}
 

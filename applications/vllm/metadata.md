@@ -18,6 +18,8 @@ replica churn.
 fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-20b
 fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-120b,Gpu=amd
 fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-120b,MinReplicas=1,MaxReplicas=10
+fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-120b,GpusPerReplica=4
+fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-20b,GpusPerReplica=2,ExpertParallelism=true
 ```
 
 The model is downloaded from the HuggingFace Hub once, at workflow start, into
@@ -82,11 +84,42 @@ Gateway catalog entry (`litellm`) picks the pool up automatically. An authentica
 idles at zero starts the first replica and returns `503` with a `Retry-After`
 header.
 
+## Expert parallelism
+
+For mixture-of-experts models the replica follows the
+[llm-d wide expert parallelism](https://llm-d.ai/docs/well-lit-paths/foundations/wide-expert-parallelism)
+layout on one node: attention runs data-parallel across the replica's GPUs and
+the expert layers are sharded expert-parallel
+(`--data-parallel-size GpusPerReplica --enable-expert-parallel`), instead of
+tensor parallelism. Whether the model is MoE is detected at service start from
+the downloaded model's `config.json`; with the default `ExpertParallelism=auto` the right
+layout is picked automatically, and `ExpertParallelism=true` on a non-MoE model fails the
+service at start with a message naming the model's architecture. The replica
+still serves one OpenAI-compatible API on the same port, so endpoints, the
+LiteLLM proxy, and autoscaling behave exactly as without expert parallelism.
+Expert parallelism needs at least two GPUs per replica, since a single GPU has
+nothing to shard the experts across; with one GPU the replica serves with
+tensor parallelism instead. Multi-node expert-parallel serving groups are
+future work. See [BENCHMARK.md](BENCHMARK.md) for the methodology used to
+compare expert- and tensor-parallel throughput (results pending).
+
 ## Parameters
 
 - `Model`: HuggingFace model to serve, as an `hf://` URI (e.g.
-  `hf://openai/gpt-oss-20b`).
+  `hf://openai/gpt-oss-20b`). Query parameters are passed through to the
+  download: pin a revision with `?revision=<rev>`, and skip files the server
+  does not read with `?exclude=<glob>` (repeatable). A pinned revision also
+  keys the download directory, so revisions of one repository can share a
+  persistent `Volume` without overwriting one another. The exclude form is worth
+  setting for repositories that ship extra checkpoints alongside the weights —
+  `hf://openai/gpt-oss-120b` is roughly three times larger downloaded whole
+  than with `?exclude=original/**&exclude=metal/**`.
 - `Gpu`: GPU platform, `nvidia` or `amd`.
+- `ExpertParallelism`: `auto` (default; enabled when the downloaded model's
+  `config.json` indicates a mixture-of-experts model and `GpusPerReplica` is at
+  least 2), `true` (require both — on a dense model the service fails at start
+  naming the model's architecture, and fewer than 2 GPUs is rejected at
+  submission), or `false` (tensor parallelism only).
 - `Proxy`: whether to front the pool with an in-workflow LiteLLM proxy.
 - `Scope`: authorization scope of the service endpoint (`user`, `group`,
   `organization`, `public`). Note that a `public` pool endpoint is served
@@ -103,6 +136,9 @@ Resource, image-version, scaling, and vLLM tuning knobs are available under
 the Resources, Versions, Scaling, and Model Configuration categories. Under
 Storage, set `Volume` to the name of a persistent volume (e.g.
 `Volume=my-models`) to keep the downloaded model across workflow restarts.
+On small or shared vGPU slices, lower `GpuMemoryUtilization` (e.g. to 0.8):
+vLLM requires that fraction of *total* VRAM to be free at start, and driver
+overhead on a small slice can make the 0.9 default unsatisfiable.
 
 The workflow runs until it is cancelled. The rendered workflow also serves as a
 working example of fronting an autoscaled service pool with an in-workflow

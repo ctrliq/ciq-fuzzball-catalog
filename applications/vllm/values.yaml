@@ -1,11 +1,18 @@
 values:
   - name: Model
-    display_name: HuggingFace model to serve, as an hf:// URI.
+    display_name: >-
+      HuggingFace model to serve, as an hf:// URI. Query parameters are passed
+      through to the download, so a revision can be pinned (?revision=<rev>)
+      and files the server does not read can be skipped
+      (?exclude=original/** — repositories that ship extra checkpoints can be
+      several times larger than the weights alone).
     string_value: hf://openai/gpt-oss-20b
     display_category: Model
   - name: Gpu
     display_name: "GPU platform: nvidia or amd."
     string_value: nvidia
+    options_input:
+      options: ["nvidia", "amd"]
     display_category: Model
   - name: HfTokenSecret
     display_name: >-
@@ -22,6 +29,8 @@ values:
   - name: Scope
     display_name: "Authorization scope of the service endpoint: user, group, organization, or public."
     string_value: group
+    options_input:
+      options: ["user", "group", "organization", "public"]
     display_category: Access
   - name: ApiKey
     display_name: >-
@@ -65,7 +74,9 @@ values:
     display_name: >-
       Volume holding the downloaded model: 'ephemeral' (default), or the name of an
       existing persistent volume to keep the model across workflow restarts.
-      Mounted at /data.
+      Mounted at /data. The download directory is keyed on the repository and,
+      when Model pins one with ?revision=, the revision — so several models and
+      revisions can share one persistent volume without overwriting each other.
     string_value: ephemeral
     display_category: Storage
   - name: IngressTimeout
@@ -78,8 +89,25 @@ values:
     uint_value: 131072
     display_category: Model Configuration
   - name: GpuMemoryUtilization
-    display_name: The fraction of GPU memory to be used for the model.
+    display_name: >-
+      The fraction of GPU memory to be used for the model. vLLM requires this
+      fraction of total VRAM to be free at start, so on small or shared vGPU
+      slices, where driver overhead is a large fraction of VRAM, 0.9 can be
+      unsatisfiable — lower it (e.g. 0.8) if vLLM aborts with "Free memory on
+      device ... is less than desired GPU memory utilization".
     string_value: "0.9"
+    display_category: Model Configuration
+  - name: ExpertParallelism
+    display_name: >-
+      Expert parallelism across the replica's GPUs: auto (enabled when the downloaded
+      model's config.json indicates a mixture-of-experts model and GpusPerReplica is at
+      least 2), true (require both; the service fails at start otherwise), or false
+      (tensor parallelism only). When enabled, the replica serves attention
+      data-parallel and experts expert-parallel across GpusPerReplica GPUs. A single
+      GPU has nothing to shard experts across, so expert parallelism needs 2 or more.
+    string_value: auto
+    options_input:
+      options: ["auto", "true", "false"]
     display_category: Model Configuration
   - name: ExtraArgs
     display_name: >-
@@ -90,7 +118,8 @@ values:
 
   - name: GpusPerReplica
     display_name: >-
-      Number of GPU devices per replica (also the tensor-parallel size). 0 requests no
+      Number of GPU devices per replica (the tensor-parallel size, or the
+      data-parallel size when expert parallelism is enabled). 0 requests no
       GPU; note the default images are GPU builds, so 0 also requires overriding
       VllmImage with a CPU-build image (testing only).
     uint_value: 1
