@@ -5,8 +5,11 @@
        for a few forbidden characters: a newline forges env entries, and '#', '$'
        or a backtick changes what the script runs. */}}
 
-{{- $endpoint := trimSuffix "/" (trim .Endpoint) }}
-{{- if and $endpoint (not (regexMatch "^https?://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._/-]*)?$" $endpoint)) }}
+{{- $endpoint := trimSuffix "/v1" (trimSuffix "/" (trim .Endpoint)) }}
+{{- if not $endpoint }}
+  {{- fail "Endpoint is required: the base URL of an OpenAI-compatible endpoint, e.g. a vllm or litellm workflow endpoint" }}
+{{- end }}
+{{- if not (regexMatch "^https?://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._/-]*)?$" $endpoint) }}
   {{- fail "Endpoint must be an http(s) URL, e.g. https://endpoint-<id>.endpoints.<cluster domain>" }}
 {{- end }}
 
@@ -29,13 +32,14 @@
   {{- fail "EndpointAuth must be one of: fuzzball-token, api-key" }}
 {{- end }}
 
+{{- /* The platform accepts only user-scoped value secrets in env entries. */}}
 {{- $api_key_secret := trim .ApiKeySecret }}
-{{- if and $api_key_secret (not (regexMatch "^secret://[A-Za-z0-9._/-]+$" $api_key_secret)) }}
-  {{- fail "ApiKeySecret must be a secret:// reference, e.g. secret://user/litellm-key" }}
+{{- if and $api_key_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $api_key_secret)) }}
+  {{- fail "ApiKeySecret must be a user-scoped secret reference, e.g. secret://user/litellm-key" }}
 {{- end }}
 {{- $api_key := trim .ApiKey }}
-{{- if and $api_key (not (regexMatch "^[A-Za-z0-9._-]+$" $api_key)) }}
-  {{- fail "ApiKey may contain only letters, digits, '.', '_' and '-'" }}
+{{- if and $api_key (not (regexMatch "^[A-Za-z0-9._~+/=-]+$" $api_key)) }}
+  {{- fail "ApiKey may contain only letters, digits and . _ ~ + / = -" }}
 {{- end }}
 {{- if and (eq $auth "api-key") (not (or $api_key_secret $api_key)) }}
   {{- fail "EndpointAuth=api-key needs ApiKeySecret or ApiKey" }}
@@ -69,13 +73,14 @@
   {{- fail "CurlImage must be a docker:// or oras:// container reference" }}
 {{- end }}
 
-{{- /* Minting only makes sense against a Fuzzball endpoint, which this service
-       reaches with its own injected identity. It happens in the service rather
-       than a job: the server grants an endpoint token no more lifetime than the
-       calling workflow token has left, and a job's token expires with the job. */}}
-{{- $mint := and (eq $auth "fuzzball-token") (ne $endpoint "") }}
+{{- $mint := eq $auth "fuzzball-token" }}
 
 {{- $password := printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+{{- /* The server rejects every route but its icons once a password is set, and
+       the readiness probe sends no credentials, so it authenticates through the
+       query parameter the server checks ahead of the Authorization header. A
+       probe that cannot pass aborts the whole workflow. */}}
+{{- $auth_query := printf "opencode:%s" $password | b64enc }}
 
 {{- $port := randInt 24001 32000 }}
 {{- $trust_store := "/run/fuzzball-substrate/trusted-certs/root-ca.crt" }}
@@ -104,19 +109,25 @@ jobs:
       echo "Get the server URL with:"
       echo "   fuzzball workflow endpoints list"
       echo ""
-      echo "Server password (also in the definition: fuzzball workflow get <workflow id>):"
+      echo "The server enforces this password on every request:"
       echo "   {{ $password }}"
       echo ""
-      echo "Attach a local OpenCode (1.18 or later):"
-      echo "   opencode attach <server url> -p {{ $password }}"
-      {{- if ne $scope "public" }}
+      echo "It travels in the Authorization header, which the endpoint proxy"
+      echo "consumes at every scope but public, so through the endpoint URL send"
+      echo "it as a query parameter instead:"
+      echo "   <server url>/api/session?auth_token={{ $auth_query }}"
       echo ""
-      echo "The endpoint scope is {{ $scope }}, so requests through the endpoint URL"
-      echo "also need a Fuzzball credential in the Authorization header:"
+      {{- if eq $scope "public" }}
+      echo "This endpoint is public, so the password is the only barrier. A"
+      echo "browser prompts for it (user 'opencode'), and a local client attaches:"
+      echo "   opencode attach <server url> -p {{ $password }}"
+      {{- else }}
+      echo "Requests also need a Fuzzball credential in the Authorization header:"
       echo "   fuzzball workflow endpoints generate-token <endpoint id>"
       echo ""
-      echo "That header is consumed by the endpoint proxy, so 'opencode attach'"
-      echo "works against this scope only from inside the cluster network."
+      echo "The bundled web application cannot be used at this scope: its own"
+      echo "requests carry no query parameter and the proxy has taken the header."
+      echo "Use ServiceScope=public for the web application or 'opencode attach'."
       {{- end }}
       echo ""
       echo "Model configured for this server: fuzzball/{{ $model }}"
@@ -148,10 +159,8 @@ services:
       - XDG_CACHE_HOME=/data/.cache
       - XDG_STATE_HOME=/data/.local/state
       - OPENCODE_CONFIG=/data/.config/opencode.json
-      # The Bun runtime ignores the injected SSL_CERT_DIR.
-      - NODE_EXTRA_CA_CERTS={{ $trust_store }}
-      # A plain service binds its port on the node, so the endpoint proxy is not
-      # the only way in and the scope alone protects nothing.
+      # Set at every scope: a plain service also binds its port on the node it
+      # runs on, where no endpoint proxy stands in front of it.
       - OPENCODE_SERVER_PASSWORD={{ $password }}
       {{- if $api_key_secret }}
       - MODEL_API_KEY={{ $api_key_secret }}
@@ -162,12 +171,21 @@ services:
       #!/bin/sh
       set -e
       mkdir -p /data/workspace /data/.config
-      {{- if not $endpoint }}
 
-      echo "FATAL: Endpoint is empty, so no model is reachable. Start this entry" >&2
-      echo "with Endpoint set to an OpenAI-compatible base URL." >&2
-      exit 1
-      {{- end }}
+      # Both TLS stacks here need the cluster CA added to the public roots, not
+      # substituted for them: this endpoint may be private-CA while the model
+      # endpoint or a provider is public. The image's own bundle is read-only to
+      # this uid, so the merged copy lives in /tmp. busybox wget reads
+      # SSL_CERT_FILE; the Bun runtime reads NODE_EXTRA_CA_CERTS and ignores
+      # SSL_CERT_DIR.
+      bundle=/tmp/ca-bundle.pem
+      cat /etc/ssl/certs/ca-certificates.crt > "${bundle}"
+      if [ -f {{ $trust_store }} ]; then
+        cat {{ $trust_store }} >> "${bundle}"
+      fi
+      SSL_CERT_FILE="${bundle}"
+      NODE_EXTRA_CA_CERTS="${bundle}"
+      export SSL_CERT_FILE NODE_EXTRA_CA_CERTS
       {{- if $mint }}
 
       endpoint_id=$(echo "{{ $endpoint }}" | sed -e 's#^[a-z]*://##' -e 's#/.*##' -e 's#:.*##' | cut -d. -f1)
@@ -184,21 +202,23 @@ services:
         exit 1
       fi
 
-      minted=$(SSL_CERT_FILE={{ $trust_store }} wget -q -O - \
+      minted=$(wget -nv -O - \
         --header="Authorization: Bearer ${FB_TOKEN}" \
         --header="Content-Type: application/json" \
         --post-data="{\"expirationSeconds\": {{ $token_lifetime }}}" \
         "${FB_OPENAPI_URL%/}/v4/endpoints/${endpoint_id}/token" 2> /tmp/mint.err) || {
-        echo "FATAL: could not mint an access token for ${endpoint_id}. A public" >&2
-        echo "endpoint takes no token: use EndpointAuth=api-key instead." >&2
+        echo "FATAL: could not mint an access token for ${endpoint_id}:" >&2
         cat /tmp/mint.err >&2
+        echo "A public endpoint takes no token; use EndpointAuth=api-key for one." >&2
         exit 1
       }
-      credential=$(echo "${minted}" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+      credential=$(echo "${minted}" | tr -d ' \n' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
       if [ -z "${credential}" ]; then
         echo "FATAL: no token in the mint response" >&2
         exit 1
       fi
+      # The agent runs arbitrary shell: leave it no workflow API credential.
+      unset FB_TOKEN FB_OPENAPI_URL
       {{- else }}
 
       credential="${MODEL_API_KEY}"
@@ -232,8 +252,8 @@ services:
       EOF
 
       # A rejected credential otherwise surfaces at the user's first prompt: the
-      # readiness probe never touches the model endpoint.
-      if ! {{ if $mint }}SSL_CERT_FILE={{ $trust_store }} {{ end }}wget -q -O /dev/null \
+      # readiness probe only reaches this server, never the model endpoint.
+      if ! wget -nv -O /dev/null \
         --header="Authorization: Bearer ${credential}" \
       {{- if and $mint (or $api_key_secret $api_key) }}
         --header="x-litellm-api-key: ${MODEL_API_KEY}" \
@@ -263,9 +283,12 @@ services:
           scope: {{ $scope }}
     readiness-probe:
       http-get:
-        # Every unknown path answers 200 with the web application's HTML, so the
-        # probe has to name a real route: this one returns JSON.
-        path: /global/health
+        # Names a real route because the icon allowlist aside, every path needs
+        # the credential; the query parameter carries it, as the probe sends no
+        # headers of its own. The endpoint URL exists before this passes, so it
+        # refuses connections for the first cycles, and failure-threshold x
+        # period-seconds is a hard deadline: exceeding it aborts the workflow.
+        path: /global/health?auth_token={{ $auth_query }}
         port: {{ $port }}
         scheme: HTTP
       initial-delay-seconds: 10

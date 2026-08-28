@@ -2,8 +2,7 @@ values:
   - name: Endpoint
     display_name: >-
       Base URL of the OpenAI-compatible endpoint to code against, e.g. the endpoint URL of a
-      vllm or litellm workflow (no /v1 suffix). Required: left empty, the workflow stops at
-      once rather than running an agent with no model behind it.
+      vllm or litellm workflow. Required; a trailing /v1 is accepted and trimmed.
     string_value: ""
     display_category: Model
   - name: Model
@@ -39,9 +38,9 @@ values:
     display_category: Model
   - name: ApiKeySecret
     display_name: >-
-      Fuzzball secret (secret://user/<name>) holding the model API key, e.g. the LiteLLM key of
-      a vllm or litellm workflow. Injected at runtime and never stored in the rendered
-      definition. Preferred over ApiKey.
+      User-scoped Fuzzball secret (secret://user/<name>) holding the model API key, e.g. the
+      LiteLLM key of a vllm or litellm workflow. Injected at runtime and never stored in the
+      rendered definition. Preferred over ApiKey.
     secret_value:
       reference: ""
     display_category: Model
@@ -63,13 +62,8 @@ values:
 
   - name: ServiceScope
     display_name: >-
-      Who can reach the OpenCode server endpoint. Anyone who reaches it can run shell commands
-      and edit files in this workflow's container. The server always enforces its own basic-auth
-      password, printed by the show-server job, because the service also listens on its node's
-      port where no endpoint proxy sits in front of it. At 'public' scope that password is the
-      only barrier, and it is also the only scope a local 'opencode attach' can reach from
-      outside the cluster: at every other scope the endpoint proxy consumes the Authorization
-      header attach's credentials travel in.
+      Who can reach the server endpoint. The server also enforces its own password at every
+      scope; only 'public' works with a browser or 'opencode attach'. See the description.
     string_value: user
     options_input:
       options: [user, group, organization, public]

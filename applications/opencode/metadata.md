@@ -53,28 +53,35 @@ so restart the workflow to mint a fresh one.
 ## Reaching the server
 
 The service publishes one endpoint serving both an HTTP API and a web
-application. How you reach it depends on `ServiceScope`, and the choice is not
-symmetric:
+application, and the server enforces a password of its own at every scope,
+generated at submit time and printed by the `show-server` job. That password is
+not redundant with the endpoint scope: a plain service also binds its port on the
+node it runs on, where no endpoint proxy stands in front of it.
 
-- At `user`, `group`, or `organization` scope, requests through the endpoint URL
-  need a Fuzzball credential: an [endpoint access
+The password travels in the `Authorization` header, which the endpoint proxy
+consumes at every scope but `public`. The server checks a query parameter first,
+so that is how a client authenticates through the endpoint URL:
+
+```
+curl "<server url>/api/session?auth_token=<base64 of opencode:PASSWORD>"
+```
+
+What that leaves per scope:
+
+- `user`, `group`, `organization`: API clients work by appending `auth_token`, and
+  requests additionally carry a Fuzzball [endpoint access
   token](https://ui.stable.fuzzball.ciq.dev/docs/advanced-features/workflow-endpoints/)
-  for API clients, or a browser session for the web application.
-- At `public` scope, Fuzzball performs no authentication of its own.
-
-The server always enforces a basic-auth password, generated at submit time and
-printed by the `show-server` job. That is not redundant with the endpoint scope: a
-plain service binds its port on the node it runs on, so the server is reachable
-directly at that address with no proxy in front of it, whatever the scope says. At
-`public` scope the password is the only barrier at all.
-
-`opencode attach <url> -p <password>` therefore works from outside the cluster
-only at `public` scope: attach sends its credentials in the `Authorization` header,
-which a non-public endpoint's proxy consumes.
+  in `Authorization`. The web application does **not** work: its own requests
+  carry no query parameter and the header has already been consumed. `opencode
+  attach` does not work either, for the same reason.
+- `public`: Fuzzball authenticates nothing and the password is the only barrier,
+  which is also what makes the browser (it prompts, user `opencode`) and
+  `opencode attach <url> -p <password>` work.
 
 Anyone who reaches the server can run shell commands and edit files inside the
 container, so prefer the narrowest scope that fits and treat the password as a
-real credential.
+real credential. The workflow's own API token is removed from the environment
+before the agent starts, so a prompt injection cannot walk off with it.
 
 ## Known limitations
 
@@ -92,9 +99,15 @@ real credential.
   Without them the agent can converse but cannot read or edit files.
 - *Private-CA clusters.* Reaching a Fuzzball endpoint over TLS relies on the node
   trust store that Fuzzball bind-mounts into workflow containers, so this entry
-  needs a cluster new enough to provide it. OpenCode is a Bun binary and ignores
-  the injected `SSL_CERT_DIR`, so the entry points `NODE_EXTRA_CA_CERTS` at
-  `root-ca.crt` in that mount instead.
+  needs a cluster new enough to provide it. The entry appends that CA to the
+  image's public roots in a writable copy and points both TLS stacks at it
+  (`SSL_CERT_FILE` for the shell's `wget`, `NODE_EXTRA_CA_CERTS` for the Bun
+  runtime, which ignores `SSL_CERT_DIR`); the image's own bundle is read-only to
+  the uid Fuzzball runs it under.
+- *A minimal image.* It is Alpine plus the OpenCode binary: no `git`, no language
+  toolchains, no compilers. The agent can read and write files and run shell
+  built-ins, but a task needing a toolchain wants an image that carries one --
+  override `Image` with a build of your own.
 
 ## Storage
 
