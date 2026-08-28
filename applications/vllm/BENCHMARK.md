@@ -1,10 +1,16 @@
 # Expert parallelism vs. tensor parallelism — throughput comparison
 
-FUZZ-8399 Phase 1 acceptance requires a documented throughput comparison
-between the expert-parallel layout (`ExpertParallelism=true`: attention data-parallel,
-experts expert-parallel) and the tensor-parallel default (`ExpertParallelism=false`) for a
-MoE model on a single node. This file records the methodology and results so
-the comparison is reproducible when images, models, or hardware change.
+This file records how to compare the expert-parallel layout
+(`ExpertParallelism=true`: attention data-parallel, experts expert-parallel)
+against the tensor-parallel default (`ExpertParallelism=false`) for a MoE model
+on a single node, so the comparison is reproducible when images, models, or
+hardware change.
+
+**Results are not filled in yet.** Expert parallelism requires at least two
+GPUs per replica — a single GPU has nothing to shard experts across — so these
+numbers need a multi-GPU node, which was not available when the layout was
+implemented. The methodology below is published ahead of the results; treat the
+tables as a blocker to close, not as a comparison already made.
 
 ## Methodology
 

@@ -70,7 +70,10 @@ values:
     display_name: >-
       Volume holding the downloaded model: 'ephemeral' (default), or the name of an
       existing persistent volume to keep the model across workflow restarts.
-      Mounted at /data.
+      Mounted at /data. The download directory is named after the repository
+      alone, so two workflows sharing a persistent volume for the same
+      repository at different revisions write to the same directory; give them
+      separate volumes.
     string_value: ephemeral
     display_category: Storage
   - name: IngressTimeout
@@ -94,11 +97,14 @@ values:
   - name: ExpertParallelism
     display_name: >-
       Expert parallelism across the replica's GPUs: auto (enabled when the downloaded
-      model's config.json indicates a mixture-of-experts model), true (require a MoE
-      model; the service fails at start otherwise), or false (tensor parallelism only).
-      When enabled, the replica serves attention data-parallel and experts
-      expert-parallel across GpusPerReplica GPUs.
+      model's config.json indicates a mixture-of-experts model and GpusPerReplica is at
+      least 2), true (require both; the service fails at start otherwise), or false
+      (tensor parallelism only). When enabled, the replica serves attention
+      data-parallel and experts expert-parallel across GpusPerReplica GPUs. A single
+      GPU has nothing to shard experts across, so expert parallelism needs 2 or more.
     string_value: auto
+    options_input:
+      options: ["auto", "true", "false"]
     display_category: Model Configuration
   - name: ExtraArgs
     display_name: >-

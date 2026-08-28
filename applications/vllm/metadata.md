@@ -97,8 +97,11 @@ layout is picked automatically, and `ExpertParallelism=true` on a non-MoE model 
 service at start with a message naming the model's architecture. The replica
 still serves one OpenAI-compatible API on the same port, so endpoints, the
 LiteLLM proxy, and autoscaling behave exactly as without expert parallelism.
-Multi-node expert-parallel serving groups are future work (FUZZ-8399 Phase 2).
-See [BENCHMARK.md](BENCHMARK.md) for the EP-versus-TP throughput comparison.
+Expert parallelism needs at least two GPUs per replica, since a single GPU has
+nothing to shard the experts across; with one GPU the replica serves with
+tensor parallelism instead. Multi-node expert-parallel serving groups are
+future work. See [BENCHMARK.md](BENCHMARK.md) for the methodology used to
+compare expert- and tensor-parallel throughput (results pending).
 
 ## Parameters
 
@@ -110,10 +113,11 @@ See [BENCHMARK.md](BENCHMARK.md) for the EP-versus-TP throughput comparison.
   `hf://openai/gpt-oss-120b` is roughly three times larger downloaded whole
   than with `?exclude=original/**&exclude=metal/**`.
 - `Gpu`: GPU platform, `nvidia` or `amd`.
-- `ExpertParallelism`: `auto` (default; enabled when the downloaded
-  model's `config.json` indicates a mixture-of-experts model), `true` (require
-  a MoE model; on a dense model the service fails at start naming the model's
-  architecture), or `false` (tensor parallelism only).
+- `ExpertParallelism`: `auto` (default; enabled when the downloaded model's
+  `config.json` indicates a mixture-of-experts model and `GpusPerReplica` is at
+  least 2), `true` (require both — on a dense model the service fails at start
+  naming the model's architecture, and fewer than 2 GPUs is rejected at
+  submission), or `false` (tensor parallelism only).
 - `Proxy`: whether to front the pool with an in-workflow LiteLLM proxy.
 - `Scope`: authorization scope of the service endpoint (`user`, `group`,
   `organization`, `public`). Note that a `public` pool endpoint is served
