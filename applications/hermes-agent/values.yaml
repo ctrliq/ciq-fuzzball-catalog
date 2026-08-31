@@ -87,12 +87,14 @@ values:
     display_category: Access
   - name: ExposeApiServer
     display_name: >-
-      Publish an endpoint in front of the agent's own OpenAI-compatible API, so Hermes
-      Desktop, Open WebUI, or any OpenAI client can drive this agent as though it were a
-      model. This decides only whether an endpoint is published: the API listens on the
-      node's port either way, protected by the key the show-agent job prints. The
-      dashboard is always published.
-    bool_value: true
+      Publish an endpoint in front of the agent's own OpenAI-compatible API. Off by
+      default, and rarely worth turning on: that API accepts its key only as an
+      Authorization bearer, and the endpoint proxy consumes that header, so a caller
+      outside the cluster cannot authenticate through the endpoint at any scope this
+      entry offers. The API listens on the node's port either way, protected by the key
+      the show-agent job prints. The dashboard is always published and does work through
+      its endpoint, because it authenticates with a cookie.
+    bool_value: false
     display_category: Access
 
   - name: Volume

@@ -65,7 +65,8 @@ without restarting. A gateway that moves to a new URL is written into
 `config.yaml` by the same pass, but reaches only sessions started after it: a
 conversation already in flight keeps the provider it was created with.
 
-A pass logs `ATTACHED` with the gateway and model it settled on; a pass that
+`ATTACHED` is logged when the gateway or model changes and `MINTED` on each
+rotation, so a healthy steady state is quiet rather than chatty. A pass that
 fails logs `ATTACH-FAILED` and changes nothing, so the agent keeps working on
 the last good configuration until the credential it holds actually lapses.
 The first pass is different: it runs before Hermes starts and stops the service
@@ -90,11 +91,19 @@ definition*, which is a narrower promise than keeping it off disk.
 
 ## Reaching the agent
 
-The service publishes the web dashboard, and -- with `ExposeApiServer`, the
-default -- the agent's own OpenAI-compatible API on a second endpoint. Point an
-OpenAI client at that one to drive the agent as though it were a model, or set
-Hermes Desktop's Gateway URL to the dashboard endpoint to use the agent from
-the desktop application.
+The service publishes the web dashboard. Set Hermes Desktop's Gateway URL to
+that endpoint to drive the agent from the desktop application.
+
+The agent also runs its own OpenAI-compatible API, but **it cannot be used
+through an endpoint**, which is why `ExposeApiServer` is off by default. That
+API accepts its key only as an `Authorization` bearer, and the Fuzzball
+endpoint proxy strips `Authorization` before the request reaches the container
+(verified: a request carrying it arrives with the header absent and with
+`x-fuzzball-account-id` added in its place). So no caller can authenticate to
+it through an endpoint at any scope this entry offers. The API is still
+listening on its node port, and the key printed by `show-agent` is what
+protects it there. The dashboard is unaffected because it authenticates with a
+cookie after a form login, not with that header.
 
 Two layers of authentication apply and neither is redundant:
 
@@ -105,23 +114,28 @@ Two layers of authentication apply and neither is redundant:
 - The agent's own credentials -- a dashboard password and an API key, both
   generated at submit time and printed by the `show-agent` job. A plain service
   binds its port on the node it runs on, so the endpoint proxy is not the only
-  way in and the scope alone protects nothing. That is also why turning
-  `ExposeApiServer` off is not a way to switch the API off: it removes the
-  endpoint, not the listener, and the key remains what protects it.
+  way in and the scope alone protects nothing. Turning `ExposeApiServer` on or
+  off changes only whether an endpoint is published; the listener and its key
+  are there either way.
+- **Shell access here is the workflow's Fuzzball identity.** Anyone who reaches
+  the agent can run commands as it, and the agent's own credential file holds a
+  token that mints endpoint tokens for everything its owner can see -- not just
+  the gateway. The entry drops `FB_TOKEN` from the environment before starting
+  the agent, which removes the most obvious route but not the file. Treat
+  reaching this agent as equivalent to holding the submitter's endpoint access.
 
 `public` is deliberately not offered as a scope. Hermes refuses to serve an
-unauthenticated dashboard on a non-loopback bind at all, and internet-reachable
-agent dashboards and API servers were the entry point for the June 2026
-campaign that drove exposed agents into planting SSH-key backdoors. Anyone who
+unauthenticated dashboard on a non-loopback bind at all -- upstream removed the
+escape hatch that allowed it, citing exposed dashboards and API servers being
+driven into planting SSH-key backdoors. Anyone who
 reaches this agent can run shell commands in its container, read everything it
 remembers, and spend model capacity, so prefer the narrowest scope that fits.
 
-Because the two credentials travel in two different headers, a client outside
-the cluster can present both -- which is what makes the workstation setup below
-work. That is not true of the agent's own endpoints: a browser can hold a
-Fuzzball session for the dashboard, but a non-browser client outside the
-cluster cannot put a Fuzzball token in `Authorization` and its own key there as
-well.
+Reaching a *gateway* from outside the cluster does work, because its two
+credentials travel in two different headers -- the proxy consumes
+`Authorization` and passes `x-litellm-api-key` through untouched. That is what
+makes the workstation setup below possible, and it is exactly what the agent's
+own API lacks.
 
 ## Using a Fuzzball model from Hermes on your workstation
 
@@ -225,14 +239,16 @@ Switch between the cluster and anything else you have configured with
 - **The agent borrows the owner's reach.** It discovers and authenticates to the
   gateway as the identity that started it, so its endpoint scope decides who can
   use it, regardless of the callers' own grants.
-- **Anyone who can read the workflow can read both credentials.** The dashboard
-  password and API key are generated fresh on every start and embedded in the
-  workflow definition.
+- **Anyone who can read the workflow can read both credentials, and they cannot
+  be rotated.** The dashboard password and API key are generated fresh on every
+  start and embedded in the workflow definition, so changing either means
+  stopping and resubmitting the workflow -- which on an ephemeral `Volume` also
+  destroys everything the agent has accumulated.
 - **The entry does not use the image's entrypoint.** The published image is
   built for Docker, where it starts as root and drops to its own baked user. Its
   entrypoint and wrapper both refuse to start under any other uid, and Fuzzball
-  supplies exactly that -- the same reason the `litellm` and `opencode` entries
-  redirect `HOME` and every cache onto their volumes. So this entry seeds the
+  supplies exactly that -- the same reason the `opencode` entry redirects `HOME`
+  and every cache onto its volume. So this entry seeds the
   state tree itself and execs the `hermes` CLI directly, skipping the container
   bootstrap. What that bootstrap does beyond refusing is set up s6 supervision
   and repair file ownership after a privilege drop, and neither is needed when a

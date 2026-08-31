@@ -126,13 +126,14 @@ services:
           type: subdomain
           scope: {{ .ServiceScope }}
           annotations:
-            # Deliberately not the value the gateway discovers on
-            # (DiscoveryApiValue, "openai"), which means "one model is served
-            # here": answering that would make a second gateway try to register
-            # this one as a model, and leaving it off entirely is how this
-            # gateway used to recognise its own endpoint. This value means
-            # "many models behind one base URL", which is what a client
-            # attaches to -- the hermes-agent entry discovers gateways with it.
+            # A different value from the one the gateway discovers models on
+            # (DiscoveryApiValue, "openai"). That one means "a model is served
+            # here"; this means "many models behind one base URL", which is what
+            # a client attaches to. The gateway leaves itself out of its own
+            # model list by workflow id, not by the absence of this annotation,
+            # so adding it changes nothing about discovery -- it only makes the
+            # two roles distinguishable to a client. The hermes-agent entry
+            # finds gateways with it.
             ciq.com/api: openai-gateway
     script: |
       #!/bin/bash

@@ -5,7 +5,11 @@
        for a few forbidden characters: a newline forges env entries, and '#', '$'
        or a backtick changes what the script runs. */}}
 
-{{- $endpoint := trimSuffix "/" (trim .Endpoint) }}
+{{- /* A trailing /v1 is accepted and trimmed: this entry appends it, the rag
+       entry's equivalent value expects it already there, and the failure when
+       they are confused is an opaque 404 or a misleading "not an endpoint this
+       workflow can reach". */}}
+{{- $endpoint := trimSuffix "/v1" (trimSuffix "/" (trim .Endpoint)) }}
 {{- if and $endpoint (not (regexMatch "^https?://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._/-]*)?$" $endpoint)) }}
   {{- fail "Endpoint must be an http(s) URL, e.g. https://endpoint-<id>.endpoints.<cluster domain>" }}
 {{- end }}
@@ -16,7 +20,7 @@
 {{- end }}
 
 {{- $model := trim .Model }}
-{{- if and $model (not (regexMatch "^[A-Za-z0-9._:/-]+$" $model)) }}
+{{- if and $model (not (regexMatch "^[A-Za-z0-9._-]+([:/][A-Za-z0-9._-]+)*$" $model)) }}
   {{- fail "Model must name the model as the gateway serves it, e.g. openai/gpt-oss-20b" }}
 {{- end }}
 
@@ -31,12 +35,16 @@
 {{- end }}
 
 {{- $api_key_secret := trim .ApiKeySecret }}
-{{- if and $api_key_secret (not (regexMatch "^secret://[A-Za-z0-9._/-]+$" $api_key_secret)) }}
-  {{- fail "ApiKeySecret must be a secret:// reference, e.g. secret://user/litellm-key" }}
+{{- /* User scope only: the platform rejects any other scope for a secret
+       consumed as an environment variable, and this one is. */}}
+{{- if and $api_key_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $api_key_secret)) }}
+  {{- fail "ApiKeySecret must be a user-scoped secret reference, e.g. secret://user/litellm-key" }}
 {{- end }}
 {{- $api_key := trim .ApiKey }}
-{{- if and $api_key (not (regexMatch "^[A-Za-z0-9._-]+$" $api_key)) }}
-  {{- fail "ApiKey may contain only letters, digits, '.', '_' and '-'" }}
+{{- /* Wider than the other inputs: third-party keys are routinely base64ish,
+       and none of these characters can break a KEY=value env entry. */}}
+{{- if and $api_key (not (regexMatch "^[A-Za-z0-9._~+/=-]+$" $api_key)) }}
+  {{- fail "ApiKey may contain only letters, digits and '. _ ~ + / = -'" }}
 {{- end }}
 {{- if and (eq $auth "api-key") (not (or $api_key_secret $api_key)) }}
   {{- fail "EndpointAuth=api-key needs ApiKeySecret or ApiKey" }}
@@ -52,6 +60,10 @@
 {{- $token_lifetime := int .TokenLifetime }}
 {{- if lt $token_lifetime 300 }}
   {{- fail "TokenLifetime must be at least 300 seconds" }}
+{{- end }}
+{{- $cores := int .Cores }}
+{{- if lt $cores 1 }}
+  {{- fail "Cores must be at least 1" }}
 {{- end }}
 {{- $attach_interval := int .AttachInterval }}
 {{- if lt $attach_interval 10 }}
@@ -73,12 +85,16 @@
   {{- fail "Memory must be a size such as 8GiB" }}
 {{- end }}
 {{- $image := trim .Image }}
-{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._@:/-]+$" $image) }}
-  {{- fail "Image must be a docker:// or oras:// container reference" }}
+{{- /* The tag group is optional but cannot be empty: a reference ending in
+       ':' renders an env entry YAML reads as a mapping. */}}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$" $image) }}
+  {{- fail "Image must be a docker:// or oras:// reference with an explicit tag" }}
 {{- end }}
 {{- $curl_image := trim .CurlImage }}
-{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._@:/-]+$" $curl_image) }}
-  {{- fail "CurlImage must be a docker:// or oras:// container reference" }}
+{{- /* The tag group is optional but cannot be empty: a reference ending in
+       ':' renders an env entry YAML reads as a mapping. */}}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$" $curl_image) }}
+  {{- fail "CurlImage must be a docker:// or oras:// reference with an explicit tag" }}
 {{- end }}
 
 {{- $mint := eq $auth "fuzzball-token" }}
@@ -140,28 +156,20 @@ jobs:
       echo ""
       echo "API key for the agent's own OpenAI-compatible API:"
       echo "   {{ $api_server_key }}"
-      {{- if .ExposeApiServer }}
       echo ""
-      echo "Point an OpenAI client at the api endpoint with that key as the bearer"
-      echo "token, or connect Hermes Desktop to it by setting its Gateway URL to"
-      echo "the dashboard endpoint URL."
-      {{- else }}
+      echo "That key is sent as 'Authorization: Bearer', and the endpoint proxy"
+      echo "consumes that header before the agent sees it -- so the API can only be"
+      echo "reached on this node's port {{ $api_port }}, not through an endpoint."
+      echo "Use the dashboard for browser access; it authenticates with a cookie."
       echo ""
-      echo "ExposeApiServer is off, so no endpoint fronts that API -- but it still"
-      echo "listens on this node's port {{ $api_port }}, and the key above is what"
-      echo "protects it."
-      {{- end }}
-      echo ""
-      echo "The endpoint scope is {{ $scope }}, so requests through either endpoint URL"
+      echo "The endpoint scope is {{ $scope }}, so requests through the dashboard URL"
       echo "also need a Fuzzball credential in the Authorization header:"
       echo "   fuzzball workflow endpoints generate-token <endpoint id>"
       echo ""
-      echo "That header is consumed by the endpoint proxy, so a non-browser client"
-      echo "outside the cluster network cannot send both credentials at once."
-      echo ""
       echo "Watch the agent attach to its gateway with:"
       echo "   fuzzball workflow log <workflow id> hermes"
-      echo "A pass logs ATTACHED with the gateway and model it settled on."
+      echo "It logs ATTACHED when the gateway or model changes, and MINTED on every"
+      echo "credential rotation -- steady state is quiet."
       echo ""
       echo "The agent runs until the workflow is cancelled."
     resource:
@@ -222,7 +230,7 @@ services:
       - TOKEN_LIFETIME={{ $token_lifetime }}
       - ATTACH_INTERVAL={{ $attach_interval }}
       - BOOTSTRAP_WINDOW={{ $bootstrap_window }}
-      - FB_RUNTIME={{ $runtime }}
+      - RUNTIME_DIR={{ $runtime }}
       {{- if $api_key_secret }}
       - MODEL_API_KEY={{ $api_key_secret }}
       {{- else if $api_key }}
@@ -232,9 +240,12 @@ services:
       #!/bin/bash
       set -e
 
-      # Before the mkdir: the minted credential lives under $runtime.
+      # Tight only around the credential directory; the attach pass sets its own
+      # umask for the files it writes. Left at 077 it would also apply to every
+      # path the agent creates on a persistent volume for the rest of the run.
       umask 077
       mkdir -p {{ $runtime }}
+      umask 022
 
       # The state tree the image's own bootstrap would have created. That
       # bootstrap is skipped entirely here (see the exec at the end of this
@@ -286,7 +297,8 @@ services:
       # expired. Hermes itself holds no Fuzzball identity, so this pass owns
       # both halves: it discovers which endpoint is the gateway, and it keeps
       # the credential file fresh for the provider's key_cmd to read.
-      import datetime, json, os, ssl, sys, time, urllib.error, urllib.request
+      import base64, datetime, json, os, ssl, sys, time
+      import urllib.error, urllib.parse, urllib.request
 
       import yaml
 
@@ -301,7 +313,7 @@ services:
       INTERVAL = int(os.environ["ATTACH_INTERVAL"])
       BOOTSTRAP = int(os.environ["BOOTSTRAP_WINDOW"])
       LLM_KEY = os.environ.get("MODEL_API_KEY", "")
-      RUNTIME = os.environ["FB_RUNTIME"]
+      RUNTIME = os.environ["RUNTIME_DIR"]
       # Hermes resolves config.yaml from HERMES_HOME and offers no override, so
       # this is derived rather than passed in: a path handed over separately
       # would go stale the moment HERMES_HOME moved, and nothing would say so.
@@ -315,18 +327,55 @@ services:
 
       CTX = ssl.create_default_context(cafile=CA)
 
+      # Everything this pass writes is either a credential or the agent's own
+      # configuration, and the shell's umask is deliberately not relied on.
+      os.umask(0o077)
+
+      class HttpError(RuntimeError):
+          def __init__(self, code, message):
+              super().__init__(message)
+              self.code = code
+
+      class NoRedirect(urllib.request.HTTPRedirectHandler):
+          # A redirect would carry the Authorization header to whatever host the
+          # response names, and Endpoint can point at a host the user chose.
+          def redirect_request(self, *args, **kwargs):
+              return None
+
+      OPENER = urllib.request.build_opener(
+          urllib.request.HTTPSHandler(context=CTX), NoRedirect)
+
+      def token_expiry(token):
+          # Read the JWT's own exp claim. Anchoring renewal to the token rather than
+          # to when this process started is what makes it survive a restart: a
+          # deadline measured from "now" walks forward every crash until it sits past
+          # the real expiry and never fires at all.
+          try:
+              claims = token.split(".")[1]
+              claims += "=" * (-len(claims) % 4)
+              return float(json.loads(base64.urlsafe_b64decode(claims))["exp"])
+          except Exception:
+              return None
+
+      def renewal_deadline(token):
+          expiry = token_expiry(token)
+          if expiry:
+              # Three days of slack, but never in the past for a short-lived token.
+              return max(expiry - 3 * 24 * 3600, time.time() + 300)
+          return time.time() + RENEW_AFTER
+
       def load_workflow_token():
-          # The injected token expires after seven days and this pass restarts
-          # itself on any crash. Holding the renewal only in memory would mean a
-          # restart silently reverting to the original token and the agent going
-          # dead on day seven with nothing in the log to say why.
+          # The injected token expires after seven days and this pass restarts itself
+          # on any crash, so both the token and its deadline have to outlive the
+          # process. Anything else goes quietly dead a week in.
           try:
               with open(WORKFLOW_TOKEN) as handle:
                   saved = json.load(handle)
               token = saved["token"]
               renew_at = float(saved["renew_at"])
           except (OSError, ValueError, KeyError, TypeError):
-              return os.environ.get("FB_TOKEN", ""), time.time() + RENEW_AFTER
+              token = os.environ.get("FB_TOKEN", "")
+              return token, renewal_deadline(token)
           return token, renew_at
 
       def save_workflow_token(token, renew_at):
@@ -340,6 +389,10 @@ services:
 
       TOKEN, RENEW_AT = load_workflow_token()
       TOKEN = [TOKEN]
+      if TOKEN[0]:
+          # Persisted on the first pass, not only after a renewal: otherwise every
+          # restart before the first renewal re-anchors the deadline further out.
+          save_workflow_token(TOKEN[0], RENEW_AT)
 
       def call(url, token, method="GET", body=None, headers=None):
           payload = json.dumps(body).encode() if body is not None else None
@@ -350,14 +403,14 @@ services:
           for name, value in (headers or {}).items():
               request.add_header(name, value)
           try:
-              with urllib.request.urlopen(request, context=CTX, timeout=30) as response:
+              with OPENER.open(request, timeout=30) as response:
                   raw = response.read()
           except urllib.error.HTTPError as err:
               # A rejected credential and an unreachable service both arrive as
               # exceptions; without the status in the message the log cannot
               # tell a permanent 401 from a blip worth waiting out.
               detail = err.read().decode("utf-8", "replace").strip()[:200]
-              raise RuntimeError("HTTP %d from %s: %s" % (err.code, url, detail)) from None
+              raise HttpError(err.code, "HTTP %d from %s: %s" % (err.code, url, detail)) from None
           # An empty body is a valid HTTP response and a broken API response;
           # every caller here dereferences the result, so it is normalised once.
           return json.loads(raw) if raw else {}
@@ -368,15 +421,20 @@ services:
           # agent, so a failure here propagates and the caller keeps what it has.
           rows = []
           page_token = ""
-          while True:
+          # Bounded: a server echoing a constant pageToken would otherwise spin here
+          # forever inside a single tick, silently accumulating rows.
+          for _ in range(100):
               url = API + "/v4/endpoints?pageSize=500"
               if page_token:
-                  url = url + "&pageToken=" + page_token
+                  # Continuation tokens are often base64, whose '+' and '/' change
+                  # meaning if they go into a query string unescaped.
+                  url = url + "&pageToken=" + urllib.parse.quote(page_token, safe="")
               page = call(url, TOKEN[0])
               rows.extend(page.get("endpoints") or [])
               page_token = page.get("pageToken") or ""
               if not page_token:
                   return rows
+          raise RuntimeError("endpoint listing did not terminate after 100 pages")
 
       def endpoint_id_of(row):
           # Only the external-API case may go without one. A Fuzzball endpoint
@@ -423,8 +481,18 @@ services:
       def mint(endpoint_id):
           # Returns (token, expiry epoch). The server grants at most what is left
           # of this workflow's own token, which can be far less than TTL asks for.
-          minted = call(API + "/v4/endpoints/" + endpoint_id + "/token", TOKEN[0],
-                        method="POST", body=dict(expirationSeconds=TTL))
+          try:
+              minted = call(API + "/v4/endpoints/" + endpoint_id + "/token", TOKEN[0],
+                            method="POST", body=dict(expirationSeconds=TTL))
+          except HttpError as err:
+              if err.code in (400, 412):
+                  # The server refuses to mint for a public endpoint, which needs no
+                  # token at all. Say which value fixes it rather than reporting the
+                  # bare HTTP error every pass until the window closes.
+                  raise RuntimeError(
+                      "this endpoint is public and takes no token; start with "
+                      "EndpointAuth=api-key and an ApiKey/ApiKeySecret instead") from None
+              raise
           token = minted.get("token")
           if not token:
               raise RuntimeError("no token in the mint response")
@@ -435,7 +503,11 @@ services:
                   return token, parsed.timestamp()
               except ValueError:
                   pass
-          return token, time.time() + TTL
+          # TTL is what was asked for, and the server grants at most what is left of
+          # this workflow's own token -- so it is a ceiling, not a default. Guessing
+          # it here would stamp an expiry Hermes trusts long after the token is dead.
+          print("MINT-EXPIRY-UNREADABLE assuming an hour", repr(stamp), flush=True)
+          return token, time.time() + min(TTL, 3600)
 
       def renew_workflow_token(state):
           fresh = call(API + "/v4/workflows:refreshToken", TOKEN[0],
@@ -443,8 +515,13 @@ services:
           if not fresh.get("token"):
               raise RuntimeError("no token in the refreshToken response")
           TOKEN[0] = fresh["token"]
-          state["renew_at"] = time.time() + RENEW_AFTER
-          save_workflow_token(TOKEN[0], state["renew_at"])
+          state["renew_at"] = renewal_deadline(TOKEN[0])
+          try:
+              save_workflow_token(TOKEN[0], state["renew_at"])
+          except OSError as err:
+              # The renewal succeeded; only the record of it did not. Reporting this
+              # as a renewal failure would send someone chasing a healthy agent.
+              print("TOKEN-SAVE-FAILED renewal held in memory only", repr(err), flush=True)
 
       def write_credential(token, expires_at):
           # key_cmd reads this file and honours the absolute expiry, so Hermes
@@ -485,20 +562,24 @@ services:
           return entry
 
       def load_config():
-          try:
-              with open(CONFIG) as handle:
-                  config = yaml.safe_load(handle)
-          except FileNotFoundError:
-              return {}
-          except yaml.YAMLError as err:
-              # A half-written or hand-broken config would otherwise be fatal on
-              # every start of a persistent volume, with no way out but deleting
-              # the file by hand.
-              spoiled = CONFIG + ".unreadable"
-              os.replace(CONFIG, spoiled)
-              print("CONFIG-UNREADABLE moved to", spoiled, repr(err), flush=True)
-              return {}
-          return config if isinstance(config, dict) else {}
+          # Returns None when the file exists but cannot be parsed, which callers
+          # must treat as "change nothing". Hermes writes this file too, so a failed
+          # parse is as likely to be a torn read as a broken file -- and rebuilding
+          # from an empty dict would replace everything in it with the two keys this
+          # pass manages. Retry once before believing it.
+          for attempt in (0, 1):
+              try:
+                  with open(CONFIG) as handle:
+                      config = yaml.safe_load(handle)
+                  return config if isinstance(config, dict) else {}
+              except FileNotFoundError:
+                  return {}
+              except yaml.YAMLError as err:
+                  if attempt == 0:
+                      time.sleep(2)
+                      continue
+                  print("CONFIG-UNREADABLE leaving it untouched", repr(err), flush=True)
+          return None
 
       def pick_model(served, current):
           # Prefer whatever is already selected, so a user's choice survives the
@@ -510,14 +591,20 @@ services:
 
       def write_config(base, model):
           config = load_config()
+          if config is None:
+              return False
           # 'providers:' or 'model:' written with no value parses to None, and a
           # hand-written 'model: gpt-4' to a string; setdefault would hand either
           # straight back and the merge would fail on every restart.
           providers = config.get("providers")
           if not isinstance(providers, dict):
+              if providers is not None:
+                  print("CONFIG-NORMALISED replacing a non-mapping providers:", flush=True)
               providers = {}
           selected = config.get("model")
           if not isinstance(selected, dict):
+              if selected is not None:
+                  print("CONFIG-NORMALISED replacing a non-mapping model:", flush=True)
               selected = {}
 
           first_attach = PROVIDER not in providers
@@ -547,6 +634,13 @@ services:
           with open(tmp, "w") as handle:
               yaml.safe_dump(config, handle, default_flow_style=False, sort_keys=False)
           os.replace(tmp, CONFIG)
+          # Hermes writes this file as well and neither side takes a cross-process
+          # lock, so a simultaneous write can drop ours. Nothing here can prevent
+          # that; noticing it beats leaving someone to debug a config that silently
+          # reverts once a minute.
+          written = load_config()
+          if written is not None and (written.get("providers") or {}).get(PROVIDER) != entry:
+              print("CONFIG-RACE the provider entry did not survive the write", flush=True)
           return True
 
       def load_state():
@@ -556,7 +650,7 @@ services:
           # a fresh mint on every interval, or silently loses a renewed token.
           state = dict(base=None, model=None, token=None, renew_at=RENEW_AT,
                        remint_at=0.0)
-          entry = (load_config().get("providers") or {}).get(PROVIDER)
+          entry = ((load_config() or {}).get("providers") or {}).get(PROVIDER)
           if isinstance(entry, dict) and isinstance(entry.get("api"), str):
               if entry["api"].endswith("/v1"):
                   state["base"] = entry["api"][:-len("/v1")]
@@ -607,9 +701,22 @@ services:
               state["base"] = base
               print("MINTED", base, flush=True)
 
+          # Probed even when Model is set. This is the only call that proves the
+          # credential works, and the bootstrap gate exists precisely to stop an agent
+          # that answers the dashboard and then fails on every prompt. A rejected
+          # credential is fatal; a provider that simply has no /v1/models is not.
+          served = []
+          try:
+              served = gateway_models(base, state["token"])
+          except HttpError as err:
+              if err.code in (401, 403):
+                  raise
+              print("MODEL-LIST-UNAVAILABLE", repr(err), flush=True)
+          except Exception as err:
+              print("MODEL-LIST-UNAVAILABLE", repr(err), flush=True)
+
           model = WANT_MODEL
           if not model:
-              served = gateway_models(base, state["token"])
               if not served:
                   raise LookupError(
                       "the gateway at " + base + " serves no models yet; start a model "
@@ -626,7 +733,14 @@ services:
           if MINT and not (API and TOKEN[0]):
               sys.exit("FATAL: no workflow API identity was injected, so no gateway can be "
                        "discovered and no token minted. Set Endpoint and EndpointAuth=api-key.")
-          state = load_state()
+          try:
+              state = load_state()
+          except Exception as err:
+              # Reading state is best-effort; an unreadable volume must not turn into
+              # a bare traceback under the FATAL banner.
+              print("STATE-LOAD-FAILED starting clean", repr(err), flush=True)
+              state = dict(base=None, model=None, token=None, renew_at=RENEW_AT,
+                           remint_at=0.0)
           once = "--once" in sys.argv
           deadline = time.time() + BOOTSTRAP
           while True:
@@ -653,36 +767,40 @@ services:
         exit 1
       fi
 
-      # Neither loop is supervised by s6, which only manages services declared
-      # in the image, so both restart themselves.
-      (
-        while true; do
-          "${HERMES_PY}" {{ $runtime }}/attach.py || \
-            echo "ATTACH-CRASHED restarting in 15s" >&2
-          sleep 15
-        done
-      ) &
-
-      # Started here rather than with HERMES_DASHBOARD=1, which is read only by
-      # the image's s6 service definition. That definition runs only when the
-      # entrypoint is PID 1, which nothing guarantees here; off that path the
-      # dashboard would fall back to its own defaults of 127.0.0.1:9119 -- a
-      # bind and a port nothing publishes -- and the readiness probe would fail
-      # for ten minutes and take the service down with it.
-      (
-        while true; do
-          "${HERMES_BIN}" dashboard --host 0.0.0.0 --port {{ $dashboard_port }} --no-open || \
-            echo "DASHBOARD-EXITED restarting in 10s" >&2
-          sleep 10
-        done
-      ) &
-
-      # The dashboard guards the Host and WebSocket Origin headers against the
-      # address it believes it is served at, and behind the endpoint proxy that
-      # is not the address it binds. Left unset, sign-in fails on the guard.
+      # Exported before the dashboard is forked, because a subshell keeps the
+      # environment it started with. It is what builds the dashboard's own
+      # absolute URLs -- asset paths, redirect targets, cookie scope -- so on a
+      # cluster serving path-shaped endpoints, or under an OAuth provider,
+      # getting it there late is the same as not setting it.
       if [ -n "${FB_ENDPOINT_URL_DASHBOARD}" ]; then
         export HERMES_DASHBOARD_PUBLIC_URL="${FB_ENDPOINT_URL_DASHBOARD}"
       fi
+
+      # Neither loop is supervised by s6, which only manages services declared
+      # in the image, so both restart themselves. The delay grows so that a
+      # permanently broken child leaves a readable log rather than thousands of
+      # identical lines a second apart.
+      supervise() {
+        label="$1"; shift
+        delay=5
+        while true; do
+          "$@" || echo "${label}-EXITED restarting in ${delay}s" >&2
+          sleep "${delay}"
+          [ "${delay}" -lt 160 ] && delay=$((delay * 2))
+        done
+      }
+
+      supervise ATTACH "${HERMES_PY}" {{ $runtime }}/attach.py &
+
+      # Started here rather than with HERMES_DASHBOARD=1, which is read only by
+      # the image's s6 service definition. That definition runs only when the
+      # entrypoint is PID 1, which nothing guarantees here; off that path
+      # nothing reads those variables at all and the dashboard would fall back
+      # to the CLI's own default of 127.0.0.1:9119 -- a bind and a port nothing
+      # publishes -- so the readiness probe would fail for ten minutes and take
+      # the service down with it.
+      supervise DASHBOARD "${HERMES_BIN}" dashboard \
+        --host 0.0.0.0 --port {{ $dashboard_port }} --no-open &
 
       # The CLI directly, not the image's entrypoint. Both that dispatcher and
       # the main-wrapper it calls refuse to start under any uid that is neither
@@ -691,6 +809,14 @@ services:
       # wrappers do beyond the refusal is set up s6 supervision and repair file
       # ownership after a privilege drop, and neither applies when one uid owns
       # the whole run and this script has already seeded the state tree.
+      #
+      # Without the workflow token in its environment: anyone who reaches the
+      # agent can run shell commands as this process, and that token mints
+      # access tokens for every endpoint its owner can see. Both loops above
+      # already forked with their own copy, and the attach pass persisted it,
+      # so dropping it here costs nothing. It is a smaller door, not a closed
+      # one -- the persisted copy is readable by the same uid.
+      unset FB_TOKEN FB_OPENAPI_URL
       exec "${HERMES_BIN}" gateway run
     network:
       ports:
@@ -729,7 +855,7 @@ services:
       success-threshold: 1
     resource:
       cpu:
-        cores: {{ .Cores }}
+        cores: {{ $cores }}
       memory:
         size: {{ $memory }}
     persist: true
