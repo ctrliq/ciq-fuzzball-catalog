@@ -32,6 +32,11 @@ created, a corresponding `vMAJOR.MINOR` catalog branch will be created from
   corresponding commit into the current `vMAJOR.MINOR` branch to enable the app
   for current stable deployments.
 - Application templates may also be ported to previous `vMAJOR.MINOR` releases.
+- Applications that reference another application's template
+  (`template: <application>` in metadata.md front matter) must NOT be ported to
+  a `vMAJOR.MINOR` branch until a Fuzzball release whose orchestrator resolves
+  template references ships for that line: older orchestrators abort the whole
+  catalog sync on such entries.
 
 ### Fixes
 

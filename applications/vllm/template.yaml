@@ -79,7 +79,7 @@
 {{- end }}
 {{- $gpus_per_replica := int .GpusPerReplica }}
 {{- $tensor_parallel := max 1 $gpus_per_replica }}
-{{- $ep := lower (trim .ExpertParallelism) }}
+{{- $ep := lower (trim (default "auto" .ExpertParallelism)) }}
 {{- if not (has $ep (list "auto" "true" "false")) }}
   {{- fail "ExpertParallelism must be one of: auto, true, false" }}
 {{- end }}

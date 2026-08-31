@@ -8,6 +8,7 @@ tags:
 - inference
 - autoscaling
 - OpenAI API
+- ai
 ---
 This workflow serves a HuggingFace model with a pool of
 [vLLM](https://docs.vllm.ai/en/stable) replicas that scales automatically with
