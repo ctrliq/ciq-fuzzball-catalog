@@ -70,6 +70,11 @@
   {{- fail "AttachInterval must be at least 10 seconds" }}
 {{- end }}
 
+{{- $api_access := lower (trim .ApiServerAccess) }}
+{{- if not (has $api_access (list "loopback" "node")) }}
+  {{- fail "ApiServerAccess must be one of: loopback, node" }}
+{{- end }}
+
 {{- $scope := lower (trim .ServiceScope) }}
 {{- if not (has $scope (list "user" "group" "organization")) }}
   {{- fail "ServiceScope must be one of: user, group, organization" }}
@@ -157,10 +162,18 @@ jobs:
       echo "API key for the agent's own OpenAI-compatible API:"
       echo "   {{ $api_server_key }}"
       echo ""
-      echo "That key is sent as 'Authorization: Bearer', and the endpoint proxy"
-      echo "consumes that header before the agent sees it -- so the API can only be"
-      echo "reached on this node's port {{ $api_port }}, not through an endpoint."
-      echo "Use the dashboard for browser access; it authenticates with a cookie."
+      {{- if eq $api_access "node" }}
+      echo "ApiServerAccess=node, so that API is listening on this node's port"
+      echo "{{ $api_port }} with the key above as its only protection. It is not"
+      echo "published as an endpoint: it authenticates with an Authorization"
+      echo "bearer, and the endpoint proxy consumes that header."
+      {{- else }}
+      echo "That API is bound to loopback, so it is reachable only from inside"
+      echo "this container -- for example:"
+      echo "   fuzzball workflow exec <workflow id> hermes -- curl -H 'Authorization: Bearer <key>' \\"
+      echo "     http://127.0.0.1:{{ $api_port }}/v1/models"
+      echo "Set ApiServerAccess=node to bind it on the node instead."
+      {{- end }}
       echo ""
       echo "The endpoint scope is {{ $scope }}, so requests through the dashboard URL"
       echo "also need a Fuzzball credential in the Authorization header:"
@@ -211,11 +224,17 @@ services:
       - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD={{ $dashboard_password }}
       # Without a fixed signing key every restart invalidates dashboard sessions.
       - HERMES_DASHBOARD_BASIC_AUTH_SECRET={{ $dashboard_secret }}
-      # Always on, whatever ExposeApiServer says: a bound port with an unprinted
-      # key would be a credential nobody can rotate. ExposeApiServer decides only
-      # whether an endpoint is published in front of it.
+      # The dashboard and Hermes' own scheduled work both call this API over
+      # loopback, so it is always enabled. ApiServerAccess decides only how far
+      # it is reachable: bound to loopback it cannot be dialled from outside the
+      # container at all, which is upstream's default and the right one for an
+      # API that can run shell commands.
       - API_SERVER_ENABLED=true
+      {{- if eq $api_access "node" }}
       - API_SERVER_HOST=0.0.0.0
+      {{- else }}
+      - API_SERVER_HOST=127.0.0.1
+      {{- end }}
       - API_SERVER_PORT={{ $api_port }}
       - API_SERVER_KEY={{ $api_server_key }}
       {{- if $endpoint }}
@@ -823,25 +842,24 @@ services:
         - name: dashboard
           port: {{ $dashboard_port }}
           protocol: tcp
-        # Declared whether or not an endpoint fronts it: the API server binds
-        # this port on the node either way, and a port the definition does not
-        # mention is one nobody thinks to protect.
+        {{- if eq $api_access "node" }}
+        # Only when the API is actually bound beyond loopback: a port the
+        # definition does not mention is one nobody thinks to protect, and one
+        # it mentions but never binds is a lie.
         - name: api
           port: {{ $api_port }}
           protocol: tcp
+        {{- end }}
       endpoints:
+        # No endpoint for the API server, at any setting. It authenticates only
+        # with an Authorization bearer, and the endpoint proxy consumes that
+        # header before the container sees it, so an endpoint in front of it
+        # could never be authenticated at any scope this entry offers.
         - name: dashboard
           port-name: dashboard
           protocol: http
           type: subdomain
           scope: {{ $scope }}
-        {{- if .ExposeApiServer }}
-        - name: api
-          port-name: api
-          protocol: http
-          type: subdomain
-          scope: {{ $scope }}
-        {{- end }}
     readiness-probe:
       # A TCP check rather than the dashboard's own: every HTTP route behind the
       # auth gate answers 401 or redirects to the sign-in page, and the API

@@ -94,16 +94,24 @@ definition*, which is a narrower promise than keeping it off disk.
 The service publishes the web dashboard. Set Hermes Desktop's Gateway URL to
 that endpoint to drive the agent from the desktop application.
 
-The agent also runs its own OpenAI-compatible API, but **it cannot be used
-through an endpoint**, which is why `ExposeApiServer` is off by default. That
-API accepts its key only as an `Authorization` bearer, and the Fuzzball
-endpoint proxy strips `Authorization` before the request reaches the container
-(verified: a request carrying it arrives with the header absent and with
-`x-fuzzball-account-id` added in its place). So no caller can authenticate to
-it through an endpoint at any scope this entry offers. The API is still
-listening on its node port, and the key printed by `show-agent` is what
-protects it there. The dashboard is unaffected because it authenticates with a
-cookie after a form login, not with that header.
+The agent also runs its own OpenAI-compatible API, but **it is never published
+as an endpoint**. It accepts its key only as an `Authorization` bearer, and the
+Fuzzball endpoint proxy strips that header before the request reaches the
+container -- verified: a request carrying it arrives with the header absent and
+`x-fuzzball-account-id` added in its place. An endpoint in front of it therefore
+could not be authenticated at any scope this entry offers. The dashboard is
+unaffected because it signs in with a form and a cookie.
+
+`ApiServerAccess` decides how far that API reaches. At `loopback`, the default,
+it is bound inside the container only -- enough for the dashboard and for the
+agent's own scheduled work, and the right default for an API that can run shell
+commands. At `node` it binds the node's port, where the key printed by
+`show-agent` is the only thing protecting it. Reach it either way with:
+
+```sh
+fuzzball workflow exec <workflow id> hermes -- \
+  curl -H "Authorization: Bearer <api key>" http://127.0.0.1:<api port>/v1/models
+```
 
 Two layers of authentication apply and neither is redundant:
 
@@ -118,9 +126,9 @@ Two layers of authentication apply and neither is redundant:
 - The agent's own credentials -- a dashboard password and an API key, both
   generated at submit time and printed by the `show-agent` job. A plain service
   binds its port on the node it runs on, so the endpoint proxy is not the only
-  way in and the scope alone protects nothing. Turning `ExposeApiServer` on or
-  off changes only whether an endpoint is published; the listener and its key
-  are there either way.
+  way in and the scope alone protects nothing -- which is why `ApiServerAccess`
+  defaults to `loopback`, so the one listener that can run shell commands is not
+  on the node's network unless you ask for it.
 - **Shell access here is the workflow's Fuzzball identity.** Anyone who reaches
   the agent can run commands as it, and the agent's own credential file holds a
   token that mints endpoint tokens for everything its owner can see -- not just
