@@ -1,0 +1,128 @@
+values:
+  - name: Endpoint
+    display_name: >-
+      Base URL of the OpenAI-compatible gateway the agent talks to, with no /v1 suffix. Leave
+      empty -- the default -- to find the gateway automatically: the agent lists the Fuzzball
+      endpoints its own identity can reach and takes the one annotated as a gateway. Set this
+      to pin one particular gateway, or to reach an OpenAI-compatible API outside Fuzzball.
+    string_value: ""
+    display_category: Model
+  - name: GatewayApiValue
+    display_name: >-
+      Value of the ciq.com/api endpoint annotation that marks a gateway during automatic
+      discovery. It must match what the litellm entry annotates its own endpoint with.
+      Ignored when Endpoint is set.
+    string_value: openai-gateway
+    display_category: Model
+  - name: Model
+    display_name: >-
+      Model the agent defaults to, named as the gateway serves it on /v1/models. Leave empty
+      to adopt whichever model the gateway is serving when the agent starts, which is what
+      you want when one gateway fronts a single pool.
+    string_value: ""
+    display_category: Model
+  - name: MaxContextSize
+    display_name: >-
+      Maximum input tokens the model accepts. Hermes compresses its context against this
+      number, so a value above what the model serves produces requests the model rejects, and
+      one far below it makes the agent compress away history it could have kept.
+    uint_value: 32768
+    display_category: Model
+
+  - name: EndpointAuth
+    display_name: >-
+      How to authenticate to the gateway. 'fuzzball-token' suits a Fuzzball endpoint whose
+      scope is not public: the agent mints endpoint access tokens with its own injected
+      identity and re-mints them before they expire, and any ApiKey rides the
+      x-litellm-api-key header, which the Fuzzball endpoint proxy leaves alone. 'api-key'
+      suits a public Fuzzball endpoint or a third-party API, where ApiKey is sent as the
+      bearer token and nothing is minted.
+    string_value: fuzzball-token
+    options_input:
+      options: [fuzzball-token, api-key]
+    display_category: Model
+  - name: ApiKeySecret
+    display_name: >-
+      Fuzzball secret (secret://user/<name>) holding the gateway's LiteLLM key. Mint a virtual
+      key from the gateway rather than handing this workflow the master key. Injected at
+      runtime and never stored in the rendered definition. Preferred over ApiKey.
+    secret_value:
+      reference: ""
+    display_category: Model
+  - name: ApiKey
+    display_name: >-
+      Gateway LiteLLM key in plain text, stored in the rendered definition (prefer
+      ApiKeySecret). Required with EndpointAuth=api-key.
+    string_value: ""
+    display_category: Model
+  - name: TokenLifetime
+    display_name: >-
+      Seconds each minted endpoint access token is requested for, when
+      EndpointAuth=fuzzball-token. The grant is clamped to what is left of this workflow's own
+      API token; the agent renews that token in the background and re-mints at half the
+      granted lifetime, so unlike a one-shot mint this does not put a ceiling on how long the
+      agent keeps working.
+    uint_value: 14400
+    display_category: Model
+  - name: AttachInterval
+    display_name: >-
+      Seconds between attachment passes. Each pass renews credentials that are due and picks
+      up a gateway that has moved, so it also bounds how long the agent stays detached after
+      the gateway workflow restarts.
+    uint_value: 60
+    display_category: Model
+
+  - name: ServiceScope
+    display_name: >-
+      Who can reach the agent's endpoints. Anyone who reaches them can run shell commands in
+      this workflow's container, read everything the agent remembers, and spend model
+      capacity, so prefer the narrowest scope that fits. The dashboard always enforces its own
+      password and the API its own key -- both printed by the show-agent job -- because the
+      service also listens on its node's port, where no endpoint proxy sits in front of it.
+      'public' is deliberately not offered: an internet-reachable agent dashboard is how the
+      June 2026 Hermes compromises started.
+    string_value: user
+    options_input:
+      options: [user, group, organization]
+    display_category: Access
+  - name: ExposeApiServer
+    display_name: >-
+      Publish an endpoint in front of the agent's own OpenAI-compatible API, so Hermes
+      Desktop, Open WebUI, or any OpenAI client can drive this agent as though it were a
+      model. This decides only whether an endpoint is published: the API listens on the
+      node's port either way, protected by the key the show-agent job prints. The
+      dashboard is always published.
+    bool_value: true
+    display_category: Access
+
+  - name: Volume
+    display_name: >-
+      Volume holding everything the agent accumulates -- configuration, sessions, memories,
+      and learned skills: 'ephemeral' (default; all of it is destroyed when the workflow
+      stops) or the name of an existing persistent volume. An agent that is meant to improve
+      over time needs a persistent volume here. Mounted at /opt/data.
+    string_value: ephemeral
+    display_category: Storage
+
+  - name: Cores
+    display_name: CPU cores for the agent.
+    uint_value: 4
+    display_category: Resources
+  - name: Memory
+    display_name: >-
+      Memory for the agent. The floor is set by the bundled browser and document-extraction
+      tools rather than by inference, which happens on the serving side.
+    string_value: 8GiB
+    display_category: Resources
+
+  - name: Image
+    display_name: >-
+      Hermes Agent container image. The default is the image the Nous Research project
+      publishes itself; it is not built or mirrored by this repository, so a deployment that
+      will not run third-party images should point this at its own build.
+    string_value: docker://nousresearch/hermes-agent:v2026.8.27
+    display_category: Versions
+  - name: CurlImage
+    display_name: Image used by the short-lived job that prints how to reach the agent.
+    string_value: docker://curlimages/curl:8.17.0
+    display_category: Versions
