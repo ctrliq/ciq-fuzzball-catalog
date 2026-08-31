@@ -62,6 +62,11 @@ Every call to the gateway carries two credentials: a Fuzzball token in `Authoriz
 
 `GET /v1/models` (same two credentials) lists whatever the gateway has discovered.
 
+The gateway's own endpoint is annotated `ciq.com/api: openai-gateway`, so a client
+can find it without being told a URL -- that is how the `hermes-agent` entry attaches
+itself. The value deliberately differs from the one the gateway discovers models on,
+so a second gateway does not mistake this one for a model server.
+
 ## Publishing a model to it
 
 Any workflow can advertise itself by annotating a service endpoint. The gateway reads two

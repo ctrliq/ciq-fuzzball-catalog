@@ -30,7 +30,9 @@ values:
   - name: "DiscoveryApiValue"
     display_name: >-
       Value of the ciq.com/api endpoint annotation the gateway looks for. Endpoints without
-      it are ignored.
+      it are ignored. Do not set this to openai-gateway: that is the value a gateway
+      annotates its own endpoint with, so two gateways would each register the other as a
+      model.
     string_value: openai
     display_category: "Discovery"
 

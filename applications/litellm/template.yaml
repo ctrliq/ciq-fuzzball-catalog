@@ -120,13 +120,20 @@ services:
           port: {{ $llmPort }}
           protocol: tcp
       endpoints:
-        # No ciq.com/api annotation here on purpose: it is how the gateway
-        # recognises its own endpoint and leaves itself out of its model list.
         - name: openai
           port-name: llm
           protocol: http
           type: subdomain
           scope: {{ .ServiceScope }}
+          annotations:
+            # Deliberately not the value the gateway discovers on
+            # (DiscoveryApiValue, "openai"), which means "one model is served
+            # here": answering that would make a second gateway try to register
+            # this one as a model, and leaving it off entirely is how this
+            # gateway used to recognise its own endpoint. This value means
+            # "many models behind one base URL", which is what a client
+            # attaches to -- the hermes-agent entry discovers gateways with it.
+            ciq.com/api: openai-gateway
     script: |
       #!/bin/bash
       set -e
