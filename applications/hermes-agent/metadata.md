@@ -1,7 +1,7 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 ---
 id: "ciq/ml_and_ai/hermes-agent"
-name: "Hermes Agent"
+name: "hermes-agent"
 category: "ML_AND_AI"
 tags:
 - agent
