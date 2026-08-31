@@ -92,14 +92,14 @@
 {{- $image := trim .Image }}
 {{- /* The tag group is optional but cannot be empty: a reference ending in
        ':' renders an env entry YAML reads as a mapping. */}}
-{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$" $image) }}
-  {{- fail "Image must be a docker:// or oras:// reference with an explicit tag" }}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $image) }}
+  {{- fail "Image needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/org/name:1.2.3" }}
 {{- end }}
 {{- $curl_image := trim .CurlImage }}
 {{- /* The tag group is optional but cannot be empty: a reference ending in
        ':' renders an env entry YAML reads as a mapping. */}}
-{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$" $curl_image) }}
-  {{- fail "CurlImage must be a docker:// or oras:// reference with an explicit tag" }}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $curl_image) }}
+  {{- fail "CurlImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/org/name:1.2.3" }}
 {{- end }}
 
 {{- $mint := eq $auth "fuzzball-token" }}
@@ -127,7 +127,6 @@
 
 {{- $data := "/opt/data" }}
 {{- $runtime := "/tmp/fuzzball" }}
-{{- $credential := "/tmp/fuzzball/credential.json" }}
 {{- $ca_bundle := "/tmp/fuzzball/ca-bundle.pem" }}
 {{- $trust_store := "/run/fuzzball-substrate/trusted-certs" }}
 
@@ -152,12 +151,17 @@ jobs:
         description: "Print connection details once the agent is running"
     script: |
       #!/bin/sh
-      echo "Get the dashboard and API URLs with:"
+      echo "Get the dashboard URL with:"
       echo "   fuzzball workflow endpoints list"
       echo ""
       echo "Dashboard sign-in (also in the definition: fuzzball workflow get <workflow id>):"
       echo "   username: hermes"
       echo "   password: {{ $dashboard_password }}"
+      echo ""
+      echo "A browser cannot use that URL -- the proxy wants an Authorization header"
+      echo "it cannot send. Forward the port instead:"
+      echo "   fuzzball workflow port-forward <workflow id> hermes 19119:{{ $dashboard_port }}"
+      echo "   then open http://127.0.0.1:19119"
       echo ""
       echo "API key for the agent's own OpenAI-compatible API:"
       echo "   {{ $api_server_key }}"
@@ -582,10 +586,10 @@ services:
 
       def load_config():
           # Returns None when the file exists but cannot be parsed, which callers
-          # must treat as "change nothing". Hermes writes this file too, so a failed
-          # parse is as likely to be a torn read as a broken file -- and rebuilding
-          # from an empty dict would replace everything in it with the two keys this
-          # pass manages. Retry once before believing it.
+          # must treat as "change nothing": rebuilding from an empty dict would replace
+          # everything in the file with the two keys this pass manages. Hermes writes
+          # this file too and does so atomically, so a torn read should not happen --
+          # the retry costs nothing and covers the case where it does.
           for attempt in (0, 1):
               try:
                   with open(CONFIG) as handle:
@@ -649,6 +653,17 @@ services:
 
           # safe_dump does not preserve comments, so anything hand-written in
           # config.yaml survives in value but not in form.
+          # Keep the previous file. A read that parses but is short -- a truncation
+          # that happens to land on a line boundary -- would take its missing keys out
+          # of the written result, and nothing downstream could tell. This does not
+          # prevent that; it means it is recoverable rather than silent.
+          try:
+              if os.path.exists(CONFIG):
+                  with open(CONFIG) as src, open(CONFIG + ".prev", "w") as dst:
+                      dst.write(src.read())
+          except OSError as err:
+              print("CONFIG-BACKUP-FAILED", repr(err), flush=True)
+
           tmp = CONFIG + ".new"
           with open(tmp, "w") as handle:
               yaml.safe_dump(config, handle, default_flow_style=False, sort_keys=False)
@@ -722,16 +737,19 @@ services:
 
           # Probed even when Model is set. This is the only call that proves the
           # credential works, and the bootstrap gate exists precisely to stop an agent
-          # that answers the dashboard and then fails on every prompt. A rejected
-          # credential is fatal; a provider that simply has no /v1/models is not.
+          # that answers the dashboard and then fails on every prompt.
+          #
+          # Only "this provider has no model list" is tolerated: 404 and 405 say so
+          # outright, and 400 is how Anthropic's OpenAI-compatible layer says it -- it
+          # wants a header the OpenAI shape does not send. Everything else, including
+          # a rejected credential and a gateway that is down or still starting,
+          # propagates so the startup retry window is used rather than skipped.
           served = []
           try:
               served = gateway_models(base, state["token"])
           except HttpError as err:
-              if err.code in (401, 403):
+              if err.code not in (400, 404, 405):
                   raise
-              print("MODEL-LIST-UNAVAILABLE", repr(err), flush=True)
-          except Exception as err:
               print("MODEL-LIST-UNAVAILABLE", repr(err), flush=True)
 
           model = WANT_MODEL
@@ -823,8 +841,7 @@ services:
 
       # The CLI directly, not the image's entrypoint. Both that dispatcher and
       # the main-wrapper it calls refuse to start under any uid that is neither
-      # root nor the image's own baked user, and Fuzzball provides neither --
-      # every other entry in this catalog says so in as many words. What those
+      # root nor the image's own baked user, and Fuzzball provides neither. What those
       # wrappers do beyond the refusal is set up s6 supervision and repair file
       # ownership after a privilege drop, and neither applies when one uid owns
       # the whole run and this script has already seeded the state tree.

@@ -91,8 +91,8 @@ definition*, which is a narrower promise than keeping it off disk.
 
 ## Reaching the agent
 
-The service publishes the web dashboard. Set Hermes Desktop's Gateway URL to
-that endpoint to drive the agent from the desktop application.
+The service publishes one endpoint: the web dashboard. Reaching it needs a
+forwarded port rather than the endpoint URL, for the reason set out below.
 
 The agent also runs its own OpenAI-compatible API, but **it is never published
 as an endpoint**. It accepts its key only as an `Authorization` bearer, and the
@@ -245,6 +245,12 @@ Switch between the cluster and anything else you have configured with
 
 ## Things to know before you start it
 
+- **The `vllm` entry is not discoverable at its defaults.** With `Proxy=true`,
+  which is its default, its only OpenAI surface is an in-workflow LiteLLM proxy
+  whose endpoint carries no annotations -- so a gateway cannot register it and
+  this entry cannot discover it. Start `vllm` with `Proxy=false`, which
+  publishes annotated per-replica endpoints for a `litellm` gateway to find, or
+  point this entry straight at the vllm proxy with an explicit `Endpoint`.
 - **A gateway that serves no models yet stops the agent.** Discovery reads
   `/v1/models`, and a gateway whose model pools have not started serves an
   empty list, which is indistinguishable from a misconfigured gateway. Start
@@ -278,8 +284,8 @@ Switch between the cluster and anything else you have configured with
 - **The entry does not use the image's entrypoint.** The published image is
   built for Docker, where it starts as root and drops to its own baked user. Its
   entrypoint and wrapper both refuse to start under any other uid, and Fuzzball
-  supplies exactly that -- the same reason the `opencode` entry redirects `HOME`
-  and every cache onto its volume. So this entry seeds the
+  supplies exactly that, so every writable path the runtime uses is redirected
+  onto the volume. So this entry seeds the
   state tree itself and execs the `hermes` CLI directly, skipping the container
   bootstrap. What that bootstrap does beyond refusing is set up s6 supervision
   and repair file ownership after a privilege drop, and neither is needed when a
