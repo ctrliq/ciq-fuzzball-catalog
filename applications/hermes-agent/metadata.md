@@ -108,9 +108,13 @@ cookie after a form login, not with that header.
 Two layers of authentication apply and neither is redundant:
 
 - The endpoint scope. At `user`, `group`, or `organization`, requests through
-  an endpoint URL need a Fuzzball credential: an [endpoint access
+  an endpoint URL need an [endpoint access
   token](https://ui.stable.fuzzball.ciq.dev/docs/advanced-features/workflow-endpoints/)
-  for API clients, or a browser session for the dashboard.
+  in `Authorization`. There is no interactive sign-in at this layer: an
+  unauthenticated request gets a bare `401`, with no redirect to a login and no
+  `WWW-Authenticate` challenge. That is fine for `curl` and for anything that
+  can set a header, and it means **a browser cannot open the dashboard URL
+  directly** -- see below.
 - The agent's own credentials -- a dashboard password and an API key, both
   generated at submit time and printed by the `show-agent` job. A plain service
   binds its port on the node it runs on, so the endpoint proxy is not the only
@@ -130,6 +134,25 @@ escape hatch that allowed it, citing exposed dashboards and API servers being
 driven into planting SSH-key backdoors. Anyone who
 reaches this agent can run shell commands in its container, read everything it
 remembers, and spend model capacity, so prefer the narrowest scope that fits.
+
+### From a workstation
+
+The dashboard is a browser application behind a proxy that only accepts a
+header, so the two do not meet. Forward the port instead and the proxy drops out
+of the picture, leaving only the agent's own sign-in:
+
+```sh
+fuzzball workflow port-forward <workflow id> hermes <local port>:<dashboard port>
+# then open http://127.0.0.1:<local port> and sign in as 'hermes'
+```
+
+An SSH tunnel to the node the service landed on does the same thing if you have
+shell access to it. Verified end to end from a laptop: the sign-in page renders
+over the tunnel and the password printed by `show-agent` is accepted.
+
+Anything that can set headers -- `curl`, a script, a client you control -- can
+use the endpoint URL directly from anywhere, with an endpoint access token in
+`Authorization`. Only the browser case needs the tunnel.
 
 Reaching a *gateway* from outside the cluster does work, because its two
 credentials travel in two different headers -- the proxy consumes
