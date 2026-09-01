@@ -4,6 +4,8 @@ id: "ciq/ml_and_ai/opencode"
 name: "opencode"
 category: "ML_AND_AI"
 tags:
+- ai
+- agent
 - coding agent
 - LLM
 - OpenAI API
