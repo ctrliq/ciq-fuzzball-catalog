@@ -17,6 +17,16 @@ of `applications`. The required files for each application are as follows:
   [slim-sprig](https://github.com/go-task/slim-sprig) library.
 - `values.yaml`: Describe values used to template the `template.yaml` files.
 
+Instead of carrying its own `template.yaml`, an application may set
+`template: <application>` in its metadata.md front matter to use another
+application's template (e.g. the per-model vLLM presets reference `vllm`). An
+application must have exactly one of the two, and the referenced application
+must carry a real `template.yaml` (no chained references). Loading
+template-referencing entries requires an orchestrator with the reference
+resolver (fuzzball commit d23fad62c4); on older orchestrators such entries
+abort the catalog sync, so see README.md's Contributing rules before porting
+one to a release branch.
+
 These files must be located at the top level of the directory. Other (arbitrary,
 optional) files may be included as well.
 
@@ -28,6 +38,10 @@ workflow definition:
 ```sh
 fuzzball workflow catalog render --from-file template.yaml --values values.yaml > rendered.yaml
 ```
+
+For a template-referencing entry (no local `template.yaml`), render the
+referenced application's template against the entry's values instead:
+`render --from-file ../vllm/template.yaml --values values.yaml`.
 
 `--values` (`-v`) is **required** when `--from-file` is set. Without
 `--from-file`, the positional argument is a catalog entry name or UUID and the

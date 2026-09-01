@@ -9,6 +9,7 @@ tags:
 - OpenAI
 - inference
 - genAI
+- ai
 ---
 One OpenAI-compatible base URL in front of every model-serving workflow your identity can
 reach. Agents and IDE plugins ask for a model by name; which workflow serves it, and how

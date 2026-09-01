@@ -9,6 +9,7 @@ tags:
 - MCP
 - vector search
 - retrieval
+- ai
 ---
 This workflow runs a retrieval-augmented-generation (RAG) corpus service built on
 [haiku.rag](https://github.com/ggozad/haiku.rag): document ingestion (PDF, DOCX,
