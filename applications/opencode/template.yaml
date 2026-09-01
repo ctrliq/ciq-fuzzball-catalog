@@ -1,0 +1,304 @@
+# Copyright 2026 CIQ, Inc. All rights reserved.
+
+{{- /* Every value below reaches a container env entry or the service script, so
+       each is matched against what it is allowed to contain rather than checked
+       for a few forbidden characters: a newline forges env entries, and '#', '$'
+       or a backtick changes what the script runs. */}}
+
+{{- $endpoint := trimSuffix "/v1" (trimSuffix "/" (trim .Endpoint)) }}
+{{- if not $endpoint }}
+  {{- fail "Endpoint is required: the base URL of an OpenAI-compatible endpoint, e.g. a vllm or litellm workflow endpoint" }}
+{{- end }}
+{{- if not (regexMatch "^https?://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._/-]*)?$" $endpoint) }}
+  {{- fail "Endpoint must be an http(s) URL, e.g. https://endpoint-<id>.endpoints.<cluster domain>" }}
+{{- end }}
+
+{{- $model := trim .Model }}
+{{- if not (regexMatch "^[A-Za-z0-9._:/-]+$" $model) }}
+  {{- fail "Model must name the model as the endpoint serves it, e.g. openai/gpt-oss-20b" }}
+{{- end }}
+
+{{- $context_size := int .MaxContextSize }}
+{{- if lt $context_size 1024 }}
+  {{- fail "MaxContextSize must be at least 1024" }}
+{{- end }}
+{{- $output_limit := int .OutputLimit }}
+{{- if lt $output_limit 256 }}
+  {{- fail "OutputLimit must be at least 256" }}
+{{- end }}
+
+{{- $auth := lower (trim .EndpointAuth) }}
+{{- if not (has $auth (list "fuzzball-token" "api-key")) }}
+  {{- fail "EndpointAuth must be one of: fuzzball-token, api-key" }}
+{{- end }}
+
+{{- /* The platform accepts only user-scoped value secrets in env entries. */}}
+{{- $api_key_secret := trim .ApiKeySecret }}
+{{- if and $api_key_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $api_key_secret)) }}
+  {{- fail "ApiKeySecret must be a user-scoped secret reference, e.g. secret://user/litellm-key" }}
+{{- end }}
+{{- $api_key := trim .ApiKey }}
+{{- if and $api_key (not (regexMatch "^[A-Za-z0-9._~+/=-]+$" $api_key)) }}
+  {{- fail "ApiKey may contain only letters, digits and . _ ~ + / = -" }}
+{{- end }}
+{{- if and (eq $auth "api-key") (not (or $api_key_secret $api_key)) }}
+  {{- fail "EndpointAuth=api-key needs ApiKeySecret or ApiKey" }}
+{{- end }}
+
+{{- $token_lifetime := int .TokenLifetime }}
+{{- if lt $token_lifetime 300 }}
+  {{- fail "TokenLifetime must be at least 300 seconds" }}
+{{- end }}
+
+{{- $scope := lower (trim .ServiceScope) }}
+{{- if not (has $scope (list "user" "group" "organization" "public")) }}
+  {{- fail "ServiceScope must be one of: user, group, organization, public" }}
+{{- end }}
+
+{{- $volume := trim .Volume }}
+{{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
+  {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+
+{{- $memory := trim .Memory }}
+{{- if not (regexMatch "^[0-9]+(\\.[0-9]+)?[KMGT]i?B$" $memory) }}
+  {{- fail "Memory must be a size such as 8GiB" }}
+{{- end }}
+{{- $image := trim .Image }}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._@:/-]+$" $image) }}
+  {{- fail "Image must be a docker:// or oras:// container reference" }}
+{{- end }}
+{{- $curl_image := trim .CurlImage }}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._@:/-]+$" $curl_image) }}
+  {{- fail "CurlImage must be a docker:// or oras:// container reference" }}
+{{- end }}
+
+{{- $mint := eq $auth "fuzzball-token" }}
+
+{{- $password := printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+{{- /* The server rejects every route but its icons once a password is set, and
+       the readiness probe sends no credentials, so it authenticates through the
+       query parameter the server checks ahead of the Authorization header. A
+       probe that cannot pass aborts the whole workflow. */}}
+{{- $auth_query := printf "opencode:%s" $password | b64enc }}
+
+{{- $port := randInt 24001 32000 }}
+{{- $trust_store := "/run/fuzzball-substrate/trusted-certs/root-ca.crt" }}
+
+version: v4
+
+volumes:
+  data:
+    {{- if eq (lower $volume) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    use: persistent
+    name: "{{ $volume }}"
+    {{- end }}
+
+jobs:
+  show-server:
+    image:
+      uri: {{ $curl_image }}
+    depends-on:
+      - name: opencode
+        status: RUNNING
+        description: "Print connection details once the server is running"
+    script: |
+      #!/bin/sh
+      echo "Get the server URL with:"
+      echo "   fuzzball workflow endpoints list"
+      echo ""
+      echo "The server enforces this password on every request:"
+      echo "   {{ $password }}"
+      echo ""
+      echo "It travels in the Authorization header, which the endpoint proxy"
+      echo "consumes at every scope but public, so through the endpoint URL send"
+      echo "it as a query parameter instead:"
+      echo "   <server url>/api/session?auth_token={{ $auth_query }}"
+      echo ""
+      {{- if eq $scope "public" }}
+      echo "This endpoint is public, so the password is the only barrier. A"
+      echo "browser prompts for it (user 'opencode'), and a local client attaches:"
+      echo "   opencode attach <server url> -p {{ $password }}"
+      {{- else }}
+      echo "Requests also need a Fuzzball credential in the Authorization header:"
+      echo "   fuzzball workflow endpoints generate-token <endpoint id>"
+      echo ""
+      echo "The bundled web application cannot be used at this scope: its own"
+      echo "requests carry no query parameter and the proxy has taken the header."
+      echo "Use ServiceScope=public for the web application or 'opencode attach'."
+      {{- end }}
+      echo ""
+      echo "Model configured for this server: fuzzball/{{ $model }}"
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 128MB
+    policy:
+      timeout:
+        execute: 10m
+
+services:
+  opencode:
+    image:
+      uri: {{ $image }}
+    mounts:
+      /data:
+        volume: data
+    env:
+      # The image runs as a different uid under Fuzzball, so every writable path
+      # OpenCode uses is redirected onto the volume. HOME is the volume root
+      # rather than a directory beside the workspace: the web application's
+      # project browser is rooted at HOME, and a workspace outside that tree
+      # cannot be opened at all.
+      - HOME=/data
+      - XDG_CONFIG_HOME=/data/.config
+      - XDG_DATA_HOME=/data/.local/share
+      - XDG_CACHE_HOME=/data/.cache
+      - XDG_STATE_HOME=/data/.local/state
+      - OPENCODE_CONFIG=/data/.config/opencode.json
+      # Set at every scope: a plain service also binds its port on the node it
+      # runs on, where no endpoint proxy stands in front of it.
+      - OPENCODE_SERVER_PASSWORD={{ $password }}
+      {{- if $api_key_secret }}
+      - MODEL_API_KEY={{ $api_key_secret }}
+      {{- else if $api_key }}
+      - MODEL_API_KEY={{ $api_key }}
+      {{- end }}
+    script: |
+      #!/bin/sh
+      set -e
+      mkdir -p /data/workspace /data/.config
+
+      # Both TLS stacks here need the cluster CA added to the public roots, not
+      # substituted for them: this endpoint may be private-CA while the model
+      # endpoint or a provider is public. The image's own bundle is read-only to
+      # this uid, so the merged copy lives in /tmp. busybox wget reads
+      # SSL_CERT_FILE; the Bun runtime reads NODE_EXTRA_CA_CERTS and ignores
+      # SSL_CERT_DIR.
+      bundle=/tmp/ca-bundle.pem
+      cat /etc/ssl/certs/ca-certificates.crt > "${bundle}"
+      if [ -f {{ $trust_store }} ]; then
+        cat {{ $trust_store }} >> "${bundle}"
+      fi
+      SSL_CERT_FILE="${bundle}"
+      NODE_EXTRA_CA_CERTS="${bundle}"
+      export SSL_CERT_FILE NODE_EXTRA_CA_CERTS
+      {{- if $mint }}
+
+      endpoint_id=$(echo "{{ $endpoint }}" | sed -e 's#^[a-z]*://##' -e 's#/.*##' -e 's#:.*##' | cut -d. -f1)
+      case "${endpoint_id}" in
+        endpoint-*) ;;
+        *)
+          echo "FATAL: {{ $endpoint }} is not a Fuzzball endpoint URL; use EndpointAuth=api-key" >&2
+          exit 1
+          ;;
+      esac
+      if [ -z "${FB_TOKEN}" ]; then
+        echo "FATAL: no workflow API token was injected, so no endpoint token can be" >&2
+        echo "minted. Use EndpointAuth=api-key with a key for the endpoint." >&2
+        exit 1
+      fi
+
+      minted=$(wget -nv -O - \
+        --header="Authorization: Bearer ${FB_TOKEN}" \
+        --header="Content-Type: application/json" \
+        --post-data="{\"expirationSeconds\": {{ $token_lifetime }}}" \
+        "${FB_OPENAPI_URL%/}/v4/endpoints/${endpoint_id}/token" 2> /tmp/mint.err) || {
+        echo "FATAL: could not mint an access token for ${endpoint_id}:" >&2
+        cat /tmp/mint.err >&2
+        echo "A public endpoint takes no token; use EndpointAuth=api-key for one." >&2
+        exit 1
+      }
+      credential=$(echo "${minted}" | tr -d ' \n' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+      if [ -z "${credential}" ]; then
+        echo "FATAL: no token in the mint response" >&2
+        exit 1
+      fi
+      # The agent runs arbitrary shell: leave it no workflow API credential.
+      unset FB_TOKEN FB_OPENAPI_URL
+      {{- else }}
+
+      credential="${MODEL_API_KEY}"
+      {{- end }}
+
+      umask 077
+      cat > /data/.config/opencode.json <<EOF
+      {
+        "\$schema": "https://opencode.ai/config.json",
+        "provider": {
+          "fuzzball": {
+            "npm": "@ai-sdk/openai-compatible",
+            "name": "Fuzzball",
+            "options": {
+              "baseURL": "{{ $endpoint }}/v1",
+              "apiKey": "${credential}"
+      {{- if and $mint (or $api_key_secret $api_key) }}
+              ,"headers": { "x-litellm-api-key": "${MODEL_API_KEY}" }
+      {{- end }}
+            },
+            "models": {
+              "{{ $model }}": {
+                "name": "{{ $model }} on Fuzzball",
+                "limit": { "context": {{ $context_size }}, "output": {{ $output_limit }} }
+              }
+            }
+          }
+        },
+        "model": "fuzzball/{{ $model }}"
+      }
+      EOF
+
+      # A rejected credential otherwise surfaces at the user's first prompt: the
+      # readiness probe only reaches this server, never the model endpoint.
+      if ! wget -nv -O /dev/null \
+        --header="Authorization: Bearer ${credential}" \
+      {{- if and $mint (or $api_key_secret $api_key) }}
+        --header="x-litellm-api-key: ${MODEL_API_KEY}" \
+      {{- end }}
+        "{{ $endpoint }}/v1/models" 2> /tmp/probe.err; then
+        if grep -q "40[13]" /tmp/probe.err; then
+          echo "FATAL: the model endpoint rejected these credentials:" >&2
+          cat /tmp/probe.err >&2
+          exit 1
+        fi
+        echo "WARNING: the model endpoint did not answer /v1/models yet:" >&2
+        cat /tmp/probe.err >&2
+      fi
+
+      cd /data/workspace
+      exec opencode serve --hostname 0.0.0.0 --port {{ $port }} --print-logs
+    network:
+      ports:
+        - name: http
+          port: {{ $port }}
+          protocol: tcp
+      endpoints:
+        - name: server
+          port-name: http
+          protocol: http
+          type: subdomain
+          scope: {{ $scope }}
+    readiness-probe:
+      http-get:
+        # Names a real route because the icon allowlist aside, every path needs
+        # the credential; the query parameter carries it, as the probe sends no
+        # headers of its own. The endpoint URL exists before this passes, so it
+        # refuses connections for the first cycles, and failure-threshold x
+        # period-seconds is a hard deadline: exceeding it aborts the workflow.
+        path: /global/health?auth_token={{ $auth_query }}
+        port: {{ $port }}
+        scheme: HTTP
+      initial-delay-seconds: 10
+      period-seconds: 10
+      timeout-seconds: 5
+      failure-threshold: 30
+      success-threshold: 1
+    resource:
+      cpu:
+        cores: {{ .Cores }}
+      memory:
+        size: {{ $memory }}
+    persist: true
