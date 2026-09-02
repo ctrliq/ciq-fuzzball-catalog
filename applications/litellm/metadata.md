@@ -99,10 +99,12 @@ To confirm a model was picked up, watch `fuzzball workflow log <workflow> gatewa
 - **The default volume is ephemeral**, so virtual keys, budgets and spend history are lost
   when the workflow stops. Point `DataVolume` at a persistent volume for anything you rely
   on.
-- **`ClusterCASecret` is effectively required on a cluster whose API is served with a
-  private CA.** Without it discovery never reaches the Fuzzball API: the gateway serves no
-  models at all and only logs `DISCOVERY-FAILED` SSL errors, while the workflow itself looks
-  healthy.
+- **The cluster CA comes from the node trust store.** Fuzzball mounts its CA into every
+  workflow container at `/run/fuzzball-substrate/trusted-certs/root-ca.crt` and the gateway
+  appends it to its bundle, so a private-CA cluster needs no configuration. Nodes must run
+  the orchestrate extension that publishes it (v4.2.0-58 or newer); on older nodes the
+  gateway logs a warning at start, discovery never reaches the Fuzzball API, and it serves
+  no models while the workflow itself looks healthy.
 - **A pool that scales to zero surfaces LiteLLM's router cooldown to callers.** Such a
   model has a single LiteLLM deployment, so each drain produces a short burst of 429
   "No deployments available" responses until the next discovery pass swaps the route.

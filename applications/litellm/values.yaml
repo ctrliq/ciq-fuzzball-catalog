@@ -1,14 +1,4 @@
 values:
-  - name: "ClusterCASecret"
-    display_name: >-
-      Reference to a user-scoped secret holding a PEM certificate authority. Effectively
-      required on any cluster whose API is served with a private CA: without it the gateway
-      discovers no models and only logs DISCOVERY-FAILED SSL errors. Leave empty only when
-      the cluster API uses a publicly trusted certificate.
-    secret_value:
-      reference: ""
-    display_category: "Secrets"
-
   - name: "ServiceScope"
     display_name: >-
       Who can reach the gateway endpoint. Callers additionally need a LiteLLM virtual key.
