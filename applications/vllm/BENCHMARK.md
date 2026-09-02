@@ -41,7 +41,7 @@ fuzzball workflow catalog start vllm --name bench-tp --values \
 |---|---|
 | Cluster | TBD (Vultr) |
 | GPU model / count per node | TBD |
-| vLLM image | docker://vllm/vllm-openai:v0.10.1 |
+| vLLM image | docker://vllm/vllm-openai:v0.28.0 |
 | Model | hf://openai/gpt-oss-20b |
 | Date | TBD |
 

@@ -98,11 +98,56 @@ layout is picked automatically, and `ExpertParallelism=true` on a non-MoE model 
 service at start with a message naming the model's architecture. The replica
 still serves one OpenAI-compatible API on the same port, so endpoints, the
 LiteLLM proxy, and autoscaling behave exactly as without expert parallelism.
-Expert parallelism needs at least two GPUs per replica, since a single GPU has
-nothing to shard the experts across; with one GPU the replica serves with
-tensor parallelism instead. Multi-node expert-parallel serving groups are
-future work. See [BENCHMARK.md](BENCHMARK.md) for the methodology used to
-compare expert- and tensor-parallel throughput (results pending).
+Expert parallelism needs a data-parallel world of at least two, since a single
+GPU has nothing to shard the experts across; below that the replica serves with
+tensor parallelism instead. That world spans the whole replica, so it is
+`Nodes` x `GpusPerReplica` -- two single-GPU nodes qualify just as one two-GPU
+node does. See [BENCHMARK.md](BENCHMARK.md) for the methodology used to compare
+expert- and tensor-parallel throughput (results pending).
+
+Set `Nodes` above 1 for a mixture-of-experts model too large for any single
+node. Each replica then becomes a gang-scheduled group: Fuzzball starts all of
+its nodes together or none, gives them a private DNS namespace, and the group
+serves one OpenAI-compatible endpoint from rank 0, which coordinates the others
+internally. Attention runs data-parallel across every GPU of the group and the
+experts are sharded over the same world, so the pool grows and shrinks in whole
+groups rather than single nodes.
+
+A group needs as many nodes as it has ranks, since two ranks of one replica are
+never placed on the same node, and every node of the group needs
+`GpusPerReplica` GPUs. Groups are gang-scheduled, so a pool whose provisioner
+definition cannot supply `Nodes` nodes will not start a single replica; the
+submission is rejected with the node cost named.
+
+Three limits worth knowing before choosing `Nodes` above 1.
+
+Ranks other than rank 0 do not report container state, so a peer rank dying
+after startup raises no failure: the group is not torn down and the endpoint
+keeps serving from rank 0 with part of the model missing.
+
+The group's nodes must be able to reach each other on arbitrary ports — the
+ranks negotiate data-parallel RPC and collective connections between themselves
+— which is a property of the cluster's network rather than something this entry
+can arrange. Where the collective library needs pointing at a particular
+interface, or otherwise tuning, use `ExtraEnv`.
+
+**The GPUs must support GPU-to-GPU collectives.** A group's ranks build an NCCL
+communicator (RCCL on `amd`), and virtualised GPUs generally cannot: a `Q`-series
+vGPU profile such as `NVIDIA A16-2Q` fails at startup with
+
+    init.cc:416 NCCL WARN Cuda failure 'operation not supported'
+    RuntimeError: NCCL error: unhandled cuda error
+
+because the CUDA memory operations the collective library depends on are not
+available to the guest. This is a property of the GPU profile, not of the
+network: NCCL reports the transport selected successfully just before failing,
+and `NCCL_CUMEM_ENABLE=0`, `NCCL_P2P_DISABLE=1` and `NCCL_SHM_DISABLE=1` do not
+work around it. Multi-node serving needs passthrough or bare-metal GPUs. A
+single-node replica is unaffected — it never builds a cross-rank communicator.
+
+Multi-node groups are untested on `Gpu: amd`. The layout and every flag are
+emitted identically there, but the ROCm image tracks a different vLLM release,
+and the DeepEP `All2AllBackend` options are CUDA-only in practice.
 
 ## Parameters
 
@@ -117,10 +162,32 @@ compare expert- and tensor-parallel throughput (results pending).
   than with `?exclude=original/**&exclude=metal/**`.
 - `Gpu`: GPU platform, `nvidia` or `amd`.
 - `ExpertParallelism`: `auto` (default; enabled when the downloaded model's
-  `config.json` indicates a mixture-of-experts model and `GpusPerReplica` is at
-  least 2), `true` (require both — on a dense model the service fails at start
-  naming the model's architecture, and fewer than 2 GPUs is rejected at
-  submission), or `false` (tensor parallelism only).
+  `config.json` indicates a mixture-of-experts model and the replica's
+  data-parallel world, `Nodes` x `GpusPerReplica`, is at least 2), `true`
+  (require both — on a dense model the service fails at start naming the model's
+  architecture, and a data-parallel world below 2 is rejected at submission), or
+  `false` (tensor parallelism only).
+- `Nodes`: nodes per replica, default 1. Above 1, each replica is a
+  gang-scheduled group of that many nodes serving one endpoint from rank 0, for
+  a mixture-of-experts model too large for a single node. Requires expert
+  parallelism (`ExpertParallelism=false` is rejected) and at least one GPU per
+  node; a dense model fails at start rather than serving a group that buys
+  nothing.
+- `ExtraEnv`: extra environment variables for the vLLM process, as
+  space-separated `NAME=VALUE` pairs, applied to **every rank** of a replica.
+  For settings with no command-line equivalent — chiefly collective-library
+  tuning (`NCCL_*`, which RCCL also reads on `amd`) that a cluster's
+  interconnect needs, e.g. `NCCL_SOCKET_IFNAME=eth0 NCCL_DEBUG=WARN`. Each entry
+  is validated as `NAME=VALUE`, so values cannot contain spaces.
+- `All2AllBackend`: vLLM's all-to-all backend for expert parallelism. Empty
+  (default) leaves vLLM's own choice, `allgather_reducescatter`, which works
+  with any layout including across nodes. `deepep_high_throughput` and
+  `deepep_low_latency` are faster for multi-node serving —
+  prefill-dominated and decode-dominated respectively — but need an image with
+  the DeepEP kernels built in — which the default image is not — and a vLLM that
+  accepts `--all2all-backend`. The default `v0.28.0` does; an older pinned image
+  may not (`v0.10.1` does not). The flag is only passed when selected here, so
+  leaving it empty keeps a group serving on any of them.
 - `Proxy`: whether to front the pool with an in-workflow LiteLLM proxy.
 - `Scope`: authorization scope of the service endpoint (`user`, `group`,
   `organization`, `public`). Note that a `public` pool endpoint is served
