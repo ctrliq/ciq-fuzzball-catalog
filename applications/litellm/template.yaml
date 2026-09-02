@@ -120,13 +120,21 @@ services:
           port: {{ $llmPort }}
           protocol: tcp
       endpoints:
-        # No ciq.com/api annotation here on purpose: it is how the gateway
-        # recognises its own endpoint and leaves itself out of its model list.
         - name: openai
           port-name: llm
           protocol: http
           type: subdomain
           scope: {{ .ServiceScope }}
+          annotations:
+            # A different value from the one the gateway discovers models on
+            # (DiscoveryApiValue, "openai"). That one means "a model is served
+            # here"; this means "many models behind one base URL", which is what
+            # a client attaches to. The gateway leaves itself out of its own
+            # model list by workflow id, not by the absence of this annotation,
+            # so adding it changes nothing about discovery -- it only makes the
+            # two roles distinguishable to a client. The hermes-agent entry
+            # finds gateways with it.
+            ciq.com/api: openai-gateway
     script: |
       #!/bin/bash
       set -e
@@ -156,7 +164,8 @@ services:
       # this workflow's identity can reach. LiteLLM itself is the state of record
       # (read back through /model/info each pass), so a restart of this loop
       # cannot lose track of what is registered.
-      import datetime, json, os, ssl, threading, time, urllib.error, urllib.request
+      import datetime, json, os, ssl, threading, time
+      import urllib.error, urllib.parse, urllib.request
 
       API = os.environ["FB_OPENAPI_URL"].rstrip("/")
       OWN_WORKFLOW = os.environ.get("FB_WORKFLOW_ID", "")
@@ -210,15 +219,20 @@ services:
           # models, so a failure here propagates and the caller keeps what it has.
           rows = []
           page_token = ""
-          while True:
+          # Bounded: a server echoing a constant pageToken would otherwise spin
+          # here forever inside one discovery pass, silently piling up rows.
+          for _ in range(100):
               url = API + "/v4/endpoints?pageSize=500"
               if page_token:
-                  url = url + "&pageToken=" + page_token
+                  # Continuation tokens are often base64, whose '+' and '/'
+                  # change meaning unescaped in a query string.
+                  url = url + "&pageToken=" + urllib.parse.quote(page_token, safe="")
               page = call(url, TOKEN[0], ctx=CTX)
               rows.extend(page.get("endpoints") or [])
               page_token = page.get("pageToken") or ""
               if not page_token:
                   return rows
+          raise RuntimeError("endpoint listing did not terminate after 100 pages")
 
       def desired(rows):
           # api_base -> model name and the endpoint id to mint a token against.

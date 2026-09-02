@@ -1,0 +1,907 @@
+# Copyright 2026 CIQ, Inc. All rights reserved.
+
+{{- /* Every value below reaches a container env entry or the service script, so
+       each is matched against what it is allowed to contain rather than checked
+       for a few forbidden characters: a newline forges env entries, and '#', '$'
+       or a backtick changes what the script runs. */}}
+
+{{- /* A trailing /v1 is accepted and trimmed: this entry appends it, the rag
+       entry's equivalent value expects it already there, and the failure when
+       they are confused is an opaque 404 or a misleading "not an endpoint this
+       workflow can reach". */}}
+{{- $endpoint := trimSuffix "/v1" (trimSuffix "/" (trim .Endpoint)) }}
+{{- if and $endpoint (not (regexMatch "^https?://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._/-]*)?$" $endpoint)) }}
+  {{- fail "Endpoint must be an http(s) URL, e.g. https://endpoint-<id>.endpoints.<cluster domain>" }}
+{{- end }}
+
+{{- $gateway_api := trim .GatewayApiValue }}
+{{- if not (regexMatch "^[A-Za-z0-9._-]+$" $gateway_api) }}
+  {{- fail "GatewayApiValue may contain only letters, digits, '.', '_' and '-'" }}
+{{- end }}
+
+{{- $model := trim .Model }}
+{{- if and $model (not (regexMatch "^[A-Za-z0-9._-]+([:/][A-Za-z0-9._-]+)*$" $model)) }}
+  {{- fail "Model must name the model as the gateway serves it, e.g. openai/gpt-oss-20b" }}
+{{- end }}
+
+{{- $context_size := int .MaxContextSize }}
+{{- if lt $context_size 1024 }}
+  {{- fail "MaxContextSize must be at least 1024" }}
+{{- end }}
+
+{{- $auth := lower (trim .EndpointAuth) }}
+{{- if not (has $auth (list "fuzzball-token" "api-key")) }}
+  {{- fail "EndpointAuth must be one of: fuzzball-token, api-key" }}
+{{- end }}
+
+{{- $api_key_secret := trim .ApiKeySecret }}
+{{- /* User scope only: the platform rejects any other scope for a secret
+       consumed as an environment variable, and this one is. */}}
+{{- if and $api_key_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $api_key_secret)) }}
+  {{- fail "ApiKeySecret must be a user-scoped secret reference, e.g. secret://user/litellm-key" }}
+{{- end }}
+{{- $api_key := trim .ApiKey }}
+{{- /* Wider than the other inputs: third-party keys are routinely base64ish,
+       and none of these characters can break a KEY=value env entry. */}}
+{{- if and $api_key (not (regexMatch "^[A-Za-z0-9._~+/=-]+$" $api_key)) }}
+  {{- fail "ApiKey may contain only letters, digits and '. _ ~ + / = -'" }}
+{{- end }}
+{{- if and (eq $auth "api-key") (not (or $api_key_secret $api_key)) }}
+  {{- fail "EndpointAuth=api-key needs ApiKeySecret or ApiKey" }}
+{{- end }}
+
+{{- /* Discovery needs the endpoints API, which needs this workflow's own
+       identity. An explicit third-party Endpoint is the only case where the
+       agent can attach without it. */}}
+{{- if and (eq $auth "api-key") (not $endpoint) }}
+  {{- fail "EndpointAuth=api-key needs an explicit Endpoint: gateway discovery mints its own credentials" }}
+{{- end }}
+
+{{- $token_lifetime := int .TokenLifetime }}
+{{- if lt $token_lifetime 300 }}
+  {{- fail "TokenLifetime must be at least 300 seconds" }}
+{{- end }}
+{{- $cores := int .Cores }}
+{{- if lt $cores 1 }}
+  {{- fail "Cores must be at least 1" }}
+{{- end }}
+{{- $attach_interval := int .AttachInterval }}
+{{- if lt $attach_interval 10 }}
+  {{- fail "AttachInterval must be at least 10 seconds" }}
+{{- end }}
+
+{{- $api_access := lower (trim .ApiServerAccess) }}
+{{- if not (has $api_access (list "loopback" "node")) }}
+  {{- fail "ApiServerAccess must be one of: loopback, node" }}
+{{- end }}
+
+{{- $scope := lower (trim .ServiceScope) }}
+{{- if not (has $scope (list "user" "group" "organization")) }}
+  {{- fail "ServiceScope must be one of: user, group, organization" }}
+{{- end }}
+
+{{- $volume := trim .Volume }}
+{{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
+  {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+
+{{- $memory := trim .Memory }}
+{{- if not (regexMatch "^[0-9]+(\\.[0-9]+)?[KMGT]i?B$" $memory) }}
+  {{- fail "Memory must be a size such as 8GiB" }}
+{{- end }}
+{{- $image := trim .Image }}
+{{- /* The tag group is optional but cannot be empty: a reference ending in
+       ':' renders an env entry YAML reads as a mapping. */}}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $image) }}
+  {{- fail "Image needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/org/name:1.2.3" }}
+{{- end }}
+{{- $curl_image := trim .CurlImage }}
+{{- /* The tag group is optional but cannot be empty: a reference ending in
+       ':' renders an env entry YAML reads as a mapping. */}}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $curl_image) }}
+  {{- fail "CurlImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/org/name:1.2.3" }}
+{{- end }}
+
+{{- $mint := eq $auth "fuzzball-token" }}
+{{- /* A LiteLLM gateway always enforces a key, and its own is the only thing
+       this workflow cannot work out for itself. Caught here rather than as a
+       401 several minutes into startup. */}}
+{{- if and $mint (not (or $api_key_secret $api_key)) }}
+  {{- fail "A gateway key is required: set ApiKeySecret (preferred) or ApiKey" }}
+{{- end }}
+
+{{- /* Both credentials are generated at submit time and live in the rendered
+       definition; the show-agent job prints them. slim-sprig has no
+       randAlphaNum, so they are built as hex from 63-bit randInt draws. */}}
+{{- $dashboard_password := printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+{{- $dashboard_secret := printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+{{- $api_server_key := printf "sk-%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+
+{{- $dashboard_port := randInt 24001 28000 }}
+{{- $api_port := randInt 28001 32000 }}
+
+{{- /* How long the first attach keeps retrying before the service gives up.
+       A gateway whose model pool is still starting is the common case, and it
+       resolves in well under this. */}}
+{{- $bootstrap_window := 300 }}
+
+{{- $data := "/opt/data" }}
+{{- $runtime := "/tmp/fuzzball" }}
+{{- $ca_bundle := "/tmp/fuzzball/ca-bundle.pem" }}
+{{- $trust_store := "/run/fuzzball-substrate/trusted-certs" }}
+
+version: v4
+
+volumes:
+  data:
+    {{- if eq (lower $volume) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    use: persistent
+    name: "{{ $volume }}"
+    {{- end }}
+
+jobs:
+  show-agent:
+    image:
+      uri: {{ $curl_image }}
+    depends-on:
+      - name: hermes
+        status: RUNNING
+        description: "Print connection details once the agent is running"
+    script: |
+      #!/bin/sh
+      echo "Get the dashboard URL with:"
+      echo "   fuzzball workflow endpoints list"
+      echo ""
+      echo "Dashboard sign-in (also in the definition: fuzzball workflow get <workflow id>):"
+      echo "   username: hermes"
+      echo "   password: {{ $dashboard_password }}"
+      echo ""
+      echo "A browser cannot use that URL -- the proxy wants an Authorization header"
+      echo "it cannot send. Forward the port instead:"
+      echo "   fuzzball workflow port-forward <workflow id> hermes 19119:{{ $dashboard_port }}"
+      echo "   then open http://127.0.0.1:19119"
+      echo ""
+      echo "API key for the agent's own OpenAI-compatible API:"
+      echo "   {{ $api_server_key }}"
+      echo ""
+      {{- if eq $api_access "node" }}
+      echo "ApiServerAccess=node, so that API is listening on this node's port"
+      echo "{{ $api_port }} with the key above as its only protection. It is not"
+      echo "published as an endpoint: it authenticates with an Authorization"
+      echo "bearer, and the endpoint proxy consumes that header."
+      {{- else }}
+      echo "That API is bound to loopback, so it is reachable only from inside"
+      echo "this container -- for example:"
+      echo "   fuzzball workflow exec <workflow id> hermes -- curl -H 'Authorization: Bearer <key>' \\"
+      echo "     http://127.0.0.1:{{ $api_port }}/v1/models"
+      echo "Set ApiServerAccess=node to bind it on the node instead."
+      {{- end }}
+      echo ""
+      echo "The endpoint scope is {{ $scope }}, so requests through the dashboard URL"
+      echo "also need a Fuzzball credential in the Authorization header:"
+      echo "   fuzzball workflow endpoints generate-token <endpoint id>"
+      echo ""
+      echo "Watch the agent attach to its gateway with:"
+      echo "   fuzzball workflow log <workflow id> hermes"
+      echo "It logs ATTACHED when the gateway or model changes, and MINTED on every"
+      echo "credential rotation -- steady state is quiet."
+      echo ""
+      echo "The agent runs until the workflow is cancelled."
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 128MB
+    policy:
+      timeout:
+        execute: 10m
+
+services:
+  hermes:
+    image:
+      uri: {{ $image }}
+    mounts:
+      {{ $data }}:
+        volume: data
+    env:
+      # Everything Hermes writes -- config, sessions, memories, learned skills --
+      # belongs on the volume; the installed tree under /opt/hermes is immutable.
+      # The image already sets this, but the attach pass derives config.yaml's
+      # location from it, so it is pinned here rather than assumed.
+      - HERMES_HOME={{ $data }}
+      # The image expects to run as its own baked user, whose home and caches
+      # are outside the volume and unwritable to the uid Fuzzball actually
+      # provides. Every writable path is redirected onto the volume instead.
+      - HOME={{ $data }}/home
+      - XDG_CONFIG_HOME={{ $data }}/.config
+      - XDG_DATA_HOME={{ $data }}/.local/share
+      - XDG_CACHE_HOME={{ $data }}/.cache
+      - XDG_STATE_HOME={{ $data }}/.local/state
+      # Read by the dashboard process itself, unlike HERMES_DASHBOARD and its
+      # HOST/PORT companions, which only the image's s6 service definition reads.
+      # A non-loopback bind fails closed without one of these providers, and the
+      # endpoint scope cannot stand in for it: the service also listens on its
+      # node's port, with no proxy in front of it.
+      - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=hermes
+      - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD={{ $dashboard_password }}
+      # Without a fixed signing key every restart invalidates dashboard sessions.
+      - HERMES_DASHBOARD_BASIC_AUTH_SECRET={{ $dashboard_secret }}
+      # The dashboard and Hermes' own scheduled work both call this API over
+      # loopback, so it is always enabled. ApiServerAccess decides only how far
+      # it is reachable: bound to loopback it cannot be dialled from outside the
+      # container at all, which is upstream's default and the right one for an
+      # API that can run shell commands.
+      - API_SERVER_ENABLED=true
+      {{- if eq $api_access "node" }}
+      - API_SERVER_HOST=0.0.0.0
+      {{- else }}
+      - API_SERVER_HOST=127.0.0.1
+      {{- end }}
+      - API_SERVER_PORT={{ $api_port }}
+      - API_SERVER_KEY={{ $api_server_key }}
+      {{- if $endpoint }}
+      - GATEWAY_ENDPOINT={{ $endpoint }}
+      {{- end }}
+      - GATEWAY_API_VALUE={{ $gateway_api }}
+      {{- if $model }}
+      - GATEWAY_MODEL={{ $model }}
+      {{- end }}
+      - GATEWAY_CONTEXT={{ $context_size }}
+      - GATEWAY_MINT={{ $mint }}
+      - TOKEN_LIFETIME={{ $token_lifetime }}
+      - ATTACH_INTERVAL={{ $attach_interval }}
+      - BOOTSTRAP_WINDOW={{ $bootstrap_window }}
+      - RUNTIME_DIR={{ $runtime }}
+      {{- if $api_key_secret }}
+      - MODEL_API_KEY={{ $api_key_secret }}
+      {{- else if $api_key }}
+      - MODEL_API_KEY={{ $api_key }}
+      {{- end }}
+    script: |
+      #!/bin/bash
+      set -e
+
+      # Tight only around the credential directory; the attach pass sets its own
+      # umask for the files it writes. Left at 077 it would also apply to every
+      # path the agent creates on a persistent volume for the rest of the run.
+      umask 077
+      mkdir -p {{ $runtime }}
+      umask 022
+
+      # The state tree the image's own bootstrap would have created. That
+      # bootstrap is skipped entirely here (see the exec at the end of this
+      # script), and it is almost all chown repair for the case where the
+      # container starts as root and drops to another user -- which is not what
+      # happens under Fuzzball, where one uid owns the whole run.
+      for dir in "" /home /.config /.cache /.local/share /.local/state \
+                 /cron /sessions /logs /logs/gateways /hooks /memories /skills \
+                 /skins /plans /workspace /profiles /pairing /platforms/pairing \
+                 /lazy-packages; do
+        mkdir -p "{{ $data }}${dir}"
+      done
+      # Hermes tightens this itself on every start; create it so the gateway
+      # does not have to seed a file on a volume it may not be able to write.
+      [ -e {{ $data }}/.env ] || : > {{ $data }}/.env
+
+      # Fuzzball bind-mounts the cluster CA and sets SSL_CERT_DIR, but OpenSSL's
+      # directory lookup needs hash-named entries, so Python misses it. Merge the
+      # mounted certificates with the bundled public roots: reaching the Fuzzball
+      # API and reaching a public model provider both have to keep working.
+      if [ -f /etc/ssl/certs/ca-certificates.crt ]; then
+        cp /etc/ssl/certs/ca-certificates.crt {{ $ca_bundle }}
+      elif [ -f /etc/ssl/cert.pem ]; then
+        cp /etc/ssl/cert.pem {{ $ca_bundle }}
+      else
+        echo "FATAL: no system CA bundle found in the agent image" >&2
+        exit 1
+      fi
+      for cert in {{ $trust_store }}/*.crt; do
+        [ -f "${cert}" ] || continue
+        cat "${cert}" >> {{ $ca_bundle }}
+        echo >> {{ $ca_bundle }}
+      done
+      export SSL_CERT_FILE={{ $ca_bundle }}
+
+      # The bundled interpreter, not the distribution one: it is the only one
+      # with the YAML support the attach pass needs to edit config.yaml in place.
+      HERMES_PY=/opt/hermes/.venv/bin/python
+      HERMES_BIN=/opt/hermes/.venv/bin/hermes
+      for required in "${HERMES_PY}" "${HERMES_BIN}"; do
+        if [ ! -x "${required}" ]; then
+          echo "FATAL: ${required} is missing; this is not the expected Hermes image" >&2
+          exit 1
+        fi
+      done
+
+      cat > {{ $runtime }}/attach.py <<'PYEOF'
+      # Keeps Hermes pointed at a live gateway with a credential that has not
+      # expired. Hermes itself holds no Fuzzball identity, so this pass owns
+      # both halves: it discovers which endpoint is the gateway, and it keeps
+      # the credential file fresh for the provider's key_cmd to read.
+      import base64, datetime, json, os, ssl, sys, time
+      import urllib.error, urllib.parse, urllib.request
+
+      import yaml
+
+      API = (os.environ.get("FB_OPENAPI_URL") or "").rstrip("/")
+      OWN_WORKFLOW = os.environ.get("FB_WORKFLOW_ID", "")
+      FIXED = os.environ.get("GATEWAY_ENDPOINT", "").rstrip("/")
+      WANT_API = os.environ["GATEWAY_API_VALUE"]
+      WANT_MODEL = os.environ.get("GATEWAY_MODEL", "")
+      CONTEXT = int(os.environ["GATEWAY_CONTEXT"])
+      MINT = os.environ["GATEWAY_MINT"] == "true"
+      TTL = int(os.environ["TOKEN_LIFETIME"])
+      INTERVAL = int(os.environ["ATTACH_INTERVAL"])
+      BOOTSTRAP = int(os.environ["BOOTSTRAP_WINDOW"])
+      LLM_KEY = os.environ.get("MODEL_API_KEY", "")
+      RUNTIME = os.environ["RUNTIME_DIR"]
+      # Hermes resolves config.yaml from HERMES_HOME and offers no override, so
+      # this is derived rather than passed in: a path handed over separately
+      # would go stale the moment HERMES_HOME moved, and nothing would say so.
+      CONFIG = os.path.join(os.environ["HERMES_HOME"], "config.yaml")
+      CREDENTIAL = os.path.join(RUNTIME, "credential.json")
+      WORKFLOW_TOKEN = os.path.join(RUNTIME, "workflow-token.json")
+      CA = os.environ.get("SSL_CERT_FILE") or None
+      API_ANNOTATION = "ciq.com/api"
+      PROVIDER = "fuzzball"
+      RENEW_AFTER = 4 * 24 * 3600
+
+      CTX = ssl.create_default_context(cafile=CA)
+
+      # Everything this pass writes is either a credential or the agent's own
+      # configuration, and the shell's umask is deliberately not relied on.
+      os.umask(0o077)
+
+      class HttpError(RuntimeError):
+          def __init__(self, code, message):
+              super().__init__(message)
+              self.code = code
+
+      class NoRedirect(urllib.request.HTTPRedirectHandler):
+          # A redirect would carry the Authorization header to whatever host the
+          # response names, and Endpoint can point at a host the user chose.
+          def redirect_request(self, *args, **kwargs):
+              return None
+
+      OPENER = urllib.request.build_opener(
+          urllib.request.HTTPSHandler(context=CTX), NoRedirect)
+
+      def token_expiry(token):
+          # Read the JWT's own exp claim. Anchoring renewal to the token rather than
+          # to when this process started is what makes it survive a restart: a
+          # deadline measured from "now" walks forward every crash until it sits past
+          # the real expiry and never fires at all.
+          try:
+              claims = token.split(".")[1]
+              claims += "=" * (-len(claims) % 4)
+              return float(json.loads(base64.urlsafe_b64decode(claims))["exp"])
+          except Exception:
+              return None
+
+      def renewal_deadline(token):
+          expiry = token_expiry(token)
+          if expiry:
+              # Three days of slack, but never in the past for a short-lived token.
+              return max(expiry - 3 * 24 * 3600, time.time() + 300)
+          return time.time() + RENEW_AFTER
+
+      def load_workflow_token():
+          # The injected token expires after seven days and this pass restarts itself
+          # on any crash, so both the token and its deadline have to outlive the
+          # process. Anything else goes quietly dead a week in.
+          try:
+              with open(WORKFLOW_TOKEN) as handle:
+                  saved = json.load(handle)
+              token = saved["token"]
+              renew_at = float(saved["renew_at"])
+          except (OSError, ValueError, KeyError, TypeError):
+              token = os.environ.get("FB_TOKEN", "")
+              return token, renewal_deadline(token)
+          return token, renew_at
+
+      def save_workflow_token(token, renew_at):
+          write_json(WORKFLOW_TOKEN, dict(token=token, renew_at=renew_at))
+
+      def write_json(path, body):
+          tmp = path + ".new"
+          with open(tmp, "w") as handle:
+              json.dump(body, handle)
+          os.replace(tmp, path)
+
+      TOKEN, RENEW_AT = load_workflow_token()
+      TOKEN = [TOKEN]
+      if TOKEN[0]:
+          # Persisted on the first pass, not only after a renewal: otherwise every
+          # restart before the first renewal re-anchors the deadline further out.
+          save_workflow_token(TOKEN[0], RENEW_AT)
+
+      def call(url, token, method="GET", body=None, headers=None):
+          payload = json.dumps(body).encode() if body is not None else None
+          request = urllib.request.Request(url, method=method, data=payload)
+          if token:
+              request.add_header("Authorization", "Bearer " + token)
+          request.add_header("Content-Type", "application/json")
+          for name, value in (headers or {}).items():
+              request.add_header(name, value)
+          try:
+              with OPENER.open(request, timeout=30) as response:
+                  raw = response.read()
+          except urllib.error.HTTPError as err:
+              # A rejected credential and an unreachable service both arrive as
+              # exceptions; without the status in the message the log cannot
+              # tell a permanent 401 from a blip worth waiting out.
+              detail = err.read().decode("utf-8", "replace").strip()[:200]
+              raise HttpError(err.code, "HTTP %d from %s: %s" % (err.code, url, detail)) from None
+          # An empty body is a valid HTTP response and a broken API response;
+          # every caller here dereferences the result, so it is normalised once.
+          return json.loads(raw) if raw else {}
+
+      def list_endpoints():
+          # Every page, or none of them. A truncated walk looks exactly like the
+          # gateway having disappeared, and acting on it would detach a working
+          # agent, so a failure here propagates and the caller keeps what it has.
+          rows = []
+          page_token = ""
+          # Bounded: a server echoing a constant pageToken would otherwise spin here
+          # forever inside a single tick, silently accumulating rows.
+          for _ in range(100):
+              url = API + "/v4/endpoints?pageSize=500"
+              if page_token:
+                  # Continuation tokens are often base64, whose '+' and '/' change
+                  # meaning if they go into a query string unescaped.
+                  url = url + "&pageToken=" + urllib.parse.quote(page_token, safe="")
+              page = call(url, TOKEN[0])
+              rows.extend(page.get("endpoints") or [])
+              page_token = page.get("pageToken") or ""
+              if not page_token:
+                  return rows
+          raise RuntimeError("endpoint listing did not terminate after 100 pages")
+
+      def endpoint_id_of(row):
+          # Only the external-API case may go without one. A Fuzzball endpoint
+          # with no id would otherwise skip minting and still be written into
+          # config.yaml with a key_cmd pointing at a file nobody wrote.
+          found = row.get("id")
+          if not found:
+              raise RuntimeError(
+                  "the endpoint at " + (row.get("url") or "?") + " has no id to mint against")
+          return found
+
+      def find_gateway():
+          # Returns (base url, endpoint id). The id is None only for an endpoint
+          # this cluster does not own, where nothing is minted.
+          if FIXED and not MINT:
+              return FIXED, None
+          rows = list_endpoints()
+          if FIXED:
+              for row in rows:
+                  if (row.get("url") or "").rstrip("/") == FIXED:
+                      return FIXED, endpoint_id_of(row)
+              raise LookupError(
+                  "Endpoint " + FIXED + " is not an endpoint this workflow can reach; "
+                  "set EndpointAuth=api-key to treat it as an external API")
+          found = []
+          for row in rows:
+              if (row.get("annotations") or {}).get(API_ANNOTATION) != WANT_API:
+                  continue
+              # An agent fronting itself is a loop, not a gateway.
+              if row.get("workflowId") == OWN_WORKFLOW:
+                  continue
+              if row.get("url"):
+                  found.append(row)
+          if not found:
+              raise LookupError(
+                  "no endpoint annotated " + API_ANNOTATION + "=" + WANT_API + " is visible "
+                  "to this workflow; start the litellm entry, or set Endpoint explicitly")
+          if len(found) > 1:
+              urls = ", ".join(sorted((row.get("url") or "") for row in found))
+              raise LookupError(
+                  "several gateways are visible (" + urls + "); set Endpoint to choose one")
+          return (found[0].get("url") or "").rstrip("/"), endpoint_id_of(found[0])
+
+      def mint(endpoint_id):
+          # Returns (token, expiry epoch). The server grants at most what is left
+          # of this workflow's own token, which can be far less than TTL asks for.
+          try:
+              minted = call(API + "/v4/endpoints/" + endpoint_id + "/token", TOKEN[0],
+                            method="POST", body=dict(expirationSeconds=TTL))
+          except HttpError as err:
+              if err.code in (400, 412):
+                  # The server refuses to mint for a public endpoint, which needs no
+                  # token at all. Say which value fixes it rather than reporting the
+                  # bare HTTP error every pass until the window closes.
+                  raise RuntimeError(
+                      "this endpoint is public and takes no token; start with "
+                      "EndpointAuth=api-key and an ApiKey/ApiKeySecret instead") from None
+              raise
+          token = minted.get("token")
+          if not token:
+              raise RuntimeError("no token in the mint response")
+          stamp = minted.get("expiresAt")
+          if isinstance(stamp, str):
+              try:
+                  parsed = datetime.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+                  return token, parsed.timestamp()
+              except ValueError:
+                  pass
+          # TTL is what was asked for, and the server grants at most what is left of
+          # this workflow's own token -- so it is a ceiling, not a default. Guessing
+          # it here would stamp an expiry Hermes trusts long after the token is dead.
+          print("MINT-EXPIRY-UNREADABLE assuming an hour", repr(stamp), flush=True)
+          return token, time.time() + min(TTL, 3600)
+
+      def renew_workflow_token(state):
+          fresh = call(API + "/v4/workflows:refreshToken", TOKEN[0],
+                       method="POST", body=dict())
+          if not fresh.get("token"):
+              raise RuntimeError("no token in the refreshToken response")
+          TOKEN[0] = fresh["token"]
+          state["renew_at"] = renewal_deadline(TOKEN[0])
+          try:
+              save_workflow_token(TOKEN[0], state["renew_at"])
+          except OSError as err:
+              # The renewal succeeded; only the record of it did not. Reporting this
+              # as a renewal failure would send someone chasing a healthy agent.
+              print("TOKEN-SAVE-FAILED renewal held in memory only", repr(err), flush=True)
+
+      def write_credential(token, expires_at):
+          # key_cmd reads this file and honours the absolute expiry, so Hermes
+          # re-reads it exactly when the credential it holds goes stale.
+          stamp = datetime.datetime.fromtimestamp(
+              expires_at, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+          write_json(CREDENTIAL, dict(access_token=token, expiry=stamp))
+
+      def gateway_models(base, token):
+          # Never fall back from one credential to the other. Against a Fuzzball
+          # endpoint the proxy consumes the bearer, so sending the gateway's key
+          # there hands it to the proxy instead of to LiteLLM and fails opaquely.
+          headers = dict()
+          if MINT:
+              if not token:
+                  raise RuntimeError("no minted credential to list models with")
+              if LLM_KEY:
+                  headers["x-litellm-api-key"] = LLM_KEY
+              bearer = token
+          else:
+              bearer = LLM_KEY
+          listing = call(base + "/v1/models", bearer, headers=headers)
+          return [row.get("id") for row in (listing.get("data") or []) if row.get("id")]
+
+      def provider_entry(base):
+          entry = dict(api=base + "/v1", transport="chat_completions",
+                       context_length=CONTEXT, discover_models=True)
+          if MINT:
+              entry["key_cmd"] = "cat " + CREDENTIAL
+              if LLM_KEY:
+                  # The endpoint proxy eats the Authorization header, so the
+                  # gateway's own key has to travel beside it, not in it.
+                  entry["extra_headers"] = {"x-litellm-api-key": LLM_KEY}
+          else:
+              entry["api_key"] = LLM_KEY
+          if CA:
+              entry["ssl_ca_cert"] = CA
+          return entry
+
+      def load_config():
+          # Returns None when the file exists but cannot be parsed, which callers
+          # must treat as "change nothing": rebuilding from an empty dict would replace
+          # everything in the file with the two keys this pass manages. Hermes writes
+          # this file too and does so atomically, so a torn read should not happen --
+          # the retry costs nothing and covers the case where it does.
+          for attempt in (0, 1):
+              try:
+                  with open(CONFIG) as handle:
+                      config = yaml.safe_load(handle)
+                  return config if isinstance(config, dict) else {}
+              except FileNotFoundError:
+                  return {}
+              except yaml.YAMLError as err:
+                  if attempt == 0:
+                      time.sleep(2)
+                      continue
+                  print("CONFIG-UNREADABLE leaving it untouched", repr(err), flush=True)
+          return None
+
+      def pick_model(served, current):
+          # Prefer whatever is already selected, so a user's choice survives the
+          # next pass; otherwise sort, because /v1/models order shifts as the
+          # gateway re-registers models and the first entry is not stable.
+          if current and current in served:
+              return current
+          return sorted(served)[0]
+
+      def write_config(base, model):
+          config = load_config()
+          if config is None:
+              return False
+          # 'providers:' or 'model:' written with no value parses to None, and a
+          # hand-written 'model: gpt-4' to a string; setdefault would hand either
+          # straight back and the merge would fail on every restart.
+          providers = config.get("providers")
+          if not isinstance(providers, dict):
+              if providers is not None:
+                  print("CONFIG-NORMALISED replacing a non-mapping providers:", flush=True)
+              providers = {}
+          selected = config.get("model")
+          if not isinstance(selected, dict):
+              if selected is not None:
+                  print("CONFIG-NORMALISED replacing a non-mapping model:", flush=True)
+              selected = {}
+
+          first_attach = PROVIDER not in providers
+          entry = provider_entry(base)
+          if model:
+              entry["default_model"] = model
+          before = (providers.get(PROVIDER), dict(selected))
+
+          providers[PROVIDER] = entry
+          # Only while nothing has been chosen, or on the very first attach.
+          # Past that the active model belongs to whoever picked it, and
+          # rewriting it every pass would undo a dashboard selection within
+          # the minute.
+          if model and (first_attach or selected.get("provider") in (None, "", "auto")):
+              selected["provider"] = "custom:" + PROVIDER
+              selected["default"] = model
+          after = (providers.get(PROVIDER), dict(selected))
+
+          config["providers"] = providers
+          config["model"] = selected
+          if before == after:
+              return False
+
+          # safe_dump does not preserve comments, so anything hand-written in
+          # config.yaml survives in value but not in form.
+          # Keep the previous file. A read that parses but is short -- a truncation
+          # that happens to land on a line boundary -- would take its missing keys out
+          # of the written result, and nothing downstream could tell. This does not
+          # prevent that; it means it is recoverable rather than silent.
+          try:
+              if os.path.exists(CONFIG):
+                  with open(CONFIG) as src, open(CONFIG + ".prev", "w") as dst:
+                      dst.write(src.read())
+          except OSError as err:
+              print("CONFIG-BACKUP-FAILED", repr(err), flush=True)
+
+          tmp = CONFIG + ".new"
+          with open(tmp, "w") as handle:
+              yaml.safe_dump(config, handle, default_flow_style=False, sort_keys=False)
+          os.replace(tmp, CONFIG)
+          # Hermes writes this file as well and neither side takes a cross-process
+          # lock, so a simultaneous write can drop ours. Nothing here can prevent
+          # that; noticing it beats leaving someone to debug a config that silently
+          # reverts once a minute.
+          written = load_config()
+          if written is not None and (written.get("providers") or {}).get(PROVIDER) != entry:
+              print("CONFIG-RACE the provider entry did not survive the write", flush=True)
+          return True
+
+      def load_state():
+          # Re-derived from disk on every process start rather than carried in
+          # memory. This pass restarts itself on any crash, and a state dict only
+          # one process generation ever sees is exactly how a restart turns into
+          # a fresh mint on every interval, or silently loses a renewed token.
+          state = dict(base=None, model=None, token=None, renew_at=RENEW_AT,
+                       remint_at=0.0)
+          entry = ((load_config() or {}).get("providers") or {}).get(PROVIDER)
+          if isinstance(entry, dict) and isinstance(entry.get("api"), str):
+              if entry["api"].endswith("/v1"):
+                  state["base"] = entry["api"][:-len("/v1")]
+              if isinstance(entry.get("default_model"), str):
+                  state["model"] = entry["default_model"]
+          try:
+              with open(CREDENTIAL) as handle:
+                  saved = json.load(handle)
+              expiry = datetime.datetime.fromisoformat(
+                  saved["expiry"].replace("Z", "+00:00")).timestamp()
+              state["token"] = saved["access_token"]
+              state["remint_at"] = time.time() + (expiry - time.time()) / 2
+          except (OSError, ValueError, KeyError, TypeError, AttributeError):
+              # No usable credential on disk, so whatever the config says the
+              # base is, it has to be minted for again before it can be used.
+              # Only when minting: an api-key provider has no credential file to
+              # find, and forgetting the base there just logs a spurious move.
+              if MINT:
+                  state["base"] = None
+          return state
+
+      def attach(state):
+          if MINT and time.time() >= state["renew_at"]:
+              try:
+                  renew_workflow_token(state)
+                  print("TOKEN-RENEWED", flush=True)
+              except Exception as err:
+                  # The old token stays valid until its original expiry, so a
+                  # failed renewal must not take the rest of the pass with it.
+                  # Hourly, not every interval: this is days ahead of the need.
+                  state["renew_at"] = time.time() + 3600
+                  print("TOKEN-RENEWAL-FAILED", repr(err), flush=True)
+
+          base, endpoint_id = find_gateway()
+          moved = base != state["base"]
+          if MINT and endpoint_id and (moved or time.time() >= state["remint_at"]):
+              token, expires_at = mint(endpoint_id)
+              write_credential(token, expires_at)
+              state["token"] = token
+              # Halfway to the granted expiry, and never sooner than a minute:
+              # a grant that is already short, or clock skew, would otherwise
+              # put the next mint in the past and mint on every pass.
+              state["remint_at"] = max(time.time() + (expires_at - time.time()) / 2,
+                                       time.time() + 60)
+              # Recorded on the mint, not at the end of the pass: a failure
+              # further down must not read as a moved gateway next time and
+              # mint all over again.
+              state["base"] = base
+              print("MINTED", base, flush=True)
+
+          # Probed even when Model is set. This is the only call that proves the
+          # credential works, and the bootstrap gate exists precisely to stop an agent
+          # that answers the dashboard and then fails on every prompt.
+          #
+          # Only "this provider has no model list" is tolerated: 404 and 405 say so
+          # outright, and 400 is how Anthropic's OpenAI-compatible layer says it -- it
+          # wants a header the OpenAI shape does not send. Everything else, including
+          # a rejected credential and a gateway that is down or still starting,
+          # propagates so the startup retry window is used rather than skipped.
+          served = []
+          try:
+              served = gateway_models(base, state["token"])
+          except HttpError as err:
+              if err.code not in (400, 404, 405):
+                  raise
+              print("MODEL-LIST-UNAVAILABLE", repr(err), flush=True)
+
+          model = WANT_MODEL
+          if not model:
+              if not served:
+                  raise LookupError(
+                      "the gateway at " + base + " serves no models yet; start a model "
+                      "workflow it can discover, or set Model explicitly")
+              model = pick_model(served, state["model"])
+
+          if write_config(base, model) or moved:
+              print("ATTACHED", base, model, flush=True)
+          state["base"] = base
+          state["model"] = model
+          return state
+
+      def main():
+          if MINT and not (API and TOKEN[0]):
+              sys.exit("FATAL: no workflow API identity was injected, so no gateway can be "
+                       "discovered and no token minted. Set Endpoint and EndpointAuth=api-key.")
+          try:
+              state = load_state()
+          except Exception as err:
+              # Reading state is best-effort; an unreadable volume must not turn into
+              # a bare traceback under the FATAL banner.
+              print("STATE-LOAD-FAILED starting clean", repr(err), flush=True)
+              state = dict(base=None, model=None, token=None, renew_at=RENEW_AT,
+                           remint_at=0.0)
+          once = "--once" in sys.argv
+          deadline = time.time() + BOOTSTRAP
+          while True:
+              try:
+                  attach(state)
+                  if once:
+                      return
+              except Exception as err:
+                  # A gateway whose model pool is still starting is the ordinary
+                  # case, not a misconfiguration, so the first pass keeps trying
+                  # for a while before giving up on the service entirely.
+                  if once and time.time() >= deadline:
+                      sys.exit("FATAL: could not attach within %ds: %r" % (BOOTSTRAP, err))
+                  print("ATTACH-FAILED", repr(err), flush=True)
+              time.sleep(min(INTERVAL, 10) if once else INTERVAL)
+
+      main()
+      PYEOF
+
+      # Fail the service rather than start an agent with no model behind it: an
+      # unattached Hermes answers the dashboard and then errors on every prompt.
+      if ! "${HERMES_PY}" {{ $runtime }}/attach.py --once; then
+        echo "FATAL: could not attach to a gateway; see the error above." >&2
+        exit 1
+      fi
+
+      # Exported before the dashboard is forked, because a subshell keeps the
+      # environment it started with. It is what builds the dashboard's own
+      # absolute URLs -- asset paths, redirect targets, cookie scope -- so on a
+      # cluster serving path-shaped endpoints, or under an OAuth provider,
+      # getting it there late is the same as not setting it.
+      if [ -n "${FB_ENDPOINT_URL_DASHBOARD}" ]; then
+        export HERMES_DASHBOARD_PUBLIC_URL="${FB_ENDPOINT_URL_DASHBOARD}"
+      fi
+
+      # Neither loop is supervised by s6, which only manages services declared
+      # in the image, so both restart themselves. The delay grows so that a
+      # permanently broken child leaves a readable log rather than thousands of
+      # identical lines a second apart -- but it resets once a child has stayed
+      # up, so a single exit after hours of health restarts promptly instead of
+      # inheriting a cap it did nothing to earn. `|| true` keeps a failing child
+      # out of errexit's reach; without it the supervisor dies with its child.
+      supervise() {
+        label="$1"; shift
+        delay=5
+        while true; do
+          started=$SECONDS
+          "$@" || true
+          ran=$((SECONDS - started))
+          if [ "${ran}" -ge 60 ]; then
+            delay=5
+          fi
+          echo "${label}-EXITED after ${ran}s; restarting in ${delay}s" >&2
+          sleep "${delay}"
+          if [ "${delay}" -lt 160 ]; then
+            delay=$((delay * 2))
+          fi
+        done
+      }
+
+      supervise ATTACH "${HERMES_PY}" {{ $runtime }}/attach.py &
+
+      # Started here rather than with HERMES_DASHBOARD=1, which is read only by
+      # the image's s6 service definition. That definition runs only when the
+      # entrypoint is PID 1, which nothing guarantees here; off that path
+      # nothing reads those variables at all and the dashboard would fall back
+      # to the CLI's own default of 127.0.0.1:9119 -- a bind and a port nothing
+      # publishes -- so the readiness probe would fail for ten minutes and take
+      # the service down with it.
+      supervise DASHBOARD "${HERMES_BIN}" dashboard \
+        --host 0.0.0.0 --port {{ $dashboard_port }} --no-open &
+
+      # The CLI directly, not the image's entrypoint. Both that dispatcher and
+      # the main-wrapper it calls refuse to start under any uid that is neither
+      # root nor the image's own baked user, and Fuzzball provides neither. What those
+      # wrappers do beyond the refusal is set up s6 supervision and repair file
+      # ownership after a privilege drop, and neither applies when one uid owns
+      # the whole run and this script has already seeded the state tree.
+      #
+      # Without the workflow token in its environment: anyone who reaches the
+      # agent can run shell commands as this process, and that token mints
+      # access tokens for every endpoint its owner can see. Both loops above
+      # already forked with their own copy, and the attach pass persisted it,
+      # so dropping it here costs nothing. It is a smaller door, not a closed
+      # one -- the persisted copy is readable by the same uid.
+      unset FB_TOKEN FB_OPENAPI_URL
+      exec "${HERMES_BIN}" gateway run
+    network:
+      ports:
+        - name: dashboard
+          port: {{ $dashboard_port }}
+          protocol: tcp
+        {{- if eq $api_access "node" }}
+        # Only when the API is actually bound beyond loopback: a port the
+        # definition does not mention is one nobody thinks to protect, and one
+        # it mentions but never binds is a lie.
+        - name: api
+          port: {{ $api_port }}
+          protocol: tcp
+        {{- end }}
+      endpoints:
+        # No endpoint for the API server, at any setting. It authenticates only
+        # with an Authorization bearer, and the endpoint proxy consumes that
+        # header before the container sees it, so an endpoint in front of it
+        # could never be authenticated at any scope this entry offers.
+        - name: dashboard
+          port-name: dashboard
+          protocol: http
+          type: subdomain
+          scope: {{ $scope }}
+    readiness-probe:
+      # A TCP check rather than the dashboard's own: every HTTP route behind the
+      # auth gate answers 401 or redirects to the sign-in page, and the API
+      # server's /health wants its key.
+      tcp-socket:
+        port: {{ $dashboard_port }}
+      initial-delay-seconds: 20
+      period-seconds: 10
+      timeout-seconds: 5
+      failure-threshold: 60
+      success-threshold: 1
+    resource:
+      cpu:
+        cores: {{ $cores }}
+      memory:
+        size: {{ $memory }}
+    persist: true
