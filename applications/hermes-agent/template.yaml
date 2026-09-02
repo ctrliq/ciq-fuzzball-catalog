@@ -816,14 +816,25 @@ services:
       # Neither loop is supervised by s6, which only manages services declared
       # in the image, so both restart themselves. The delay grows so that a
       # permanently broken child leaves a readable log rather than thousands of
-      # identical lines a second apart.
+      # identical lines a second apart -- but it resets once a child has stayed
+      # up, so a single exit after hours of health restarts promptly instead of
+      # inheriting a cap it did nothing to earn. `|| true` keeps a failing child
+      # out of errexit's reach; without it the supervisor dies with its child.
       supervise() {
         label="$1"; shift
         delay=5
         while true; do
-          "$@" || echo "${label}-EXITED restarting in ${delay}s" >&2
+          started=$SECONDS
+          "$@" || true
+          ran=$((SECONDS - started))
+          if [ "${ran}" -ge 60 ]; then
+            delay=5
+          fi
+          echo "${label}-EXITED after ${ran}s; restarting in ${delay}s" >&2
           sleep "${delay}"
-          [ "${delay}" -lt 160 ] && delay=$((delay * 2))
+          if [ "${delay}" -lt 160 ]; then
+            delay=$((delay * 2))
+          fi
         done
       }
 
