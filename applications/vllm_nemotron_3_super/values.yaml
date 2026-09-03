@@ -92,38 +92,48 @@ values:
     display_category: Model Configuration
   - name: GpuMemoryUtilization
     display_name: >-
-      The fraction of GPU memory to be used for the model. vLLM requires this
-      fraction of total VRAM to be free at start, so on small or shared vGPU
-      slices, where driver overhead is a large fraction of VRAM, 0.9 can be
-      unsatisfiable — lower it (e.g. 0.8) if vLLM aborts with "Free memory on
-      device ... is less than desired GPU memory utilization".
+      Fraction of GPU memory vLLM may use. Lower it (e.g. 0.8) if vLLM aborts at
+      start with "Free memory on device ... is less than desired GPU memory
+      utilization", which happens on small or shared vGPU slices.
     string_value: "0.9"
+    display_category: Model Configuration
+  - name: Nodes
+    display_name: >-
+      Nodes per replica. 1 serves each replica on a single node. A higher value
+      spreads each replica of this mixture-of-experts model over that many
+      nodes, which start and stop together and serve one endpoint. Needs
+      ExpertParallelism auto or true and at least one GPU per node.
+    uint_value: 1
+    display_category: Resources
+  - name: ExtraEnv
+    display_name: >-
+      Extra environment variables for vLLM, as space-separated NAME=VALUE pairs,
+      set on every node of a replica. Mostly for NCCL settings your network
+      needs, e.g. "NCCL_SOCKET_IFNAME=eth0 NCCL_DEBUG=WARN".
+    string_value: ""
     display_category: Model Configuration
   - name: ExpertParallelism
     display_name: >-
-      Parallel layout for the replica's GPUs. This preset pins false, the
-      layout its configuration was validated with (tensor parallelism). Set
-      auto or true to opt a mixture-of-experts model with 2 or more GPUs into
-      wide expert parallelism instead (see the vllm entry description) -- a
-      layout this preset has not validated.
+      How the model is split across a replica's GPUs (Nodes x GpusPerNode).
+      This preset uses false (tensor parallelism), the layout its settings were
+      tested with. Set auto or true for expert parallelism, which Nodes above 1
+      requires.
     string_value: "false"
     options_input:
       options: ["auto", "true", "false"]
     display_category: Model Configuration
   - name: ExtraArgs
     display_name: >-
-      Additional command-line arguments appended to vllm serve. The default is the
-      tuning the model's vLLM recipe validated (recipes.vllm.ai). Overriding this
-      value replaces the whole list; include these defaults plus your additions.
+      Extra arguments for vllm serve. The default is the model recipe's tuning
+      (recipes.vllm.ai). Overriding replaces the whole list, so keep these and
+      add yours.
     string_value: "--trust-remote-code --kv-cache-dtype fp8 --enable-auto-tool-choice --tool-call-parser qwen3_xml --reasoning-parser nemotron_v3"
     display_category: Model Configuration
 
   - name: GpusPerNode
     display_name: >-
-      Number of GPU devices on each of the replica's nodes (the tensor-parallel
-      size, or the per-node share of the data-parallel size when expert
-      parallelism is enabled). 8 is
-      the tensor-parallel size the model's recipe validated.
+      GPUs on each node of a replica; a replica uses Nodes x this in total.
+      8 is what the model's recipe uses.
     uint_value: 8
     display_category: Resources
   - name: GpuModel
@@ -131,11 +141,11 @@ values:
     string_value: ""
     display_category: Resources
   - name: CoresPerNode
-    display_name: CPU cores on each of the replica's nodes.
+    display_name: CPU cores on each node of a replica.
     uint_value: 64
     display_category: Resources
   - name: MemoryPerNode
-    display_name: Memory on each of the replica's nodes.
+    display_name: Memory on each node of a replica.
     string_value: 192GiB
     display_category: Resources
 
@@ -146,8 +156,7 @@ values:
   - name: VllmRocmImage
     display_name: >-
       vLLM container image used on the amd platform. Pick a build matching the GPU family
-      (this default is an RDNA build; MI-series CDNA GPUs need a CDNA build). Not
-      validated with this entry's preset flags.
+      (this default is an RDNA build; MI-series CDNA GPUs need a CDNA build).
     string_value: docker://rocm/vllm:rocm7.14.0_rdna_ubuntu24.04_py3.14_pytorch_2.11.0_vllm_0.23.0
     display_category: Versions
   - name: LitellmImage

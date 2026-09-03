@@ -17,9 +17,9 @@ tables as a blocker to close, not as a comparison already made.
 One workflow per configuration, identical except for `ExpertParallelism`:
 
 ```sh
-fuzzball workflow catalog start vllm --name bench-ep --values \
+fuzzball workflow catalog start vLLM --name bench-ep --values \
   Model=hf://openai/gpt-oss-20b,GpusPerNode=2,ExpertParallelism=true,Proxy=false,MinReplicas=1,MaxReplicas=1
-fuzzball workflow catalog start vllm --name bench-tp --values \
+fuzzball workflow catalog start vLLM --name bench-tp --values \
   Model=hf://openai/gpt-oss-20b,GpusPerNode=2,ExpertParallelism=false,Proxy=false,MinReplicas=1,MaxReplicas=1
 ```
 

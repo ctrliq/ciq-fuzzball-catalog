@@ -90,42 +90,33 @@ values:
     display_category: Model Configuration
   - name: GpuMemoryUtilization
     display_name: >-
-      The fraction of GPU memory to be used for the model. vLLM requires this
-      fraction of total VRAM to be free at start, so on small or shared vGPU
-      slices, where driver overhead is a large fraction of VRAM, 0.9 can be
-      unsatisfiable — lower it (e.g. 0.8) if vLLM aborts with "Free memory on
-      device ... is less than desired GPU memory utilization".
+      Fraction of GPU memory vLLM may use. Lower it (e.g. 0.8) if vLLM aborts at
+      start with "Free memory on device ... is less than desired GPU memory
+      utilization", which happens on small or shared vGPU slices.
     string_value: "0.9"
     display_category: Model Configuration
   - name: Nodes
     display_name: >-
-      Nodes per replica. 1 (default) serves each replica on one node. Above 1, each
-      replica is a gang-scheduled group of that many nodes serving a single
-      OpenAI-compatible endpoint on rank 0, with attention data-parallel and experts
-      expert-parallel across the group's GPUs. Use it for a mixture-of-experts model
-      too large for one node; a group starts all nodes or none, and the pool scales in
-      whole groups. Requires a mixture-of-experts model and GPUs on every node.
+      Nodes per replica. 1 serves each replica on a single node. A higher value
+      spreads each replica of a mixture-of-experts model over that many nodes,
+      which start and stop together and serve one endpoint. Needs
+      ExpertParallelism auto or true and at least one GPU per node.
     uint_value: 1
     display_category: Resources
   - name: ExtraEnv
     display_name: >-
-      Extra environment variables for the vLLM process, as space-separated
-      NAME=VALUE pairs, applied to every rank of a replica. Intended for settings
-      that have no command-line equivalent -- above all collective-library tuning
-      (NCCL_* on nvidia, which RCCL also reads on amd) that a particular cluster's
-      interconnect needs. Example: "NCCL_SOCKET_IFNAME=eth0 NCCL_DEBUG=WARN".
+      Extra environment variables for vLLM, as space-separated NAME=VALUE pairs,
+      set on every node of a replica. Mostly for NCCL settings your network
+      needs, e.g. "NCCL_SOCKET_IFNAME=eth0 NCCL_DEBUG=WARN".
     string_value: ""
     display_category: Model Configuration
   - name: ExpertParallelism
     display_name: >-
-      Expert parallelism across the replica's GPUs: auto (enabled when the downloaded
-      model's config.json indicates a mixture-of-experts model and the replica's
-      data-parallel world is at least 2), true (require both; the service fails at
-      start otherwise), or false (tensor parallelism only). When enabled, the replica
-      serves attention data-parallel and experts expert-parallel across every GPU of
-      every node in the replica. That world is Nodes x GpusPerNode, so two
-      single-GPU nodes qualify just as one two-GPU node does; below 2 there is nothing
-      to shard experts across.
+      How a mixture-of-experts model is split across a replica's GPUs (Nodes x
+      GpusPerNode). auto: expert parallelism when the model is
+      mixture-of-experts and the replica has at least 2 GPUs, tensor
+      parallelism otherwise. true: require expert parallelism; other models
+      fail at start. false: always tensor parallelism.
     string_value: auto
     options_input:
       options: ["auto", "true", "false"]
@@ -139,11 +130,8 @@ values:
 
   - name: GpusPerNode
     display_name: >-
-      Number of GPU devices on each of the replica's nodes (the tensor-parallel
-      size, or the per-node share of the data-parallel size when expert parallelism
-      is enabled). A replica's total is this times Nodes. 0 requests no GPU; note
-      the default images are GPU builds, so 0 also requires overriding VllmImage
-      with a CPU-build image (testing only).
+      GPUs on each node of a replica; a replica uses Nodes x this in total. 0
+      requests no GPU and needs a CPU build of VllmImage (testing only).
     uint_value: 1
     display_category: Resources
   - name: GpuModel
@@ -151,15 +139,11 @@ values:
     string_value: ""
     display_category: Resources
   - name: CoresPerNode
-    display_name: >-
-      CPU cores on each of the replica's nodes. A replica of Nodes nodes consumes
-      this on every one of them.
+    display_name: CPU cores on each node of a replica.
     uint_value: 8
     display_category: Resources
   - name: MemoryPerNode
-    display_name: >-
-      Memory on each of the replica's nodes. A replica of Nodes nodes consumes this
-      on every one of them.
+    display_name: Memory on each node of a replica.
     string_value: 32GiB
     display_category: Resources
 

@@ -79,59 +79,40 @@
 {{- end }}
 {{- $gpus_per_node := int .GpusPerNode }}
 {{- $tensor_parallel := max 1 $gpus_per_node }}
-{{- /* Values files written before this knob existed -- the per-model preset
-       entries among them -- carry no Nodes at all, and must keep rendering as
-       single-node. Those arrive as an invalid kind, which is what separates
-       them from an explicit 0: 'default' cannot, because it treats a zero
-       uint as empty and would silently read Nodes=0 as Nodes=1. */}}
-{{- $nodes := 1 }}
-{{- if not (kindIs "invalid" .Nodes) }}
-  {{- $nodes = int .Nodes }}
-{{- end }}
+{{- $nodes := int .Nodes }}
 {{- if lt $nodes 1 }}
-  {{- fail "Nodes must be at least 1; omit it to serve each replica on a single node" }}
+  {{- fail "Nodes must be at least 1" }}
 {{- end }}
-{{- /* A replica's data-parallel world spans every GPU of every node in its
-       group, so that product -- not the per-node GPU count -- is what decides
-       whether expert parallelism has anything to shard across. */}}
+{{- /* Expert parallelism spans every GPU of every node in the replica. */}}
 {{- $dp_size := mul $nodes $gpus_per_node }}
-{{- $ep := lower (trim (default "auto" .ExpertParallelism)) }}
+{{- $ep := lower (trim .ExpertParallelism) }}
 {{- if not (has $ep (list "auto" "true" "false")) }}
   {{- fail "ExpertParallelism must be one of: auto, true, false" }}
 {{- end }}
-{{- /* vLLM turns expert parallelism off when the data-parallel size is 1,
-       because a single GPU has nothing to shard the experts across. Refuse the
-       combination rather than reporting a layout the server will not use. */}}
+{{- /* Expert parallelism needs at least two GPUs to split the experts across. */}}
 {{- if and (eq $ep "true") (lt $dp_size 2) }}
   {{- fail "ExpertParallelism=true requires Nodes x GpusPerNode >= 2; expert parallelism has no effect on a single GPU" }}
 {{- end }}
-{{- /* A multi-node group exists to serve one model across nodes with its
-       experts sharded over the group. Data-parallel replication of a dense
-       model is what the replica pool itself already does, so a group with
-       expert parallelism switched off would buy nothing for twice the
-       hardware. */}}
+{{- /* A multi-node replica only pays off with the experts split across it; a
+       dense model gets the same effect from more single-node replicas. */}}
 {{- if and (gt $nodes 1) (eq $ep "false") }}
   {{- fail "Nodes > 1 requires expert parallelism; set ExpertParallelism=auto or true, or serve a dense model with Nodes=1 and more replicas" }}
 {{- end }}
 {{- if and (gt $nodes 1) (lt $gpus_per_node 1) }}
   {{- fail "Nodes > 1 requires GpusPerNode >= 1; every node of a group serves part of the model" }}
 {{- end }}
-{{- /* Fixed port for data-parallel RPC between a group's nodes. Multinode
-       services run on the host network, so this must be free on every node of
-       the group and reachable between them; it is not a served port and needs
-       no endpoint. */}}
+{{- /* Port the replica's nodes use to coordinate with rank 0. Multinode
+       services use the host network, so it must be free and reachable on every
+       node. */}}
 {{- $dp_rpc_port := 13345 }}
 {{- $gpu_model := trim .GpuModel }}
 {{- $extra_args := trim .ExtraArgs }}
 {{- if and $extra_args (not (regexMatch "^[A-Za-z0-9 ._=/-]+$" $extra_args)) }}
   {{- fail "ExtraArgs may contain only letters, digits, spaces, and . _ = / -" }}
 {{- end }}
-{{- /* Environment variables for the server process, on every rank of a group.
-       Kept separate from ExtraArgs because the settings that matter here --
-       collective-library tuning above all -- are read from the environment and
-       have no command-line equivalent. Each entry is validated as NAME=VALUE so
-       nothing can break out into the rendered YAML. */}}
-{{- $extra_env := trim (default "" .ExtraEnv) }}
+{{- /* Each ExtraEnv entry is checked as NAME=VALUE so it cannot break the
+       rendered YAML. */}}
+{{- $extra_env := trim .ExtraEnv }}
 {{- $env_pairs := list }}
 {{- range (splitList " " $extra_env) }}
   {{- $pair := trim . }}
@@ -237,9 +218,7 @@ services:
       fi
 {{- if gt $nodes 1 }}
 
-      # A group serves one model across {{ $nodes }} nodes, which only pays off
-      # with the experts sharded over it, so a dense model here is a
-      # misconfiguration rather than something to serve at half the value.
+      # A multi-node replica needs a mixture-of-experts model.
       if [ "$use_ep" -ne 1 ]; then
         echo "ERROR: Nodes={{ $nodes }} needs a mixture-of-experts model, but '{{ $model_name }}'" \
              "(architecture: $arch) is dense. Serve it with Nodes=1 and more replicas instead." >&2
@@ -247,8 +226,8 @@ services:
       fi
 {{- end }}
 
-      # llm-d wide-EP layout: attention data-parallel across the group's GPUs,
-      # experts expert-parallel (EP world size = DP x TP, so TP stays 1).
+      # Expert parallelism: attention runs data-parallel on every GPU and the
+      # experts are split across them, so tensor parallelism stays at 1.
       if [ "$use_ep" -eq 1 ]; then
         parallel_args="--data-parallel-size {{ $dp_size }} --enable-expert-parallel"
         echo "vllm: $arch ($is_moe), ExpertParallelism={{ $ep }} -> expert parallelism, data-parallel size {{ $dp_size }}{{ if gt $nodes 1 }} across {{ $nodes }} nodes{{ end }}"
@@ -258,25 +237,19 @@ services:
       fi
 {{- if gt $nodes 1 }}
 
-      # Flags shared by every rank beyond the parallel layout, passed as one
-      # word-split argument so a group's ranks stay byte-identical apart from
-      # their own rank offset.
+      # Extra flags, passed to every node as one argument.
       parallel_extra="{{ $extra_args }}"
 
-      # The generic multinode implementation runs this script on rank 0 only;
-      # peers execute their portion via the rsh shim that the shipped
-      # generic-helper wraps. So both halves of the group are launched from
-      # here: the peers headless, then rank 0 with the API server.
+      # Fuzzball runs this script on rank 0 only. The helper launches the other
+      # nodes through the multinode rsh wrapper, then rank 0 itself.
       . /multinode/generic-helper
 
-      # Every rank dials rank 0 for data-parallel RPC, so the coordinator
-      # address is this node's IP -- resolved here, on rank 0.
+      # Every node connects to rank 0, which is this node.
       head_ip="$MULTINODE_NODE_IP"
 
-      # The peer script is single-quoted so $RANK expands on each worker to its
-      # own rank; rank-0-side values travel as positional arguments, which the
-      # helper quotes for the trip. Each node owns {{ $gpus_per_node }}
-      # consecutive data-parallel ranks, so its offset is rank x that count.
+      # Single quotes leave $RANK for each node to expand itself; the other
+      # values arrive as positional arguments. Each node owns
+      # {{ $gpus_per_node }} consecutive data-parallel ranks.
       exec_rankN 'exec vllm serve "$1" \
         --served-model-name "$2" \
         --headless \
@@ -294,8 +267,7 @@ services:
         "$head_ip" "{{ $dp_rpc_port }}" "{{ .MaxContextSize }}" "{{ .GpuMemoryUtilization }}" \
         "$parallel_extra"
 
-      # Rank 0 owns the endpoint. api-server-count follows vLLM's guidance of
-      # one API server per local data-parallel rank.
+      # Rank 0 serves the API, with one API server per local GPU.
       exec_rank0 'exec vllm serve "$1" \
         --served-model-name "$2" \
         --data-parallel-size "$3" \
@@ -326,19 +298,15 @@ services:
         --port {{ $vllm_port }}{{ if $extra_args }} {{ $extra_args }}{{ end }}
 {{- end }}
 {{- if gt $nodes 1 }}
-    # Each replica is one gang-scheduled group: Fuzzball starts all {{ $nodes }}
-    # nodes together or none, wires their DNS and gossip, and serves the
-    # endpoint from rank 0. 'generic' leaves process launch to the workload,
-    # which the script does through the shipped helper -- an MPI launcher would
-    # otherwise try to start the ranks itself.
+    # Each replica spans {{ $nodes }} nodes that start and stop together. The
+    # script launches the processes itself, so no MPI launcher is involved.
     multinode:
       nodes: {{ $nodes }}
       implementation: generic
 {{- end }}
     resource:
 {{- if gt $nodes 1 }}
-      # Per node, not per group: each of the group's {{ $nodes }} nodes gets
-      # this shape, so the group's total is {{ $nodes }} times it.
+      # Per node; the replica's total is {{ $nodes }} times this.
 {{- end }}
       cpu:
         cores: {{ .CoresPerNode }}
