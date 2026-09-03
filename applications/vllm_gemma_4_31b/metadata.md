@@ -42,4 +42,4 @@ the `vllm` entry description for details and scaling caveats.
 ## Notes
 
 - The recipe also passes a tool chat template by container-relative path (--chat-template examples/tool_chat_template_gemma4.jinja); it is not preset because the served working directory differs. To use it, override ExtraArgs with the preset defaults plus this flag.
-- ReplicaMemory is 64GiB where other 1-GPU presets use 32GiB: this checkpoint ships its 62GB as only two safetensors shards (the larger 50GB), and loading it was observed to OOM at 32GiB. Host memory must fit the largest single shard; multi-shard checkpoints stream within the 32GiB tier.
+- MemoryPerNode is 64GiB where other 1-GPU presets use 32GiB: this checkpoint ships its 62GB as only two safetensors shards (the larger 50GB), and loading it was observed to OOM at 32GiB. Host memory must fit the largest single shard; multi-shard checkpoints stream within the 32GiB tier.

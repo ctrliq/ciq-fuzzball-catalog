@@ -77,8 +77,24 @@
 {{- if lt $scale_up_cooldown 15 }}
   {{- fail "ScaleUpCooldown must be at least 15 seconds" }}
 {{- end }}
-{{- $gpus_per_replica := int .GpusPerReplica }}
-{{- $tensor_parallel := max 1 $gpus_per_replica }}
+{{- $gpus_per_node := int .GpusPerNode }}
+{{- $tensor_parallel := max 1 $gpus_per_node }}
+{{- /* Values files written before this knob existed -- the per-model preset
+       entries among them -- carry no Nodes at all, and must keep rendering as
+       single-node. Those arrive as an invalid kind, which is what separates
+       them from an explicit 0: 'default' cannot, because it treats a zero
+       uint as empty and would silently read Nodes=0 as Nodes=1. */}}
+{{- $nodes := 1 }}
+{{- if not (kindIs "invalid" .Nodes) }}
+  {{- $nodes = int .Nodes }}
+{{- end }}
+{{- if lt $nodes 1 }}
+  {{- fail "Nodes must be at least 1; omit it to serve each replica on a single node" }}
+{{- end }}
+{{- /* A replica's data-parallel world spans every GPU of every node in its
+       group, so that product -- not the per-node GPU count -- is what decides
+       whether expert parallelism has anything to shard across. */}}
+{{- $dp_size := mul $nodes $gpus_per_node }}
 {{- $ep := lower (trim (default "auto" .ExpertParallelism)) }}
 {{- if not (has $ep (list "auto" "true" "false")) }}
   {{- fail "ExpertParallelism must be one of: auto, true, false" }}
@@ -86,13 +102,45 @@
 {{- /* vLLM turns expert parallelism off when the data-parallel size is 1,
        because a single GPU has nothing to shard the experts across. Refuse the
        combination rather than reporting a layout the server will not use. */}}
-{{- if and (eq $ep "true") (lt $gpus_per_replica 2) }}
-  {{- fail "ExpertParallelism=true requires GpusPerReplica >= 2; expert parallelism has no effect on a single GPU" }}
+{{- if and (eq $ep "true") (lt $dp_size 2) }}
+  {{- fail "ExpertParallelism=true requires Nodes x GpusPerNode >= 2; expert parallelism has no effect on a single GPU" }}
 {{- end }}
+{{- /* A multi-node group exists to serve one model across nodes with its
+       experts sharded over the group. Data-parallel replication of a dense
+       model is what the replica pool itself already does, so a group with
+       expert parallelism switched off would buy nothing for twice the
+       hardware. */}}
+{{- if and (gt $nodes 1) (eq $ep "false") }}
+  {{- fail "Nodes > 1 requires expert parallelism; set ExpertParallelism=auto or true, or serve a dense model with Nodes=1 and more replicas" }}
+{{- end }}
+{{- if and (gt $nodes 1) (lt $gpus_per_node 1) }}
+  {{- fail "Nodes > 1 requires GpusPerNode >= 1; every node of a group serves part of the model" }}
+{{- end }}
+{{- /* Fixed port for data-parallel RPC between a group's nodes. Multinode
+       services run on the host network, so this must be free on every node of
+       the group and reachable between them; it is not a served port and needs
+       no endpoint. */}}
+{{- $dp_rpc_port := 13345 }}
 {{- $gpu_model := trim .GpuModel }}
 {{- $extra_args := trim .ExtraArgs }}
 {{- if and $extra_args (not (regexMatch "^[A-Za-z0-9 ._=/-]+$" $extra_args)) }}
   {{- fail "ExtraArgs may contain only letters, digits, spaces, and . _ = / -" }}
+{{- end }}
+{{- /* Environment variables for the server process, on every rank of a group.
+       Kept separate from ExtraArgs because the settings that matter here --
+       collective-library tuning above all -- are read from the environment and
+       have no command-line equivalent. Each entry is validated as NAME=VALUE so
+       nothing can break out into the rendered YAML. */}}
+{{- $extra_env := trim (default "" .ExtraEnv) }}
+{{- $env_pairs := list }}
+{{- range (splitList " " $extra_env) }}
+  {{- $pair := trim . }}
+  {{- if $pair }}
+    {{- if not (regexMatch "^[A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_.,:/-]*$" $pair) }}
+      {{- fail (printf "ExtraEnv entry %q must be NAME=VALUE, where NAME is a shell identifier and VALUE contains only letters, digits, and . _ , : / -" $pair) }}
+    {{- end }}
+    {{- $env_pairs = append $env_pairs $pair }}
+  {{- end }}
 {{- end }}
 {{- $hf_token_secret := trim .HfTokenSecret }}
 
@@ -149,6 +197,9 @@ services:
       {{- if eq $gpu "amd" }}
       - PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
       {{- end }}
+      {{- range $env_pairs }}
+      - {{ . }}
+      {{- end }}
     script: |
       #!/bin/sh
       set -u
@@ -181,21 +232,90 @@ services:
           exit 1
         fi
         use_ep=1
-      elif [ "{{ $ep }}" = "auto" ] && [ "$is_moe" = "moe" ] && [ {{ $gpus_per_replica }} -ge 2 ]; then
+      elif [ "{{ $ep }}" = "auto" ] && [ "$is_moe" = "moe" ] && [ {{ $dp_size }} -ge 2 ]; then
         use_ep=1
       fi
+{{- if gt $nodes 1 }}
 
-      # llm-d wide-EP layout on one node: attention data-parallel across the
-      # replica's GPUs, experts expert-parallel (EP world size = DP x TP, so
-      # TP stays 1). Phase 2 (FUZZ-8399) extends this arg list for multi-node
-      # groups.
+      # A group serves one model across {{ $nodes }} nodes, which only pays off
+      # with the experts sharded over it, so a dense model here is a
+      # misconfiguration rather than something to serve at half the value.
+      if [ "$use_ep" -ne 1 ]; then
+        echo "ERROR: Nodes={{ $nodes }} needs a mixture-of-experts model, but '{{ $model_name }}'" \
+             "(architecture: $arch) is dense. Serve it with Nodes=1 and more replicas instead." >&2
+        exit 1
+      fi
+{{- end }}
+
+      # llm-d wide-EP layout: attention data-parallel across the group's GPUs,
+      # experts expert-parallel (EP world size = DP x TP, so TP stays 1).
       if [ "$use_ep" -eq 1 ]; then
-        parallel_args="--data-parallel-size {{ $gpus_per_replica }} --enable-expert-parallel"
-        echo "vllm: $arch ($is_moe), ExpertParallelism={{ $ep }} -> expert parallelism, data-parallel size {{ $gpus_per_replica }}"
+        parallel_args="--data-parallel-size {{ $dp_size }} --enable-expert-parallel"
+        echo "vllm: $arch ($is_moe), ExpertParallelism={{ $ep }} -> expert parallelism, data-parallel size {{ $dp_size }}{{ if gt $nodes 1 }} across {{ $nodes }} nodes{{ end }}"
       else
         parallel_args="--tensor-parallel-size {{ $tensor_parallel }}"
         echo "vllm: $arch ($is_moe), ExpertParallelism={{ $ep }} -> tensor parallelism, size {{ $tensor_parallel }}"
       fi
+{{- if gt $nodes 1 }}
+
+      # Flags shared by every rank beyond the parallel layout, passed as one
+      # word-split argument so a group's ranks stay byte-identical apart from
+      # their own rank offset.
+      parallel_extra="{{ $extra_args }}"
+
+      # The generic multinode implementation runs this script on rank 0 only;
+      # peers execute their portion via the rsh shim that the shipped
+      # generic-helper wraps. So both halves of the group are launched from
+      # here: the peers headless, then rank 0 with the API server.
+      . /multinode/generic-helper
+
+      # Every rank dials rank 0 for data-parallel RPC, so the coordinator
+      # address is this node's IP -- resolved here, on rank 0.
+      head_ip="$MULTINODE_NODE_IP"
+
+      # The peer script is single-quoted so $RANK expands on each worker to its
+      # own rank; rank-0-side values travel as positional arguments, which the
+      # helper quotes for the trip. Each node owns {{ $gpus_per_node }}
+      # consecutive data-parallel ranks, so its offset is rank x that count.
+      exec_rankN 'exec vllm serve "$1" \
+        --served-model-name "$2" \
+        --headless \
+        --data-parallel-size "$3" \
+        --data-parallel-size-local "$4" \
+        --data-parallel-start-rank $(( $RANK * $4 )) \
+        --data-parallel-address "$5" \
+        --data-parallel-rpc-port "$6" \
+        --enable-expert-parallel \
+        --tensor-parallel-size 1 \
+        --max-model-len "$7" \
+        --gpu-memory-utilization "$8" \
+        $9' \
+        "{{ $model_path }}" "{{ $model_name }}" "{{ $dp_size }}" "{{ $gpus_per_node }}" \
+        "$head_ip" "{{ $dp_rpc_port }}" "{{ .MaxContextSize }}" "{{ .GpuMemoryUtilization }}" \
+        "$parallel_extra"
+
+      # Rank 0 owns the endpoint. api-server-count follows vLLM's guidance of
+      # one API server per local data-parallel rank.
+      exec_rank0 'exec vllm serve "$1" \
+        --served-model-name "$2" \
+        --data-parallel-size "$3" \
+        --data-parallel-size-local "$4" \
+        --data-parallel-address "$5" \
+        --data-parallel-rpc-port "$6" \
+        --api-server-count "$4" \
+        --enable-expert-parallel \
+        --tensor-parallel-size 1 \
+        --max-model-len "$7" \
+        --gpu-memory-utilization "$8" \
+        --host 0.0.0.0 \
+        --port "$9" \
+        ${10}' \
+        "{{ $model_path }}" "{{ $model_name }}" "{{ $dp_size }}" "{{ $gpus_per_node }}" \
+        "$head_ip" "{{ $dp_rpc_port }}" "{{ .MaxContextSize }}" "{{ .GpuMemoryUtilization }}" \
+        "{{ $vllm_port }}" "$parallel_extra"
+
+      wait_rank0
+{{- else }}
 
       exec vllm serve "{{ $model_path }}" \
         --served-model-name "{{ $model_name }}" \
@@ -204,20 +324,43 @@ services:
         --gpu-memory-utilization {{ .GpuMemoryUtilization }} \
         --host 0.0.0.0 \
         --port {{ $vllm_port }}{{ if $extra_args }} {{ $extra_args }}{{ end }}
+{{- end }}
+{{- if gt $nodes 1 }}
+    # Each replica is one gang-scheduled group: Fuzzball starts all {{ $nodes }}
+    # nodes together or none, wires their DNS and gossip, and serves the
+    # endpoint from rank 0. 'generic' leaves process launch to the workload,
+    # which the script does through the shipped helper -- an MPI launcher would
+    # otherwise try to start the ranks itself.
+    multinode:
+      nodes: {{ $nodes }}
+      implementation: generic
+{{- end }}
     resource:
+{{- if gt $nodes 1 }}
+      # Per node, not per group: each of the group's {{ $nodes }} nodes gets
+      # this shape, so the group's total is {{ $nodes }} times it.
+{{- end }}
       cpu:
-        cores: {{ .ReplicaCores }}
+        cores: {{ .CoresPerNode }}
       memory:
-        size: {{ .ReplicaMemory }}
-      {{- if gt $gpus_per_replica 0 }}
+        size: {{ .MemoryPerNode }}
+      {{- if gt $gpus_per_node 0 }}
       devices:
-        {{ $gpu_device }}: {{ $gpus_per_replica }}
+        {{ $gpu_device }}: {{ $gpus_per_node }}
       {{- if $gpu_model }}
       annotations:
         {{ $gpu_device }}.model: "{{ $gpu_model }}"
       {{- end }}
       {{- end }}
     network:
+      {{- if gt $nodes 1 }}
+      # Stated rather than left to the platform's implicit default: a group's
+      # ranks rendezvous on node addresses over ports they negotiate between
+      # themselves, which a bridge namespace cannot carry. Set only here, since
+      # a single-node replica wants the substrate-assigned host port that lets
+      # two replicas of a pool share a node.
+      host: true
+      {{- end }}
       ports:
         - name: openai-api
           port: {{ $vllm_port }}

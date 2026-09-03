@@ -97,14 +97,35 @@ values:
       device ... is less than desired GPU memory utilization".
     string_value: "0.9"
     display_category: Model Configuration
+  - name: Nodes
+    display_name: >-
+      Nodes per replica. 1 (default) serves each replica on one node. Above 1, each
+      replica is a gang-scheduled group of that many nodes serving a single
+      OpenAI-compatible endpoint on rank 0, with attention data-parallel and experts
+      expert-parallel across the group's GPUs. Use it for a mixture-of-experts model
+      too large for one node; a group starts all nodes or none, and the pool scales in
+      whole groups. Requires a mixture-of-experts model and GPUs on every node.
+    uint_value: 1
+    display_category: Resources
+  - name: ExtraEnv
+    display_name: >-
+      Extra environment variables for the vLLM process, as space-separated
+      NAME=VALUE pairs, applied to every rank of a replica. Intended for settings
+      that have no command-line equivalent -- above all collective-library tuning
+      (NCCL_* on nvidia, which RCCL also reads on amd) that a particular cluster's
+      interconnect needs. Example: "NCCL_SOCKET_IFNAME=eth0 NCCL_DEBUG=WARN".
+    string_value: ""
+    display_category: Model Configuration
   - name: ExpertParallelism
     display_name: >-
       Expert parallelism across the replica's GPUs: auto (enabled when the downloaded
-      model's config.json indicates a mixture-of-experts model and GpusPerReplica is at
-      least 2), true (require both; the service fails at start otherwise), or false
-      (tensor parallelism only). When enabled, the replica serves attention
-      data-parallel and experts expert-parallel across GpusPerReplica GPUs. A single
-      GPU has nothing to shard experts across, so expert parallelism needs 2 or more.
+      model's config.json indicates a mixture-of-experts model and the replica's
+      data-parallel world is at least 2), true (require both; the service fails at
+      start otherwise), or false (tensor parallelism only). When enabled, the replica
+      serves attention data-parallel and experts expert-parallel across every GPU of
+      every node in the replica. That world is Nodes x GpusPerNode, so two
+      single-GPU nodes qualify just as one two-GPU node does; below 2 there is nothing
+      to shard experts across.
     string_value: auto
     options_input:
       options: ["auto", "true", "false"]
@@ -116,30 +137,35 @@ values:
     string_value: ""
     display_category: Model Configuration
 
-  - name: GpusPerReplica
+  - name: GpusPerNode
     display_name: >-
-      Number of GPU devices per replica (the tensor-parallel size, or the
-      data-parallel size when expert parallelism is enabled). 0 requests no
-      GPU; note the default images are GPU builds, so 0 also requires overriding
-      VllmImage with a CPU-build image (testing only).
+      Number of GPU devices on each of the replica's nodes (the tensor-parallel
+      size, or the per-node share of the data-parallel size when expert parallelism
+      is enabled). A replica's total is this times Nodes. 0 requests no GPU; note
+      the default images are GPU builds, so 0 also requires overriding VllmImage
+      with a CPU-build image (testing only).
     uint_value: 1
     display_category: Resources
   - name: GpuModel
     display_name: GPU model to request (e.g. NVIDIA L40S). Empty requests any GPU of the selected platform.
     string_value: ""
     display_category: Resources
-  - name: ReplicaCores
-    display_name: CPU cores per replica.
+  - name: CoresPerNode
+    display_name: >-
+      CPU cores on each of the replica's nodes. A replica of Nodes nodes consumes
+      this on every one of them.
     uint_value: 8
     display_category: Resources
-  - name: ReplicaMemory
-    display_name: Memory per replica.
+  - name: MemoryPerNode
+    display_name: >-
+      Memory on each of the replica's nodes. A replica of Nodes nodes consumes this
+      on every one of them.
     string_value: 32GiB
     display_category: Resources
 
   - name: VllmImage
     display_name: vLLM container image used on the nvidia platform.
-    string_value: docker://vllm/vllm-openai:v0.10.1
+    string_value: docker://vllm/vllm-openai:v0.28.0
     display_category: Versions
   - name: VllmRocmImage
     display_name: >-
