@@ -253,7 +253,14 @@ services:
         --header="x-litellm-api-key: ${MODEL_API_KEY}" \
       {{- end }}
         "{{ $endpoint }}/v1/models" 2> /tmp/probe.err); then
-        listed=$(printf '%s' "${body}" | tr -d ' \n' | grep -o '"id":"[^"]*"' | cut -d'"' -f4 || true)
+        # Only ids that sit next to "object":"model" are models: vLLM's cards
+        # also carry permission entries with ids of their own.
+        listed=$(printf '%s' "${body}" | tr -d '\n\r\t' \
+          | grep -o '"id" *: *"[^"]*" *, *"object" *: *"model"' \
+          | sed -e 's/^"id" *: *"//' -e 's/" *, *"object".*$//' || true)
+        if [ -z "${listed}" ]; then
+          echo "WARNING: the model endpoint answered /v1/models but listed no models" >&2
+        fi
       else
         if grep -q "40[13]" /tmp/probe.err; then
           echo "FATAL: the model endpoint rejected these credentials:" >&2
@@ -266,7 +273,8 @@ services:
 
       default_model="{{ $model }}"
       models=""
-      for id in ${default_model} ${listed}; do
+      while IFS= read -r id; do
+        [ -n "${id}" ] || continue
         case "${id}" in
           *[!A-Za-z0-9._:/-]*)
             echo "WARNING: ignoring a model id with unexpected characters: ${id}" >&2
@@ -278,7 +286,10 @@ services:
         esac
         models="${models}${models:+ }${id}"
         [ -n "${default_model}" ] || default_model="${id}"
-      done
+      done <<IDS
+      ${default_model}
+      ${listed}
+      IDS
       if [ -z "${models}" ]; then
         echo "FATAL: the endpoint listed no models and Model is empty; set Model to a name the endpoint serves" >&2
         exit 1

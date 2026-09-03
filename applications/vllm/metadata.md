@@ -101,9 +101,9 @@ always uses tensor parallelism. Endpoints, the proxy, and autoscaling behave the
 same either way. See [BENCHMARK.md](BENCHMARK.md) for how the two layouts are
 compared (results pending).
 
-vLLM's default all-to-all backend is used. To select a DeepEP backend, use an
-image built with the DeepEP kernels and pass `--all2all-backend <name>` through
-`ExtraArgs`.
+vLLM's default all-to-all backend, `allgather_reducescatter`, is used; it works
+across nodes. To select a DeepEP backend, use an image built with the DeepEP
+kernels and pass `--all2all-backend <name>` through `ExtraArgs`.
 
 Set `Nodes` above 1 to serve a mixture-of-experts model that does not fit on
 one node. Each replica then spans that many nodes, which Fuzzball starts and
@@ -121,8 +121,10 @@ Before choosing `Nodes` above 1:
   `ExtraEnv=NCCL_SOCKET_IFNAME=eth0`.
 - The GPUs must support GPU-to-GPU collectives. Virtualised GPUs generally do
   not: a vGPU profile such as `NVIDIA A16-2Q` fails at startup with `NCCL WARN
-  Cuda failure 'operation not supported'`, and no NCCL setting works around
-  it. Use passthrough or bare-metal GPUs. Single-node replicas are unaffected.
+  Cuda failure 'operation not supported'`, right after NCCL reports the
+  transport selected successfully. `NCCL_CUMEM_ENABLE=0`, `NCCL_P2P_DISABLE=1`
+  and `NCCL_SHM_DISABLE=1` do not work around it; use passthrough or bare-metal
+  GPUs. Single-node replicas are unaffected.
 - Multi-node serving is untested on `Gpu: amd`.
 - A multi-node group caps its prefill steps at 512 tokens
   (`--max-num-batched-tokens 512`, appended after `ExtraArgs`). On vLLM 0.28.0
