@@ -144,8 +144,8 @@ services:
         exit 1
       fi
       if [ -f {{ $nodeTrustStore }} ]; then
+        printf '\n' >> {{ $caBundle }}
         cat {{ $nodeTrustStore }} >> {{ $caBundle }}
-      else
         echo "WARNING: node trust store {{ $nodeTrustStore }} is missing; discovery only works if the Fuzzball API uses a publicly trusted certificate" >&2
       fi
 
