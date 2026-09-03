@@ -49,5 +49,5 @@ the `vllm` entry description for details and scaling caveats.
 ## Notes
 
 - The model supports up to 10M-token context; this entry presets 1M. Raise MaxContextSize only with the KV-cache memory to back it.
-- The recipe defines no tool-call parser for this model, so tool calling is not preset; requests carrying a tools array will fail.
+- The recipe defines no tool-call parser, so the preset adds vLLM's `llama4_pythonic` parser and its chat template on top of the recipe's flags; agent clients such as the OpenCode entry need it.
 - The recipe disables prefix caching (--no-enable-prefix-caching), which lowers multi-turn throughput; part of the validated configuration.

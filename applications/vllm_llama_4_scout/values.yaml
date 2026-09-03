@@ -125,9 +125,10 @@ values:
   - name: ExtraArgs
     display_name: >-
       Extra arguments for vllm serve. The default is the model recipe's tuning
-      (recipes.vllm.ai). Overriding replaces the whole list, so keep these and
-      add yours.
-    string_value: "--async-scheduling --no-enable-prefix-caching --max-num-batched-tokens 8192"
+      (recipes.vllm.ai) plus vLLM's Llama 4 tool-call parser, which agent
+      clients need. Overriding replaces the whole list, so keep these and add
+      yours.
+    string_value: "--async-scheduling --no-enable-prefix-caching --max-num-batched-tokens 8192 --enable-auto-tool-choice --tool-call-parser llama4_pythonic --chat-template /vllm-workspace/examples/tool_chat_template_llama4_pythonic.jinja"
     display_category: Model Configuration
 
   - name: GpusPerNode
