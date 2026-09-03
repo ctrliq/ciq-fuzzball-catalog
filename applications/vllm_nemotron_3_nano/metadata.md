@@ -31,12 +31,11 @@ workflow restarts.
 ```
 fuzzball workflow catalog start "Nemotron 3 Nano"
 fuzzball workflow catalog start "Nemotron 3 Nano" --values Volume=my-models,MaxReplicas=8
-fuzzball workflow catalog start "Nemotron 3 Nano" --values Nodes=2,ExpertParallelism=auto
+fuzzball workflow catalog start "Nemotron 3 Nano" --values Nodes=2
 ```
 
-Set `Nodes` above 1 with `ExpertParallelism=auto` to serve each replica across
-several nodes; see the `vllm` entry description for what a multi-node replica
-needs.
+Set `Nodes` above 1 to serve each replica across several nodes; see the `vllm`
+entry description for what a multi-node replica needs.
 
 Access, scaling, and gateway discovery are exactly the `vllm` entry's: a
 LiteLLM proxy holds the endpoint by default, and with `Proxy=false` the pool

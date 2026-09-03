@@ -98,9 +98,10 @@ values:
   - name: Nodes
     display_name: >-
       Nodes per replica. 1 serves each replica on a single node. A higher value
-      spreads each replica of a mixture-of-experts model over that many nodes,
-      which start and stop together and serve one endpoint. Needs
-      ExpertParallelism auto or true and at least one GPU per node.
+      splits each replica across that many nodes, which start and stop together
+      and serve one endpoint: expert parallelism for a mixture-of-experts model
+      with ExpertParallelism auto or true, tensor parallelism otherwise. Needs
+      at least one GPU per node.
     uint_value: 1
     display_category: Resources
   - name: ExtraEnv

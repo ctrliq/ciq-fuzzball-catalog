@@ -100,9 +100,8 @@ values:
   - name: Nodes
     display_name: >-
       Nodes per replica. 1 serves each replica on a single node. A higher value
-      spreads each replica of this mixture-of-experts model over that many
-      nodes, which start and stop together and serve one endpoint. Needs
-      ExpertParallelism auto or true and at least one GPU per node.
+      splits each replica across that many nodes, which start and stop together
+      and serve one endpoint. Needs at least one GPU per node.
     uint_value: 1
     display_category: Resources
   - name: ExtraEnv
@@ -116,8 +115,8 @@ values:
     display_name: >-
       How the model is split across a replica's GPUs (Nodes x GpusPerNode).
       This preset uses false (tensor parallelism), the layout its settings were
-      tested with. Set auto or true for expert parallelism, which Nodes above 1
-      requires.
+      tested with; auto or true switches this mixture-of-experts model to
+      expert parallelism.
     string_value: "false"
     options_input:
       options: ["auto", "true", "false"]

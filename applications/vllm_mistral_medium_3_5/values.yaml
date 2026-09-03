@@ -99,8 +99,9 @@ values:
     display_category: Model Configuration
   - name: Nodes
     display_name: >-
-      Nodes per replica. This model is dense, so multi-node serving does not
-      apply; leave at 1 and scale with MaxReplicas instead.
+      Nodes per replica. 1 serves each replica on a single node. A higher value
+      splits each replica across that many nodes, which start and stop together
+      and serve one endpoint. Needs at least one GPU per node.
     uint_value: 1
     display_category: Resources
   - name: ExtraEnv

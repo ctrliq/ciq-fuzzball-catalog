@@ -105,12 +105,14 @@ vLLM's default all-to-all backend, `allgather_reducescatter`, is used; it works
 across nodes. To select a DeepEP backend, use an image built with the DeepEP
 kernels and pass `--all2all-backend <name>` through `ExtraArgs`.
 
-Set `Nodes` above 1 to serve a mixture-of-experts model that does not fit on
-one node. Each replica then spans that many nodes, which Fuzzball starts and
-stops together; rank 0 serves the endpoint and coordinates the rest. A replica
-has `Nodes` x `GpusPerNode` GPUs, and the pool grows and shrinks in whole
-replicas. Every node needs `GpusPerNode` GPUs, and a cluster that cannot supply
-`Nodes` nodes at once rejects the submission.
+Set `Nodes` above 1 to serve a model that does not fit on one node. Each
+replica then spans that many nodes, which Fuzzball starts and stops together;
+rank 0 serves the endpoint and coordinates the rest. A mixture-of-experts model
+with `ExpertParallelism` `auto` or `true` runs expert-parallel across the
+group's GPUs; any other model, or `ExpertParallelism=false`, runs
+tensor-parallel across them. A replica has `Nodes` x `GpusPerNode` GPUs, the
+pool grows and shrinks in whole replicas, every node needs `GpusPerNode` GPUs,
+and a cluster that cannot supply `Nodes` nodes at once rejects the submission.
 
 Before choosing `Nodes` above 1:
 
@@ -126,12 +128,13 @@ Before choosing `Nodes` above 1:
   and `NCCL_SHM_DISABLE=1` do not work around it; use passthrough or bare-metal
   GPUs. Single-node replicas are unaffected.
 - Multi-node serving is untested on `Gpu: amd`.
-- A multi-node group caps its prefill steps at 512 tokens
+- An expert-parallel group caps its prefill steps at 512 tokens
   (`--max-num-batched-tokens 512`, appended after `ExtraArgs`). On vLLM 0.28.0
   the group's data-parallel all-gather asserts as soon as one rank steps a
   larger batch, which any prompt of a few hundred tokens or more triggers;
   with the cap, prompts of 11k tokens and concurrent requests serve normally.
-  Long prompts prefill in more steps than on a single node.
+  Long prompts prefill in more steps than on a single node. Tensor-parallel
+  groups are not affected and carry no cap.
 
 ## Parameters
 
@@ -146,8 +149,8 @@ Before choosing `Nodes` above 1:
   than with `?exclude=original/**&exclude=metal/**`.
 - `Gpu`: GPU platform, `nvidia` or `amd`.
 - `ExpertParallelism`: `auto` (default), `true`, or `false`; see above.
-- `Nodes`: nodes per replica, default 1. Above 1 needs a mixture-of-experts
-  model, `ExpertParallelism` `auto` or `true`, and at least one GPU per node.
+- `Nodes`: nodes per replica, default 1. Above 1 needs at least one GPU per
+  node; the layout follows `ExpertParallelism`.
 - `ExtraEnv`: extra environment variables for vLLM as space-separated
   `NAME=VALUE` pairs, set on every node of a replica. Values cannot contain
   spaces.

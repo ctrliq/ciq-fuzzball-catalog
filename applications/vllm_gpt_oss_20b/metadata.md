@@ -34,12 +34,11 @@ volume to keep the checkpoint across workflow restarts.
 ```
 fuzzball workflow catalog start "GPT-OSS 20B"
 fuzzball workflow catalog start "GPT-OSS 20B" --values Volume=my-models,MaxReplicas=8
-fuzzball workflow catalog start "GPT-OSS 20B" --values Nodes=2,ExpertParallelism=auto
+fuzzball workflow catalog start "GPT-OSS 20B" --values Nodes=2
 ```
 
-Set `Nodes` above 1 with `ExpertParallelism=auto` to serve each replica across
-several nodes; see the `vllm` entry description for what a multi-node replica
-needs.
+Set `Nodes` above 1 to serve each replica across several nodes; see the `vllm`
+entry description for what a multi-node replica needs.
 
 Access, scaling, and gateway discovery are exactly the `vllm` entry's: a
 LiteLLM proxy holds the endpoint by default, and with `Proxy=false` the pool
