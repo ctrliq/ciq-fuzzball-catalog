@@ -30,7 +30,11 @@ workflow restarts.
 ```
 fuzzball workflow catalog start "Qwen3-Coder Next 80B"
 fuzzball workflow catalog start "Qwen3-Coder Next 80B" --values Volume=my-models,MaxReplicas=4
+fuzzball workflow catalog start "Qwen3-Coder Next 80B" --values Nodes=2,GpusPerNode=1
 ```
+
+Set `Nodes` above 1 to serve each replica across several nodes; see the `vllm`
+entry description for what a multi-node replica needs.
 
 Access, scaling, and gateway discovery are exactly the `vllm` entry's: a
 LiteLLM proxy holds the endpoint by default, and with `Proxy=false` the pool

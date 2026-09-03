@@ -31,7 +31,11 @@ workflow restarts.
 ```
 fuzzball workflow catalog start "Ministral 3 14B"
 fuzzball workflow catalog start "Ministral 3 14B" --values Volume=my-models,MaxReplicas=8
+fuzzball workflow catalog start "Ministral 3 14B" --values Nodes=2
 ```
+
+Set `Nodes` above 1 to serve each replica across several nodes; see the `vllm`
+entry description for what a multi-node replica needs.
 
 Access, scaling, and gateway discovery are exactly the `vllm` entry's: a
 LiteLLM proxy holds the endpoint by default, and with `Proxy=false` the pool

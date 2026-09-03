@@ -14,7 +14,7 @@
 {{- end }}
 
 {{- $model := trim .Model }}
-{{- if not (regexMatch "^[A-Za-z0-9._:/-]+$" $model) }}
+{{- if and $model (not (regexMatch "^[A-Za-z0-9._:/-]+$" $model)) }}
   {{- fail "Model must name the model as the endpoint serves it, e.g. openai/gpt-oss-20b" }}
 {{- end }}
 
@@ -130,7 +130,25 @@ jobs:
       echo "Use ServiceScope=public for the web application or 'opencode attach'."
       {{- end }}
       echo ""
-      echo "Model configured for this server: fuzzball/{{ $model }}"
+      echo "Models: the server registered every model the endpoint listed when it"
+      {{- if $model }}
+      echo "started, with fuzzball/{{ $model }} as the default. Switch with /models in"
+      {{- else }}
+      echo "started, the first of them as the default. Switch with /models in"
+      {{- end }}
+      echo "the client. The opencode service log names them. A model the endpoint"
+      echo "gains later needs a restart of this workflow. What it serves right now:"
+      {{- if $mint }}
+      endpoint_id=$(echo "{{ $endpoint }}" | sed -e 's#^[a-z]*://##' -e 's#/.*##' -e 's#:.*##' | cut -d. -f1)
+      echo "   fuzzball workflow endpoints generate-token ${endpoint_id}"
+      echo "   curl -H \"Authorization: Bearer <that token>\" \\"
+      {{- if or $api_key_secret $api_key }}
+      echo "        -H \"x-litellm-api-key: <your model API key>\" \\"
+      {{- end }}
+      echo "        {{ $endpoint }}/v1/models"
+      {{- else }}
+      echo "   curl -H \"Authorization: Bearer <your model API key>\" {{ $endpoint }}/v1/models"
+      {{- end }}
     resource:
       cpu:
         cores: 1
@@ -224,6 +242,67 @@ services:
       credential="${MODEL_API_KEY}"
       {{- end }}
 
+      # The endpoint decides which models exist: every model it lists is
+      # registered and Model only picks the default. Asking now also surfaces a
+      # rejected credential here rather than at the user's first prompt, since
+      # the readiness probe never reaches the model endpoint.
+      listed=""
+      if body=$(wget -nv -O - \
+        --header="Authorization: Bearer ${credential}" \
+      {{- if and $mint (or $api_key_secret $api_key) }}
+        --header="x-litellm-api-key: ${MODEL_API_KEY}" \
+      {{- end }}
+        "{{ $endpoint }}/v1/models" 2> /tmp/probe.err); then
+        # Only ids that sit next to "object":"model" are models: vLLM's cards
+        # also carry permission entries with ids of their own.
+        listed=$(printf '%s' "${body}" | tr -d '\n\r\t' \
+          | grep -o '"id" *: *"[^"]*" *, *"object" *: *"model"' \
+          | sed -e 's/^"id" *: *"//' -e 's/" *, *"object".*$//' || true)
+        if [ -z "${listed}" ]; then
+          echo "WARNING: the model endpoint answered /v1/models but listed no models" >&2
+        fi
+      else
+        if grep -q "40[13]" /tmp/probe.err; then
+          echo "FATAL: the model endpoint rejected these credentials:" >&2
+          cat /tmp/probe.err >&2
+          exit 1
+        fi
+        echo "WARNING: the model endpoint did not answer /v1/models:" >&2
+        cat /tmp/probe.err >&2
+      fi
+
+      default_model="{{ $model }}"
+      models=""
+      while IFS= read -r id; do
+        [ -n "${id}" ] || continue
+        case "${id}" in
+          *[!A-Za-z0-9._:/-]*)
+            echo "WARNING: ignoring a model id with unexpected characters: ${id}" >&2
+            continue
+            ;;
+        esac
+        case " ${models} " in
+          *" ${id} "*) continue ;;
+        esac
+        models="${models}${models:+ }${id}"
+        [ -n "${default_model}" ] || default_model="${id}"
+      done <<IDS
+      ${default_model}
+      ${listed}
+      IDS
+      if [ -z "${models}" ]; then
+        echo "FATAL: the endpoint listed no models and Model is empty; set Model to a name the endpoint serves" >&2
+        exit 1
+      fi
+      echo "Models registered from {{ $endpoint }}: ${models}"
+      echo "Default model: fuzzball/${default_model}"
+
+      models_json=""
+      for id in ${models}; do
+        entry="\"${id}\": { \"name\": \"${id} on Fuzzball\", \"limit\": { \"context\": {{ $context_size }}, \"output\": {{ $output_limit }} } }"
+        models_json="${models_json}${models_json:+, }${entry}"
+      done
+
       umask 077
       cat > /data/.config/opencode.json <<EOF
       {
@@ -239,34 +318,12 @@ services:
               ,"headers": { "x-litellm-api-key": "${MODEL_API_KEY}" }
       {{- end }}
             },
-            "models": {
-              "{{ $model }}": {
-                "name": "{{ $model }} on Fuzzball",
-                "limit": { "context": {{ $context_size }}, "output": {{ $output_limit }} }
-              }
-            }
+            "models": { ${models_json} }
           }
         },
-        "model": "fuzzball/{{ $model }}"
+        "model": "fuzzball/${default_model}"
       }
       EOF
-
-      # A rejected credential otherwise surfaces at the user's first prompt: the
-      # readiness probe only reaches this server, never the model endpoint.
-      if ! wget -nv -O /dev/null \
-        --header="Authorization: Bearer ${credential}" \
-      {{- if and $mint (or $api_key_secret $api_key) }}
-        --header="x-litellm-api-key: ${MODEL_API_KEY}" \
-      {{- end }}
-        "{{ $endpoint }}/v1/models" 2> /tmp/probe.err; then
-        if grep -q "40[13]" /tmp/probe.err; then
-          echo "FATAL: the model endpoint rejected these credentials:" >&2
-          cat /tmp/probe.err >&2
-          exit 1
-        fi
-        echo "WARNING: the model endpoint did not answer /v1/models yet:" >&2
-        cat /tmp/probe.err >&2
-      fi
 
       cd /data/workspace
       exec opencode serve --hostname 0.0.0.0 --port {{ $port }} --print-logs

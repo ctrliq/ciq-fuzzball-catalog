@@ -1,7 +1,7 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 ---
 id: "ciq/ml_and_ai/opencode"
-name: "opencode"
+name: "OpenCode"
 category: "ML_AND_AI"
 tags:
 - ai
@@ -18,15 +18,29 @@ model is reached over an OpenAI-compatible endpoint such as the one published by
 the `vllm` or `litellm` entries.
 
 ```
-fuzzball workflow catalog start opencode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKey=sk-...
-fuzzball workflow catalog start opencode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKeySecret=secret://user/litellm-key
-fuzzball workflow catalog start opencode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKey=sk-...,ServiceScope=public
+fuzzball workflow catalog start OpenCode --values Endpoint=https://<gateway-endpoint-url>,EndpointAuth=api-key,ApiKeySecret=secret://user/litellm-key,ServiceScope=public
+fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>,ApiKeySecret=secret://user/litellm-key
+fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKey=sk-...
 ```
 
 Get the endpoint URL of the model workflow with `fuzzball workflow endpoints
 list`, and its LiteLLM key from its definition (`fuzzball workflow get
-<workflow id>`). `Model` is the name the endpoint serves; for the `vllm` entry
-that is its `Model` value without the `hf://` prefix.
+<workflow id>`). When the server starts it registers every model the endpoint
+lists at `/v1/models`, so pointed at the LiteLLM Model Gateway entry
+(`litellm`) it offers everything the gateway had discovered at that moment.
+`Model` is optional and only picks the default, named as the endpoint serves
+it (for the `vllm` entry, its `Model` value without the `hf://` prefix);
+without it the first listed model is the default.
+
+To see the models:
+
+- In the client, `/models` lists the registered ones and switches between them.
+- `fuzzball workflow log <workflow id> opencode` shows the list the server
+  registered and which one is the default.
+- The `show-server` job prints a `curl` against the endpoint's `/v1/models` for
+  what the endpoint serves right now. The server reads that list once, at
+  startup, so a model the endpoint gains later needs a restart of this
+  workflow to become selectable.
 
 ## Attaching to the model
 
@@ -87,12 +101,12 @@ before the agent starts, so a prompt injection cannot walk off with it.
 
 ## Known limitations
 
-- *The web application cannot select this model.* As of OpenCode 1.18.23 a
+- *The web application cannot select these models.* As of OpenCode 1.18.23 a
   provider defined in configuration appears in the server's v1 API but not in the
   v2 API that the bundled web application queries, so the model picker offers only
   OpenCode's own hosted models. Drive the server through the v1 session API
   (`POST /session`, then `POST /session/{id}/message` with
-  `{"model":{"providerID":"fuzzball","modelID":"<Model>"},"parts":[...]}`) or
+  `{"model":{"providerID":"fuzzball","modelID":"<model id>"},"parts":[...]}`) or
   attach a local client.
 - *Tool calling depends on the serving side.* Agentic work needs a model that
   supports tool calls and a server configured to parse them; with the `vllm`

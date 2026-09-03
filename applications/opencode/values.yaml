@@ -7,21 +7,22 @@ values:
     display_category: Model
   - name: Model
     display_name: >-
-      Model name as the endpoint serves it. For the vllm entry this is its Model value without
-      the hf:// prefix, e.g. openai/gpt-oss-20b.
-    string_value: openai/gpt-oss-20b
+      Default model, named as the endpoint serves it (for the vllm entry, its Model value
+      without the hf:// prefix, e.g. openai/gpt-oss-20b). Every model the endpoint lists is
+      registered; leave this empty to default to the first one.
+    string_value: ""
     display_category: Model
   - name: MaxContextSize
     display_name: >-
       Maximum input tokens the model accepts. OpenCode tracks remaining context against this,
       so a value above what the endpoint serves produces requests the model rejects. Match the
-      serving entry (the vllm entry's MaxContextSize).
+      serving entry (the vllm entry's MaxContextSize). Applies to every registered model.
     uint_value: 32768
     display_category: Model
   - name: OutputLimit
     display_name: >-
       Maximum tokens the model may generate per reply. Reasoning models spend part of this
-      budget before emitting any text, so keep it generous.
+      budget before emitting any text, so keep it generous. Applies to every registered model.
     uint_value: 8192
     display_category: Model
 

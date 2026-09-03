@@ -1,7 +1,7 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 ---
 id: "ciq/ml_and_ai/vllm"
-name: "vllm"
+name: "vLLM"
 category: "ML_AND_AI"
 tags:
 - LLM
@@ -16,11 +16,12 @@ demand, and exposes one stable OpenAI-compatible base URL that is independent of
 replica churn.
 
 ```
-fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-20b
-fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-120b,Gpu=amd
-fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-120b,MinReplicas=1,MaxReplicas=10
-fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-120b,GpusPerNode=4
-fuzzball workflow catalog start vllm --values Model=hf://openai/gpt-oss-20b,GpusPerNode=2,ExpertParallelism=true
+fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-20b
+fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-120b,Gpu=amd
+fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-120b,MinReplicas=1,MaxReplicas=10
+fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-120b,GpusPerNode=4
+fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-20b,GpusPerNode=2,ExpertParallelism=true
+fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-120b,Nodes=2
 ```
 
 The model is downloaded from the HuggingFace Hub once, at workflow start, into
@@ -85,75 +86,55 @@ Gateway catalog entry (`litellm`) picks the pool up automatically. An authentica
 idles at zero starts the first replica and returns `503` with a `Retry-After`
 header.
 
-## Expert parallelism
+## Expert parallelism and multi-node serving
 
-For mixture-of-experts models the replica follows the
+Mixture-of-experts models can serve with expert parallelism instead of tensor
+parallelism, following the
 [llm-d wide expert parallelism](https://llm-d.ai/docs/well-lit-paths/foundations/wide-expert-parallelism)
-layout on one node: attention runs data-parallel across the replica's GPUs and
-the expert layers are sharded expert-parallel
-(`--data-parallel-size GpusPerNode --enable-expert-parallel`), instead of
-tensor parallelism. Whether the model is MoE is detected at service start from
-the downloaded model's `config.json`; with the default `ExpertParallelism=auto` the right
-layout is picked automatically, and `ExpertParallelism=true` on a non-MoE model fails the
-service at start with a message naming the model's architecture. The replica
-still serves one OpenAI-compatible API on the same port, so endpoints, the
-LiteLLM proxy, and autoscaling behave exactly as without expert parallelism.
-Expert parallelism needs a data-parallel world of at least two, since a single
-GPU has nothing to shard the experts across; below that the replica serves with
-tensor parallelism instead. That world spans the whole replica, so it is
-`Nodes` x `GpusPerNode` -- two single-GPU nodes qualify just as one two-GPU
-node does. See [BENCHMARK.md](BENCHMARK.md) for the methodology used to compare
-expert- and tensor-parallel throughput (results pending).
+layout: attention runs data-parallel on every GPU of the replica and the expert
+layers are split across those same GPUs. Whether a model is mixture-of-experts
+is read from its `config.json` when the service starts. With the default
+`ExpertParallelism=auto` a replica uses expert parallelism for a
+mixture-of-experts model with at least two GPUs and tensor parallelism
+otherwise; `true` insists on it and fails the service on other models; `false`
+always uses tensor parallelism. Endpoints, the proxy, and autoscaling behave the
+same either way. See [BENCHMARK.md](BENCHMARK.md) for how the two layouts are
+compared (results pending).
 
-vLLM's all-to-all backend is left at its own default,
-`allgather_reducescatter`, which works with any layout including across nodes.
-The faster DeepEP backends need an image built with the DeepEP kernels, which
-none of the images this entry offers provides; with such an image, select one by
-passing `--all2all-backend <name>` through `ExtraArgs`.
+vLLM's default all-to-all backend, `allgather_reducescatter`, is used; it works
+across nodes. To select a DeepEP backend, use an image built with the DeepEP
+kernels and pass `--all2all-backend <name>` through `ExtraArgs`.
 
-Set `Nodes` above 1 for a mixture-of-experts model too large for any single
-node. Each replica then becomes a gang-scheduled group: Fuzzball starts all of
-its nodes together or none, gives them a private DNS namespace, and the group
-serves one OpenAI-compatible endpoint from rank 0, which coordinates the others
-internally. Attention runs data-parallel across every GPU of the group and the
-experts are sharded over the same world, so the pool grows and shrinks in whole
-groups rather than single nodes.
+Set `Nodes` above 1 to serve a model that does not fit on one node. Each
+replica then spans that many nodes, which Fuzzball starts and stops together;
+rank 0 serves the endpoint and coordinates the rest. A mixture-of-experts model
+with `ExpertParallelism` `auto` or `true` runs expert-parallel across the
+group's GPUs; any other model, or `ExpertParallelism=false`, runs
+tensor-parallel across them. A replica has `Nodes` x `GpusPerNode` GPUs, the
+pool grows and shrinks in whole replicas, every node needs `GpusPerNode` GPUs,
+and a cluster that cannot supply `Nodes` nodes at once rejects the submission.
 
-A group needs as many nodes as it has ranks, since two ranks of one replica are
-never placed on the same node, and every node of the group needs
-`GpusPerNode` GPUs. Groups are gang-scheduled, so a pool whose provisioner
-definition cannot supply `Nodes` nodes will not start a single replica; the
-submission is rejected with the node cost named.
+Before choosing `Nodes` above 1:
 
-Three limits worth knowing before choosing `Nodes` above 1.
-
-Ranks other than rank 0 do not report container state, so a peer rank dying
-after startup raises no failure: the group is not torn down and the endpoint
-keeps serving from rank 0 with part of the model missing.
-
-The group's nodes must be able to reach each other on arbitrary ports — the
-ranks negotiate data-parallel RPC and collective connections between themselves
-— which is a property of the cluster's network rather than something this entry
-can arrange. Where the collective library needs pointing at a particular
-interface, or otherwise tuning, use `ExtraEnv`.
-
-**The GPUs must support GPU-to-GPU collectives.** A group's ranks build an NCCL
-communicator (RCCL on `amd`), and virtualised GPUs generally cannot: a `Q`-series
-vGPU profile such as `NVIDIA A16-2Q` fails at startup with
-
-    init.cc:416 NCCL WARN Cuda failure 'operation not supported'
-    RuntimeError: NCCL error: unhandled cuda error
-
-because the CUDA memory operations the collective library depends on are not
-available to the guest. This is a property of the GPU profile, not of the
-network: NCCL reports the transport selected successfully just before failing,
-and `NCCL_CUMEM_ENABLE=0`, `NCCL_P2P_DISABLE=1` and `NCCL_SHM_DISABLE=1` do not
-work around it. Multi-node serving needs passthrough or bare-metal GPUs. A
-single-node replica is unaffected — it never builds a cross-rank communicator.
-
-Multi-node groups are untested on `Gpu: amd`. The layout and every flag are
-emitted identically there, but the ROCm image tracks a different vLLM release
-from the nvidia one, so flag support is unverified.
+- If a node other than rank 0 dies after startup, the replica is not torn
+  down; the endpoint keeps serving from rank 0 with part of the model missing.
+- The replica's nodes must reach each other on arbitrary ports. Use `ExtraEnv`
+  to point NCCL at a particular interface or otherwise tune it, e.g.
+  `ExtraEnv=NCCL_SOCKET_IFNAME=eth0`.
+- The GPUs must support GPU-to-GPU collectives. Virtualised GPUs generally do
+  not: a vGPU profile such as `NVIDIA A16-2Q` fails at startup with `NCCL WARN
+  Cuda failure 'operation not supported'`, right after NCCL reports the
+  transport selected successfully. `NCCL_CUMEM_ENABLE=0`, `NCCL_P2P_DISABLE=1`
+  and `NCCL_SHM_DISABLE=1` do not work around it; use passthrough or bare-metal
+  GPUs. Single-node replicas are unaffected.
+- Multi-node serving is untested on `Gpu: amd`.
+- An expert-parallel group caps its prefill steps at 512 tokens
+  (`--max-num-batched-tokens 512`, appended after `ExtraArgs`). On vLLM 0.28.0
+  the group's data-parallel all-gather asserts as soon as one rank steps a
+  larger batch, which any prompt of a few hundred tokens or more triggers;
+  with the cap, prompts of 11k tokens and concurrent requests serve normally.
+  Long prompts prefill in more steps than on a single node. Tensor-parallel
+  groups are not affected and carry no cap.
 
 ## Parameters
 
@@ -167,24 +148,12 @@ from the nvidia one, so flag support is unverified.
   `hf://openai/gpt-oss-120b` is roughly three times larger downloaded whole
   than with `?exclude=original/**&exclude=metal/**`.
 - `Gpu`: GPU platform, `nvidia` or `amd`.
-- `ExpertParallelism`: `auto` (default; enabled when the downloaded model's
-  `config.json` indicates a mixture-of-experts model and the replica's
-  data-parallel world, `Nodes` x `GpusPerNode`, is at least 2), `true`
-  (require both — on a dense model the service fails at start naming the model's
-  architecture, and a data-parallel world below 2 is rejected at submission), or
-  `false` (tensor parallelism only).
-- `Nodes`: nodes per replica, default 1. Above 1, each replica is a
-  gang-scheduled group of that many nodes serving one endpoint from rank 0, for
-  a mixture-of-experts model too large for a single node. Requires expert
-  parallelism (`ExpertParallelism=false` is rejected) and at least one GPU per
-  node; a dense model fails at start rather than serving a group that buys
-  nothing.
-- `ExtraEnv`: extra environment variables for the vLLM process, as
-  space-separated `NAME=VALUE` pairs, applied to **every rank** of a replica.
-  For settings with no command-line equivalent — chiefly collective-library
-  tuning (`NCCL_*`, which RCCL also reads on `amd`) that a cluster's
-  interconnect needs, e.g. `NCCL_SOCKET_IFNAME=eth0 NCCL_DEBUG=WARN`. Each entry
-  is validated as `NAME=VALUE`, so values cannot contain spaces.
+- `ExpertParallelism`: `auto` (default), `true`, or `false`; see above.
+- `Nodes`: nodes per replica, default 1. Above 1 needs at least one GPU per
+  node; the layout follows `ExpertParallelism`.
+- `ExtraEnv`: extra environment variables for vLLM as space-separated
+  `NAME=VALUE` pairs, set on every node of a replica. Values cannot contain
+  spaces.
 - `Proxy`: whether to front the pool with an in-workflow LiteLLM proxy.
 - `Scope`: authorization scope of the service endpoint (`user`, `group`,
   `organization`, `public`). Note that a `public` pool endpoint is served
@@ -207,5 +176,5 @@ overhead on a small slice can make the 0.9 default unsatisfiable.
 
 The workflow runs until it is cancelled. The rendered workflow also serves as a
 working example of fronting an autoscaled service pool with an in-workflow
-proxy; render it with `fuzzball workflow catalog render vllm` to study or adapt
+proxy; render it with `fuzzball workflow catalog render vLLM` to study or adapt
 the pattern.

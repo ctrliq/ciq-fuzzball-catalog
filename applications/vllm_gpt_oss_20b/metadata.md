@@ -1,7 +1,7 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 ---
 id: "ciq/ml_and_ai/vllm_gpt_oss_20b"
-name: "gpt-oss-20b"
+name: "GPT-OSS 20B"
 template: vllm
 category: "ML_AND_AI"
 tags:
@@ -26,16 +26,19 @@ entry preconfigured with the deployment its
 The checkpoint is downloaded from the HuggingFace Hub once, at workflow start,
 into the workflow's volume (data ingress). Note that gpt-oss also loads the
 OpenAI harmony token encoding (`o200k_base`) at startup, which vLLM fetches
-from the internet on first run -- so a replica is not fully air-gapped unless
-that encoding is staged locally and vLLM is pointed at it with the
-`TIKTOKEN_ENCODINGS_BASE` environment variable, which this entry does not
-currently expose a value for. Set `Volume` to a persistent volume to keep the checkpoint across
-workflow restarts.
+from the internet on first run. For an air-gapped replica, stage that encoding
+on the volume and point vLLM at it with
+`ExtraEnv=TIKTOKEN_ENCODINGS_BASE=/data/<dir>`. Set `Volume` to a persistent
+volume to keep the checkpoint across workflow restarts.
 
 ```
-fuzzball workflow catalog start "gpt-oss-20b"
-fuzzball workflow catalog start "gpt-oss-20b" --values Volume=my-models,MaxReplicas=8
+fuzzball workflow catalog start "GPT-OSS 20B"
+fuzzball workflow catalog start "GPT-OSS 20B" --values Volume=my-models,MaxReplicas=8
+fuzzball workflow catalog start "GPT-OSS 20B" --values Nodes=2
 ```
+
+Set `Nodes` above 1 to serve each replica across several nodes; see the `vllm`
+entry description for what a multi-node replica needs.
 
 Access, scaling, and gateway discovery are exactly the `vllm` entry's: a
 LiteLLM proxy holds the endpoint by default, and with `Proxy=false` the pool
