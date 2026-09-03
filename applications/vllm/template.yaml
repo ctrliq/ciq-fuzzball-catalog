@@ -237,8 +237,13 @@ services:
       fi
 {{- if gt $nodes 1 }}
 
-      # Extra flags, passed to every node as one argument.
-      parallel_extra="{{ $extra_args }}"
+      # Extra flags, passed to every node as one argument. The trailing cap
+      # keeps every prefill step within the largest CUDA graph vLLM captures:
+      # on vLLM 0.28.0 a multi-node group dies in its data-parallel all-gather
+      # when a rank steps a larger batch (an 8k-token prompt kills it), and
+      # capping the step size is what keeps it alive. It comes last so it wins
+      # over any value in ExtraArgs.
+      parallel_extra="{{ $extra_args }} --max-num-batched-tokens 512"
 
       # Fuzzball runs this script on rank 0 only. The helper launches the other
       # nodes through the multinode rsh wrapper, then rank 0 itself.

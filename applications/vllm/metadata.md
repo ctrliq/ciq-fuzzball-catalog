@@ -124,6 +124,12 @@ Before choosing `Nodes` above 1:
   Cuda failure 'operation not supported'`, and no NCCL setting works around
   it. Use passthrough or bare-metal GPUs. Single-node replicas are unaffected.
 - Multi-node serving is untested on `Gpu: amd`.
+- A multi-node group caps its prefill steps at 512 tokens
+  (`--max-num-batched-tokens 512`, appended after `ExtraArgs`). On vLLM 0.28.0
+  the group's data-parallel all-gather asserts as soon as one rank steps a
+  larger batch, which any prompt of a few hundred tokens or more triggers;
+  with the cap, prompts of 11k tokens and concurrent requests serve normally.
+  Long prompts prefill in more steps than on a single node.
 
 ## Parameters
 
