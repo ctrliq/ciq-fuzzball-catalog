@@ -18,9 +18,9 @@ One workflow per configuration, identical except for `ExpertParallelism`:
 
 ```sh
 fuzzball workflow catalog start vllm --name bench-ep --values \
-  Model=hf://openai/gpt-oss-20b,GpusPerReplica=2,ExpertParallelism=true,Proxy=false,MinReplicas=1,MaxReplicas=1
+  Model=hf://openai/gpt-oss-20b,GpusPerNode=2,ExpertParallelism=true,Proxy=false,MinReplicas=1,MaxReplicas=1
 fuzzball workflow catalog start vllm --name bench-tp --values \
-  Model=hf://openai/gpt-oss-20b,GpusPerReplica=2,ExpertParallelism=false,Proxy=false,MinReplicas=1,MaxReplicas=1
+  Model=hf://openai/gpt-oss-20b,GpusPerNode=2,ExpertParallelism=false,Proxy=false,MinReplicas=1,MaxReplicas=1
 ```
 
 - `Proxy=false` and a fixed single replica (`MinReplicas=MaxReplicas=1`), so
@@ -30,7 +30,7 @@ fuzzball workflow catalog start vllm --name bench-tp --values \
   against the pool endpoint with the ShareGPT default dataset, at
   concurrency levels 8, 32, and 128; 3 minutes of steady state per level
   after a 1-minute warmup.
-- Repeat with `GpusPerReplica=4` if a 4-GPU node is available — EP-vs-TP
+- Repeat with `GpusPerNode=4` if a 4-GPU node is available — EP-vs-TP
   differences grow with GPU count.
 - Record for each run: output tokens/s (total), TTFT p50/p99, and ITL p50/p99
   as reported by `vllm bench serve`.
@@ -45,7 +45,7 @@ fuzzball workflow catalog start vllm --name bench-tp --values \
 | Model | hf://openai/gpt-oss-20b |
 | Date | TBD |
 
-## Results — GpusPerReplica=2
+## Results — GpusPerNode=2
 
 | Concurrency | Layout | Output tok/s | TTFT p50 / p99 (ms) | ITL p50 / p99 (ms) |
 |---|---|---|---|---|
@@ -56,7 +56,7 @@ fuzzball workflow catalog start vllm --name bench-tp --values \
 | 128 | EP | TBD | TBD | TBD |
 | 128 | TP | TBD | TBD | TBD |
 
-## Results — GpusPerReplica=4 (if hardware available)
+## Results — GpusPerNode=4 (if hardware available)
 
 Same table shape as above. TBD.
 

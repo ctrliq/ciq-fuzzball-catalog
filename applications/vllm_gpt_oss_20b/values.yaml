@@ -118,10 +118,11 @@ values:
     string_value: "--tool-call-parser openai --enable-auto-tool-choice"
     display_category: Model Configuration
 
-  - name: GpusPerReplica
+  - name: GpusPerNode
     display_name: >-
-      Number of GPU devices per replica (the tensor-parallel size, or the
-      data-parallel size when expert parallelism is enabled). 1 is
+      Number of GPU devices on each of the replica's nodes (the tensor-parallel
+      size, or the per-node share of the data-parallel size when expert
+      parallelism is enabled). 1 is
       the tensor-parallel size the model's recipe validated.
     uint_value: 1
     display_category: Resources
@@ -129,12 +130,12 @@ values:
     display_name: GPU model to request (e.g. NVIDIA L40S). Empty requests any GPU of the selected platform.
     string_value: ""
     display_category: Resources
-  - name: ReplicaCores
-    display_name: CPU cores per replica.
+  - name: CoresPerNode
+    display_name: CPU cores on each of the replica's nodes.
     uint_value: 8
     display_category: Resources
-  - name: ReplicaMemory
-    display_name: Memory per replica.
+  - name: MemoryPerNode
+    display_name: Memory on each of the replica's nodes.
     string_value: 32GiB
     display_category: Resources
 

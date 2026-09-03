@@ -77,8 +77,8 @@
 {{- if lt $scale_up_cooldown 15 }}
   {{- fail "ScaleUpCooldown must be at least 15 seconds" }}
 {{- end }}
-{{- $gpus_per_replica := int .GpusPerReplica }}
-{{- $tensor_parallel := max 1 $gpus_per_replica }}
+{{- $gpus_per_node := int .GpusPerNode }}
+{{- $tensor_parallel := max 1 $gpus_per_node }}
 {{- /* Values files written before this knob existed -- the per-model preset
        entries among them -- carry no Nodes at all, and must keep rendering as
        single-node. Those arrive as an invalid kind, which is what separates
@@ -94,7 +94,7 @@
 {{- /* A replica's data-parallel world spans every GPU of every node in its
        group, so that product -- not the per-node GPU count -- is what decides
        whether expert parallelism has anything to shard across. */}}
-{{- $dp_size := mul $nodes $gpus_per_replica }}
+{{- $dp_size := mul $nodes $gpus_per_node }}
 {{- $ep := lower (trim (default "auto" .ExpertParallelism)) }}
 {{- if not (has $ep (list "auto" "true" "false")) }}
   {{- fail "ExpertParallelism must be one of: auto, true, false" }}
@@ -103,7 +103,7 @@
        because a single GPU has nothing to shard the experts across. Refuse the
        combination rather than reporting a layout the server will not use. */}}
 {{- if and (eq $ep "true") (lt $dp_size 2) }}
-  {{- fail "ExpertParallelism=true requires Nodes x GpusPerReplica >= 2; expert parallelism has no effect on a single GPU" }}
+  {{- fail "ExpertParallelism=true requires Nodes x GpusPerNode >= 2; expert parallelism has no effect on a single GPU" }}
 {{- end }}
 {{- /* A multi-node group exists to serve one model across nodes with its
        experts sharded over the group. Data-parallel replication of a dense
@@ -113,18 +113,14 @@
 {{- if and (gt $nodes 1) (eq $ep "false") }}
   {{- fail "Nodes > 1 requires expert parallelism; set ExpertParallelism=auto or true, or serve a dense model with Nodes=1 and more replicas" }}
 {{- end }}
-{{- if and (gt $nodes 1) (lt $gpus_per_replica 1) }}
-  {{- fail "Nodes > 1 requires GpusPerReplica >= 1; every node of a group serves part of the model" }}
+{{- if and (gt $nodes 1) (lt $gpus_per_node 1) }}
+  {{- fail "Nodes > 1 requires GpusPerNode >= 1; every node of a group serves part of the model" }}
 {{- end }}
 {{- /* Fixed port for data-parallel RPC between a group's nodes. Multinode
        services run on the host network, so this must be free on every node of
        the group and reachable between them; it is not a served port and needs
        no endpoint. */}}
 {{- $dp_rpc_port := 13345 }}
-{{- $all2all := trim (default "" .All2AllBackend) }}
-{{- if and $all2all (not (has $all2all (list "allgather_reducescatter" "deepep_high_throughput" "deepep_low_latency"))) }}
-  {{- fail "All2AllBackend must be empty, allgather_reducescatter, deepep_high_throughput, or deepep_low_latency" }}
-{{- end }}
 {{- $gpu_model := trim .GpuModel }}
 {{- $extra_args := trim .ExtraArgs }}
 {{- if and $extra_args (not (regexMatch "^[A-Za-z0-9 ._=/-]+$" $extra_args)) }}
@@ -260,20 +256,17 @@ services:
         parallel_args="--tensor-parallel-size {{ $tensor_parallel }}"
         echo "vllm: $arch ($is_moe), ExpertParallelism={{ $ep }} -> tensor parallelism, size {{ $tensor_parallel }}"
       fi
-{{- if and $all2all (le $nodes 1) }}
-      parallel_args="$parallel_args --all2all-backend {{ $all2all }}"
-{{- end }}
 {{- if gt $nodes 1 }}
 
       # Flags shared by every rank beyond the parallel layout, passed as one
       # word-split argument so a group's ranks stay byte-identical apart from
       # their own rank offset.
-      parallel_extra="{{ if $all2all }}--all2all-backend {{ $all2all }}{{ end }}{{ if $extra_args }}{{ if $all2all }} {{ end }}{{ $extra_args }}{{ end }}"
+      parallel_extra="{{ $extra_args }}"
 
-      # Under implementation: generic the wrapper runs this script on rank 0
-      # only; peer ranks wait for work dispatched through the rsh shim, which
-      # is what the shipped helper wraps. Both halves of the group are started
-      # from here: peers headless, then rank 0 with the API server.
+      # The generic multinode implementation runs this script on rank 0 only;
+      # peers execute their portion via the rsh shim that the shipped
+      # generic-helper wraps. So both halves of the group are launched from
+      # here: the peers headless, then rank 0 with the API server.
       . /multinode/generic-helper
 
       # Every rank dials rank 0 for data-parallel RPC, so the coordinator
@@ -282,7 +275,7 @@ services:
 
       # The peer script is single-quoted so $RANK expands on each worker to its
       # own rank; rank-0-side values travel as positional arguments, which the
-      # helper quotes for the trip. Each node owns {{ $gpus_per_replica }}
+      # helper quotes for the trip. Each node owns {{ $gpus_per_node }}
       # consecutive data-parallel ranks, so its offset is rank x that count.
       exec_rankN 'exec vllm serve "$1" \
         --served-model-name "$2" \
@@ -297,7 +290,7 @@ services:
         --max-model-len "$7" \
         --gpu-memory-utilization "$8" \
         $9' \
-        "{{ $model_path }}" "{{ $model_name }}" "{{ $dp_size }}" "{{ $gpus_per_replica }}" \
+        "{{ $model_path }}" "{{ $model_name }}" "{{ $dp_size }}" "{{ $gpus_per_node }}" \
         "$head_ip" "{{ $dp_rpc_port }}" "{{ .MaxContextSize }}" "{{ .GpuMemoryUtilization }}" \
         "$parallel_extra"
 
@@ -317,7 +310,7 @@ services:
         --host 0.0.0.0 \
         --port "$9" \
         ${10}' \
-        "{{ $model_path }}" "{{ $model_name }}" "{{ $dp_size }}" "{{ $gpus_per_replica }}" \
+        "{{ $model_path }}" "{{ $model_name }}" "{{ $dp_size }}" "{{ $gpus_per_node }}" \
         "$head_ip" "{{ $dp_rpc_port }}" "{{ .MaxContextSize }}" "{{ .GpuMemoryUtilization }}" \
         "{{ $vllm_port }}" "$parallel_extra"
 
@@ -348,12 +341,12 @@ services:
       # this shape, so the group's total is {{ $nodes }} times it.
 {{- end }}
       cpu:
-        cores: {{ .ReplicaCores }}
+        cores: {{ .CoresPerNode }}
       memory:
-        size: {{ .ReplicaMemory }}
-      {{- if gt $gpus_per_replica 0 }}
+        size: {{ .MemoryPerNode }}
+      {{- if gt $gpus_per_node 0 }}
       devices:
-        {{ $gpu_device }}: {{ $gpus_per_replica }}
+        {{ $gpu_device }}: {{ $gpus_per_node }}
       {{- if $gpu_model }}
       annotations:
         {{ $gpu_device }}.model: "{{ $gpu_model }}"
