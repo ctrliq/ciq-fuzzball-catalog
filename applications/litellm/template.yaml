@@ -5,7 +5,6 @@
        no randAlphaNum, so they are built as hex from 63-bit randInt draws. */}}
 {{- $masterKey := printf "sk-%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
 {{- $dbPassword := printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
-{{- $clusterCA := trim .ClusterCASecret }}
 {{- $dataVolume := trim .DataVolume }}
 {{- if not (hasPrefix "volume://" $dataVolume) }}
 {{- fail "DataVolume must be a volume:// reference, e.g. volume://user/ephemeral" }}
@@ -16,6 +15,7 @@
 {{- $dbName := "litellm" }}
 {{- $dbMount := "/var/lib/postgresql/data" }}
 {{- $caBundle := "/tmp/fuzzball-ca.pem" }}
+{{- $nodeTrustStore := "/run/fuzzball-substrate/trusted-certs/root-ca.crt" }}
 
 version: v4
 
@@ -106,9 +106,6 @@ services:
       - TOKEN_TTL={{ .TokenLifetime }}
       - COLD_START_RETRIES={{ .ColdStartRetries }}
       - FB_CA_BUNDLE={{ $caBundle }}
-{{- if $clusterCA }}
-      - CLUSTER_CA_PEM={{ $clusterCA }}
-{{- end }}
     depends-on:
       - name: database
         status: RUNNING
@@ -143,10 +140,9 @@ services:
       # push tries to re-download them.
       export HOME=/root
 
-      # SSL_CERT_FILE replaces the trust store wholesale rather than adding to it,
-      # so a private cluster CA is appended to the system bundle. Public TLS has
-      # to keep working: LiteLLM reaches real providers and its own engine
-      # downloads over it.
+      # SSL_CERT_FILE replaces the trust store wholesale, so the cluster CA
+      # Fuzzball mounts into every container is appended to the system bundle
+      # (OpenSSL ignores an unhashed PEM reached via SSL_CERT_DIR).
       if [ -f /etc/ssl/certs/ca-certificates.crt ]; then
         cp /etc/ssl/certs/ca-certificates.crt {{ $caBundle }}
       elif [ -f /etc/ssl/cert.pem ]; then
@@ -155,8 +151,10 @@ services:
         echo "FATAL: no system CA bundle found in the gateway image" >&2
         exit 1
       fi
-      if [ -n "${CLUSTER_CA_PEM}" ]; then
-        printf '%s\n' "${CLUSTER_CA_PEM}" >> {{ $caBundle }}
+      if [ -f {{ $nodeTrustStore }} ]; then
+        printf '\n' >> {{ $caBundle }}
+        cat {{ $nodeTrustStore }} >> {{ $caBundle }}
+        echo "WARNING: node trust store {{ $nodeTrustStore }} is missing; discovery only works if the Fuzzball API uses a publicly trusted certificate" >&2
       fi
 
       cat > /tmp/reconcile.py <<'PYEOF'
