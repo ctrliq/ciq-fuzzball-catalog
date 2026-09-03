@@ -1,7 +1,7 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 ---
 id: "ciq/ml_and_ai/opencode"
-name: "opencode"
+name: "OpenCode"
 category: "ML_AND_AI"
 tags:
 - ai
@@ -18,9 +18,9 @@ model is reached over an OpenAI-compatible endpoint such as the one published by
 the `vllm` or `litellm` entries.
 
 ```
-fuzzball workflow catalog start opencode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKey=sk-...
-fuzzball workflow catalog start opencode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKeySecret=secret://user/litellm-key
-fuzzball workflow catalog start opencode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKey=sk-...,ServiceScope=public
+fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKey=sk-...
+fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKeySecret=secret://user/litellm-key
+fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKey=sk-...,ServiceScope=public
 ```
 
 Get the endpoint URL of the model workflow with `fuzzball workflow endpoints
