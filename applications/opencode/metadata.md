@@ -27,12 +27,20 @@ Get the endpoint URL of the model workflow with `fuzzball workflow endpoints
 list`, and its LiteLLM key from its definition (`fuzzball workflow get
 <workflow id>`). When the server starts it registers every model the endpoint
 lists at `/v1/models`, so pointed at the LiteLLM Model Gateway entry
-(`litellm`) it offers everything the gateway has discovered; switch between
-them with `/models` in the client. `Model` is optional and only picks the
-default, named as the endpoint serves it (for the `vllm` entry, its `Model`
-value without the `hf://` prefix); without it the first listed model is the
-default. The list is read once at startup, so a model that appears on the
-endpoint later needs a restart of this workflow.
+(`litellm`) it offers everything the gateway had discovered at that moment.
+`Model` is optional and only picks the default, named as the endpoint serves
+it (for the `vllm` entry, its `Model` value without the `hf://` prefix);
+without it the first listed model is the default.
+
+To see the models:
+
+- In the client, `/models` lists the registered ones and switches between them.
+- `fuzzball workflow log <workflow id> opencode` shows the list the server
+  registered and which one is the default.
+- The `show-server` job prints a `curl` against the endpoint's `/v1/models` for
+  what the endpoint serves right now. The server reads that list once, at
+  startup, so a model the endpoint gains later needs a restart of this
+  workflow to become selectable.
 
 ## Attaching to the model
 

@@ -130,13 +130,25 @@ jobs:
       echo "Use ServiceScope=public for the web application or 'opencode attach'."
       {{- end }}
       echo ""
-      echo "Models: every model {{ $endpoint }} listed when the server started,"
+      echo "Models: the server registered every model the endpoint listed when it"
       {{- if $model }}
-      echo "with fuzzball/{{ $model }} as the default. Switch with /models in the"
+      echo "started, with fuzzball/{{ $model }} as the default. Switch with /models in"
       {{- else }}
-      echo "the first of them as the default. Switch with /models in the"
+      echo "started, the first of them as the default. Switch with /models in"
       {{- end }}
-      echo "client; the opencode service log names them."
+      echo "the client. The opencode service log names them. A model the endpoint"
+      echo "gains later needs a restart of this workflow. What it serves right now:"
+      {{- if $mint }}
+      endpoint_id=$(echo "{{ $endpoint }}" | sed -e 's#^[a-z]*://##' -e 's#/.*##' -e 's#:.*##' | cut -d. -f1)
+      echo "   fuzzball workflow endpoints generate-token ${endpoint_id}"
+      echo "   curl -H \"Authorization: Bearer <that token>\" \\"
+      {{- if or $api_key_secret $api_key }}
+      echo "        -H \"x-litellm-api-key: <your model API key>\" \\"
+      {{- end }}
+      echo "        {{ $endpoint }}/v1/models"
+      {{- else }}
+      echo "   curl -H \"Authorization: Bearer <your model API key>\" {{ $endpoint }}/v1/models"
+      {{- end }}
     resource:
       cpu:
         cores: 1
