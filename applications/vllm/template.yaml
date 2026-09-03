@@ -353,6 +353,14 @@ services:
       {{- end }}
       {{- end }}
     network:
+      {{- if gt $nodes 1 }}
+      # Stated rather than left to the platform's implicit default: a group's
+      # ranks rendezvous on node addresses over ports they negotiate between
+      # themselves, which a bridge namespace cannot carry. Set only here, since
+      # a single-node replica wants the substrate-assigned host port that lets
+      # two replicas of a pool share a node.
+      host: true
+      {{- end }}
       ports:
         - name: openai-api
           port: {{ $vllm_port }}
