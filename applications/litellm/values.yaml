@@ -7,6 +7,15 @@ values:
       options: [user, group, organization]
     display_category: "Access"
 
+  - name: "MasterKeySecret"
+    display_name: >-
+      Fuzzball secret holding the LiteLLM master key, as secret://user/<name>. Must be a
+      user-scoped secret of type value whose content starts with sk-. Left empty, a master
+      key is generated at every workflow start and embedded in the workflow definition.
+    secret_value:
+      reference: ""
+    display_category: "Access"
+
   - name: "DataVolume"
     display_name: >-
       Volume holding the gateway database (virtual keys, budgets, spend history), as
