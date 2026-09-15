@@ -7,7 +7,7 @@
        no randAlphaNum, so generated credentials are built as hex from 63-bit
        randInt draws. */}}
 {{- $masterKeySecret := trim .MasterKeySecret }}
-{{- if and $masterKeySecret (not (hasPrefix "secret://user/" $masterKeySecret)) }}
+{{- if and $masterKeySecret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $masterKeySecret)) }}
 {{- fail "MasterKeySecret must be a user-scoped secret reference, e.g. secret://user/gateway-master-key (environment variable secrets accept no other scope)" }}
 {{- end }}
 {{- $masterKey := $masterKeySecret }}

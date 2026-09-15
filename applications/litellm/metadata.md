@@ -37,11 +37,13 @@ Every call to the gateway carries two credentials: a Fuzzball token in `Authoriz
 2. Get the master key. By default it is generated at submit time; read it with
    `fuzzball workflow log <workflow> show-gateway`, or from the workflow definition via
    `fuzzball workflow get <workflow>`. To use your own instead, store it in a user-scoped
-   secret of type `value` and name that secret in `MasterKeySecret`. The key then never
-   appears in the definition or the logs, and it stays the same across restarts:
+   secret of type `value` and name that secret in `MasterKeySecret`. The key then stays out
+   of the workflow definition, so someone who can read the workflow no longer sees it (its
+   owner can still read it from the running container), and it stays the same across
+   workflow starts:
 
    ```sh
-   fuzzball secret create secret://user/gateway-master-key --type value '{"value":"sk-..."}'
+   printf 'sk-...' | fuzzball secret create secret://user/gateway-master-key --type value
    fuzzball workflow catalog start "LiteLLM Model Gateway" \
         --values MasterKeySecret=secret://user/gateway-master-key
    ```
