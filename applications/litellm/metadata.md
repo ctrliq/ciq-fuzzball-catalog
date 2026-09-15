@@ -34,9 +34,19 @@ Every call to the gateway carries two credentials: a Fuzzball token in `Authoriz
    fuzzball workflow endpoints list
    ```
 
-2. Get the master key. It is generated at submit time; read it with
+2. Get the master key. By default it is generated at submit time; read it with
    `fuzzball workflow log <workflow> show-gateway`, or from the workflow definition via
-   `fuzzball workflow get <workflow>`.
+   `fuzzball workflow get <workflow>`. To use your own instead, store it in a user-scoped
+   secret of type `value` and name that secret in `MasterKeySecret`. The key then stays out
+   of the workflow definition, so someone who can read the workflow no longer sees it (its
+   owner can still read it from the running container), and it stays the same across
+   workflow starts:
+
+   ```sh
+   printf 'sk-...' | fuzzball secret create secret://user/gateway-master-key --type value
+   fuzzball workflow catalog start "LiteLLM Model Gateway" \
+        --values MasterKeySecret=secret://user/gateway-master-key
+   ```
 
 3. Get a Fuzzball token: your own user token works, or mint one bound to the gateway's
    endpoint with `fuzzball workflow endpoints generate-token <endpoint id>`.
@@ -120,6 +130,7 @@ To confirm a model was picked up, watch `fuzzball workflow log <workflow> gatewa
 - **Callers borrow the owner's reach.** The gateway discovers and authenticates to models
   as the identity that started it, so the gateway's endpoint scope (`ServiceScope`)
   decides who can use every model it serves -- regardless of the callers' own grants.
-- **Anyone who can read the workflow can read the master key.** It is generated fresh on
-  every workflow start and embedded in the workflow definition. Hand callers virtual keys,
-  never the master key.
+- **A generated master key is readable by anyone who can read the workflow.** Without
+  `MasterKeySecret` it is minted fresh on every workflow start and embedded in the workflow
+  definition. Set `MasterKeySecret` to keep the key out of the definition, and hand callers
+  virtual keys, never the master key.

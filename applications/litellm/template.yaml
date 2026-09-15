@@ -1,9 +1,19 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 
-{{- /* Both credentials are generated at submit time and live in the rendered
-       definition; the show-gateway job prints the master key. slim-sprig has
-       no randAlphaNum, so they are built as hex from 63-bit randInt draws. */}}
-{{- $masterKey := printf "sk-%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+{{- /* The database password is generated at submit time and lives in the
+       rendered definition; so does the master key, unless MasterKeySecret
+       names a Fuzzball secret, in which case the containers receive the
+       secret reference and Fuzzball resolves it at run time. slim-sprig has
+       no randAlphaNum, so generated credentials are built as hex from 63-bit
+       randInt draws. */}}
+{{- $masterKeySecret := trim .MasterKeySecret }}
+{{- if and $masterKeySecret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $masterKeySecret)) }}
+{{- fail "MasterKeySecret must be a user-scoped secret reference, e.g. secret://user/gateway-master-key (environment variable secrets accept no other scope)" }}
+{{- end }}
+{{- $masterKey := $masterKeySecret }}
+{{- if not $masterKey }}
+{{- $masterKey = printf "sk-%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+{{- end }}
 {{- $dbPassword := printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
 {{- $dataVolume := trim .DataVolume }}
 {{- if not (hasPrefix "volume://" $dataVolume) }}
@@ -140,6 +150,13 @@ services:
       # push tries to re-download them.
       export HOME=/root
 
+      # A key from MasterKeySecret is first visible here, once Fuzzball has
+      # resolved it; a generated one always carries the prefix.
+      case "${LITELLM_MASTER_KEY}" in
+        sk-*) ;;
+        *) echo "FATAL: the master key must start with sk-; check the secret named in MasterKeySecret" >&2; exit 1 ;;
+      esac
+
       # SSL_CERT_FILE replaces the trust store wholesale, so the cluster CA
       # Fuzzball mounts into every container is appended to the system bundle
       # (OpenSSL ignores an unhashed PEM reached via SSL_CERT_DIR).
@@ -154,6 +171,7 @@ services:
       if [ -f {{ $nodeTrustStore }} ]; then
         printf '\n' >> {{ $caBundle }}
         cat {{ $nodeTrustStore }} >> {{ $caBundle }}
+      else
         echo "WARNING: node trust store {{ $nodeTrustStore }} is missing; discovery only works if the Fuzzball API uses a publicly trusted certificate" >&2
       fi
 
@@ -411,8 +429,14 @@ jobs:
       echo "   fuzzball workflow endpoints list"
       echo ""
 
+{{- if $masterKeySecret }}
+      echo "Master key for this gateway: the value of {{ $masterKeySecret }}"
+      key_hint="<master key>"
+{{- else }}
       echo "Master key for this gateway (also in the definition: fuzzball workflow get <workflow id>):"
       echo "   ${MASTER_KEY}"
+      key_hint="${MASTER_KEY}"
+{{- end }}
       echo ""
 
       echo "Models discovered so far:"
@@ -426,7 +450,7 @@ jobs:
       echo "Create a virtual key:"
       echo "   curl -X POST \\"
       echo "     -H \"Authorization: Bearer <fuzzball token>\" \\"
-      echo "     -H \"x-litellm-api-key: ${MASTER_KEY}\" \\"
+      echo "     -H \"x-litellm-api-key: ${key_hint}\" \\"
       echo "     -H \"Content-Type: application/json\" \\"
       echo "     <gateway url>/key/generate -d '{\"models\": []}'"
       echo ""
