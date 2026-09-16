@@ -9,6 +9,7 @@ tags:
 - inference
 - autoscaling
 - OpenAI API
+- vllm
 - Gemma
 - ai
 - model
