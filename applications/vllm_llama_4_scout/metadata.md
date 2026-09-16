@@ -9,6 +9,7 @@ tags:
 - inference
 - autoscaling
 - OpenAI API
+- vllm
 - Llama
 - ai
 - model

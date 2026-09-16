@@ -9,7 +9,8 @@ tags:
 - inference
 - autoscaling
 - OpenAI API
-- Mistral
+- vllm
+- Ministral
 - ai
 - model
 ---

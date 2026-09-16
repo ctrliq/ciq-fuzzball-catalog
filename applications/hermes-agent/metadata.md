@@ -8,6 +8,7 @@ tags:
 - LLM
 - OpenAI API
 - genAI
+- ai
 ---
 This workflow runs [Hermes Agent](https://hermes-agent.nousresearch.com), a
 general-purpose agent with persistent memory, as a Fuzzball service already
