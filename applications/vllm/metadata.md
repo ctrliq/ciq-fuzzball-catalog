@@ -92,9 +92,9 @@ Which annotation the endpoint carries follows from which mode it is in, and
 decides who finds the pool without being given a URL.
 
 `Proxy=true` annotates the proxy endpoint `ciq.com/api: openai-gateway`, the
-same marker the `litellm` entry puts on its own endpoint. Agents such as
-`opencode` and `hermes-agent` attach to it directly, so a single pool and one
-agent need no gateway workflow between them. A standalone `litellm` gateway does
+same marker the `litellm` entry puts on its own endpoint. The `hermes-agent`
+entry attaches to it directly, so a single pool and one agent need no gateway
+workflow between them. A standalone `litellm` gateway does
 not nest one proxy behind another: it registers only endpoints that also carry
 `ciq.com/model`, and a proxy endpoint never does. Its `DiscoveryApiValue` knob
 is a weaker guard -- it is set to `openai` by default, but it is user-settable.
@@ -109,15 +109,18 @@ reports why.
 Discovery only considers endpoints the caller's identity can reach, and `Scope`
 defaults to `user` so a pool does not appear in a colleague's candidate set.
 Widen it deliberately. What an agent does with several visible gateways is the
-agent's choice -- `opencode` registers each as its own provider, `hermes-agent`
-refuses to guess -- so with several pools running at once, name the endpoint on
-the agent. Narrowing `Scope` does not help: `user` is already the narrowest, and
-two pools you started yourself collide inside it.
+agent's choice, and `hermes-agent` refuses to guess -- so with several pools
+running at once, name the endpoint on the agent. Narrowing `Scope` does not
+help: `user` is already the narrowest, and two pools you started yourself
+collide inside it.
 
-`Scope=public` carries no `ciq.com/api` annotation at all, so a public pool is
-not discoverable. The listing surfaces a public endpoint to every member of the
-organization, and an agent that found one would then fail minting the token a
-public endpoint does not need.
+At `Proxy=true`, `Scope=public` carries no `ciq.com/api` annotation, so a public
+proxied pool is not discovered. The listing surfaces a public endpoint to every
+member of the organization, and an agent that found one would then fail minting
+the token a public endpoint does not need. This does not extend to `Proxy=false`:
+the per-replica endpoints carry their annotations at every scope, so a public
+pool is still registered by any gateway in the organization -- and that gateway
+then cannot mint for it either. Do not publish a pool for a gateway at `public`.
 
 Discovery finds the URL, not the credential. At `Proxy=true` the LiteLLM proxy
 still enforces `ApiKey`. Left empty it is generated once, when the template is
@@ -199,9 +202,9 @@ Before choosing `Nodes` above 1:
 - `Proxy`: whether to front the pool with an in-workflow LiteLLM proxy.
 - `Scope`: authorization scope of the service endpoint (`user`, `group`,
   `organization`, `public`), defaulting to `user`. It also bounds who discovers
-  the pool, and `public` opts out of discovery entirely. Note that a `public`
-  pool endpoint is served without authentication and therefore never wakes a
-  pool idling at zero.
+  the pool, and at `Proxy=true` `public` opts the proxy endpoint out of
+  discovery. Note that a `public` pool endpoint is served without authentication
+  and therefore never wakes a pool idling at zero.
 - `MinReplicas` / `MaxReplicas`: replica pool bounds. `MinReplicas=0`
   enables scale-to-zero.
 - `ApiKey`: OpenAI API key enforced by the LiteLLM proxy. Must start with
