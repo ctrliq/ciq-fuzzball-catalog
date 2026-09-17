@@ -36,7 +36,12 @@ values:
     string_value: ""
     display_category: "Animation"
   - name: "VolumeReference"
-    display_name: "Workspace volume: 'ephemeral' (default; the case directory and downloaded inputdata are destroyed when the workflow stops), or the name of an existing persistent volume to cache inputdata between runs."
+    display_name: >-
+      Workspace volume: 'ephemeral' (default; the case directory and downloaded
+      inputdata are destroyed when the workflow stops), or the name of an
+      existing persistent volume to cache inputdata between runs. Mounted at
+      /home/user. The case directory and archive are cleared at the start of
+      every run; only inputdata is reused.
     string_value: "ephemeral"
     display_category: "Storage"
   - name: "VideoDestination"

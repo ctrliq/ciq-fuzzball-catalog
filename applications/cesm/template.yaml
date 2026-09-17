@@ -1,12 +1,12 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $volume := trim .VolumeReference }}
+{{- if hasPrefix "volume://" $volume }}
+  {{- fail "VolumeReference no longer takes a volume:// URI -- use 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
 {{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
   {{- fail "VolumeReference must be 'ephemeral' or the name of a persistent volume" }}
 {{- end }}
 {{- $persistent := ne (lower $volume) "ephemeral" }}
-{{- /* An empty mapping is not the same as a key with nothing under it, which
-       decodes to no volume at all. */}}
-{{- $workdir_empty := and (not $persistent) .UseInlineAnimationScript (not .VideoDestination) (not .GifDestination) }}
 version: v4
 
 {{- if .UseInlineAnimationScript }}
@@ -137,9 +137,11 @@ defaults:
       /home/user: workdir
 
 volumes:
-  workdir:{{ if $workdir_empty }} {}{{ end }}
+  workdir:
     {{- if $persistent }}
     name: "{{ $volume }}"
+    {{- else }}
+    use: ephemeral
     {{- end }}
     {{- if not .UseInlineAnimationScript }}
     ingress:
@@ -185,7 +187,8 @@ jobs:
       mkdir -p /home/user/cases /home/user/inputdata \
                /home/user/archive /home/user/runs
 
-      rm -rf "${CASEROOT}" "/home/user/runs/${CASE}"
+      # Not inputdata/ -- that is the cache a persistent volume exists for.
+      rm -rf "${CASEROOT}" "/home/user/runs/${CASE}" "/home/user/archive/${CASE}"
 
       create_newcase \
           --case    "${CASEROOT}" \
@@ -351,6 +354,9 @@ jobs:
 
       PY=/srv/conda/envs/notebook/bin/python
 
+      # A persistent volume still holds the previous run's animations.
+      rm -f /home/user/{{.VideoOutputName}} /home/user/{{.GifOutputName}}
+
       ls -la /home/user/archive/{{.CaseName}}/atm/hist/ || {
         echo "FAIL: cesm-run output is missing"; exit 1; }
 
@@ -366,8 +372,15 @@ jobs:
 
       "$PY" /home/user/animate_cesm.py
 
-      ls -lh /home/user/{{.GifOutputName}} 2>/dev/null || true
-      ls -lh /home/user/{{.VideoOutputName}} 2>/dev/null || true
+      {{- if .GifDestination }}
+      ls -lh /home/user/{{.GifOutputName}} || {
+        echo "FAIL: no {{.GifOutputName}} was produced"; exit 1; }
+      {{- end }}
+      {{- if .VideoDestination }}
+      # The animation script downgrades a missing ffmpeg to a warning.
+      ls -lh /home/user/{{.VideoOutputName}} || {
+        echo "FAIL: no {{.VideoOutputName}} was produced (ffmpeg unavailable?)"; exit 1; }
+      {{- end }}
     resource:
       cpu:
         cores: {{.AnimationCores}}
