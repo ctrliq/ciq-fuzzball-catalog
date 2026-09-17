@@ -246,12 +246,17 @@ Switch between the cluster and anything else you have configured with
 
 ## Things to know before you start it
 
-- **The `vllm` entry is not discoverable at its defaults.** With `Proxy=true`,
-  which is its default, its only OpenAI surface is an in-workflow LiteLLM proxy
-  whose endpoint carries no annotations -- so a gateway cannot register it and
-  this entry cannot discover it. Start `vllm` with `Proxy=false`, which
-  publishes annotated per-replica endpoints for a `litellm` gateway to find, or
-  point this entry straight at the vllm proxy with an explicit `Endpoint`.
+- **A discovered `vllm` pool still needs its key.** With `Proxy=true`, which is
+  its default, `vllm` annotates its in-workflow LiteLLM proxy endpoint
+  `ciq.com/api: openai-gateway`, so this entry discovers it with no `Endpoint`
+  set. That proxy enforces `vllm`'s own `ApiKey`, which is generated afresh on
+  every workflow start when left empty -- set it explicitly on `vllm` and give
+  this entry the same value as `ApiKeySecret`, or discovery finds the pool and
+  the pool refuses the request. Starting `vllm` with `Proxy=false` instead
+  publishes annotated per-replica endpoints for a `litellm` gateway to front.
+- **Two visible gateways stop the agent.** A `vllm` pool at `Proxy=true` is a
+  gateway for this purpose, so running one alongside a `litellm` entry leaves
+  this agent refusing to choose. Narrow one of the scopes, or set `Endpoint`.
 - **A gateway that serves no models yet stops the agent.** Discovery reads
   `/v1/models`, and a gateway whose model pools have not started serves an
   empty list, which is indistinguishable from a misconfigured gateway. Start

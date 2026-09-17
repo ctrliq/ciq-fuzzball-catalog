@@ -104,8 +104,9 @@ attach to these; reach them through the gateway.
 
 Discovery only considers endpoints the caller's identity can reach, and `Scope`
 defaults to `user` so a pool does not appear in a colleague's candidate set.
-Widen it deliberately. An agent that can see more than one gateway refuses to
-guess between them, so with several pools running at once, either narrow the
+Widen it deliberately. What an agent does with several visible gateways is the
+agent's choice -- `opencode` registers each as its own provider, `hermes-agent`
+refuses to guess -- so with several pools running at once, either narrow the
 scopes or name the endpoint on the agent.
 
 Discovery finds the URL, not the credential. At `Proxy=true` the LiteLLM proxy
