@@ -42,11 +42,8 @@
 {{- end }}
 
 {{- $volume := trim .Volume }}
-{{- if not $volume }}
+{{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
   {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
-{{- end }}
-{{- if or (contains "\"" $volume) (contains "\\" $volume) (contains "\n" $volume) (contains "#" $volume) }}
-  {{- fail "Volume must not contain quotes, backslashes, or comments" }}
 {{- end }}
 
 {{- $chunk_size := int .ChunkSize }}

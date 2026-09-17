@@ -20,8 +20,8 @@ values:
     display_name: >-
       Volume holding the gateway database (virtual keys, budgets, spend history):
       'ephemeral' (default; all of it is lost when the workflow stops) or the name of an
-      existing persistent volume to keep the gateway state across restarts. Mounted at
-      /var/lib/postgresql/data
+      empty persistent volume you own, to keep the gateway state across restarts. Only one
+      gateway at a time may use a given volume. Mounted at /var/lib/postgresql/data
     string_value: ephemeral
     display_category: "Storage"
 
