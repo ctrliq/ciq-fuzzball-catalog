@@ -86,6 +86,34 @@ Gateway catalog entry (`litellm`) picks the pool up automatically. An authentica
 idles at zero starts the first replica and returns `503` with a `Retry-After`
 header.
 
+## Being discovered
+
+Which annotation the endpoint carries follows from which mode it is in, and
+decides who finds the pool without being given a URL.
+
+`Proxy=true` annotates the proxy endpoint `ciq.com/api: openai-gateway`, the
+same marker the `litellm` entry puts on its own endpoint. Agents such as
+`opencode` and `hermes-agent` attach to it directly, so a single pool and one
+agent need no gateway workflow between them. A standalone `litellm` gateway
+deliberately ignores that value, so it will not try to nest one proxy behind
+another.
+
+`Proxy=false` annotates the per-replica endpoints `ciq.com/api: openai` plus
+`ciq.com/model`, which is what a `litellm` gateway registers. Agents do not
+attach to these; reach them through the gateway.
+
+Discovery only considers endpoints the caller's identity can reach, and `Scope`
+defaults to `user` so a pool does not appear in a colleague's candidate set.
+Widen it deliberately. An agent that can see more than one gateway refuses to
+guess between them, so with several pools running at once, either narrow the
+scopes or name the endpoint on the agent.
+
+Discovery finds the URL, not the credential. At `Proxy=true` the LiteLLM proxy
+still enforces `ApiKey`, which is generated per workflow start when left empty
+and so cannot be guessed by anything that discovered the endpoint. Set `ApiKey`
+explicitly and give the agent the same value (`ApiKeySecret` on `opencode` and
+`hermes-agent`), or the agent finds the pool and is refused by it.
+
 ## Expert parallelism and multi-node serving
 
 Mixture-of-experts models can serve with expert parallelism instead of tensor
@@ -156,8 +184,9 @@ Before choosing `Nodes` above 1:
   spaces.
 - `Proxy`: whether to front the pool with an in-workflow LiteLLM proxy.
 - `Scope`: authorization scope of the service endpoint (`user`, `group`,
-  `organization`, `public`). Note that a `public` pool endpoint is served
-  without authentication and therefore never wakes a pool idling at zero.
+  `organization`, `public`), defaulting to `user`. It also bounds who discovers
+  the pool. Note that a `public` pool endpoint is served without authentication
+  and therefore never wakes a pool idling at zero.
 - `MinReplicas` / `MaxReplicas`: replica pool bounds. `MinReplicas=0`
   enables scale-to-zero.
 - `ApiKey`: OpenAI API key enforced by the LiteLLM proxy. Must start with

@@ -2,7 +2,7 @@ values:
   - name: "ServiceScope"
     display_name: >-
       Who can reach the gateway endpoint. Callers additionally need a LiteLLM virtual key.
-    string_value: group
+    string_value: user
     options_input:
       options: [user, group, organization]
     display_category: "Access"

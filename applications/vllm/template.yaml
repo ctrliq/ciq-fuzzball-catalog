@@ -435,6 +435,9 @@ services:
           protocol: http
           type: subdomain
           scope: {{ $scope }}
+          # One base URL over every replica, which is what an agent attaches to.
+          annotations:
+            ciq.com/api: openai-gateway
     dynamic-config:
       path: /etc/litellm/config.yaml
       services: [vllm]
