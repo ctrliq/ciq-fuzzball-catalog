@@ -26,11 +26,11 @@ fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url
 
 `Endpoint` is optional. Left empty, the `discover-endpoint` job lists the
 Fuzzball endpoints this workflow's own identity can reach and takes **every**
-one annotated `ciq.com/api: openai-gateway` -- what the `litellm` entry and a
-`vllm` pool in its default proxied mode both stamp on their endpoint. Running
-several models at once is the normal case, so each becomes its own provider and
-every model it serves joins the picker. A run that can see no such endpoint at
-all stops, and so does one where none of them could be reached.
+one annotated `ciq.com/api: openai-gateway` -- what the `litellm` entry stamps
+on its endpoint, so start a gateway before starting this with no values.
+Running several gateways at once is the normal case, so each becomes its own
+provider and every model it serves joins the picker. A run that can see no such
+endpoint at all stops, and so does one where none of them could be reached.
 
 Each endpoint has its own base URL and credential, so they stay separate
 providers rather than merging. With one endpoint the provider is `fuzzball`,
