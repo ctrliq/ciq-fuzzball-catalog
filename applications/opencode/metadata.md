@@ -29,14 +29,16 @@ Fuzzball endpoints this workflow's own identity can reach and takes **every**
 one annotated `ciq.com/api: openai-gateway` -- what the `litellm` entry and a
 `vllm` pool in its default proxied mode both stamp on their endpoint. Running
 several models at once is the normal case, so each becomes its own provider and
-every model it serves joins the picker. Only a run that can see no such
-endpoint at all stops.
+every model it serves joins the picker. A run that can see no such endpoint at
+all stops, and so does one where none of them could be reached.
 
 Each endpoint has its own base URL and credential, so they stay separate
 providers rather than merging. With one endpoint the provider is `fuzzball`,
 exactly as before; with several they are `fuzzball-1`, `fuzzball-2` and so on,
-ordered by URL. An endpoint that cannot be reached or rejects the credential is
-skipped with a warning -- the rest still work.
+ordered by URL. An endpoint that rejects the credential is dropped with a
+warning and the rest still work. One that does not answer at all is kept, since
+a pool still starting up answers later, so it contributes no models to the
+picker for this run.
 
 Set `Endpoint` to pin one particular endpoint and ignore the others, or to
 reach an OpenAI-compatible API outside Fuzzball, which additionally needs
@@ -48,7 +50,9 @@ id>`).
 (for the `vllm` entry, its `Model` value without the `hf://` prefix). Whichever
 provider serves it becomes the default; if none advertises it, it is registered
 on the first provider anyway, since an endpoint may serve a model it does not
-list. Without `Model`, the first model of the first provider is the default.
+list. Without `Model`, the first model of the first provider is the default --
+so a run where nothing listed a model and `Model` is empty has no default to
+set, and stops.
 
 To see the models:
 
@@ -124,8 +128,10 @@ before the agent starts, so a prompt injection cannot walk off with it.
   v2 API that the bundled web application queries, so the model picker offers only
   OpenCode's own hosted models. Drive the server through the v1 session API
   (`POST /session`, then `POST /session/{id}/message` with
-  `{"model":{"providerID":"fuzzball","modelID":"<model id>"},"parts":[...]}`) or
-  attach a local client.
+  `{"model":{"providerID":"<provider id>","modelID":"<model id>"},"parts":[...]}`)
+  or attach a local client. The provider id is `fuzzball` when one endpoint was
+  discovered and `fuzzball-1` upwards when several were; the `opencode` service
+  log names them.
 - *Tool calling depends on the serving side.* Agentic work needs a model that
   supports tool calls and a server configured to parse them; with the `vllm`
   entry, pass the appropriate flags in `ExtraArgs` (for example

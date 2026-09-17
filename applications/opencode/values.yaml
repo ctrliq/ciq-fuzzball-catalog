@@ -2,11 +2,11 @@ values:
   - name: Endpoint
     display_name: >-
       Base URL of the OpenAI-compatible endpoint to code against, e.g. the endpoint URL of a
-      vllm or litellm workflow. Leave empty -- the default -- to find the gateway
+      vllm or litellm workflow. Leave empty -- the default -- to find the gateways
       automatically: this workflow lists the Fuzzball endpoints its own identity can reach
-      and takes the one annotated as a gateway. Set this to pin one particular endpoint, or
-      to reach an OpenAI-compatible API outside Fuzzball. A trailing /v1 is accepted and
-      trimmed.
+      and registers every one annotated as a gateway as its own model provider. Set this to
+      pin one particular endpoint and ignore the others, or to reach an OpenAI-compatible
+      API outside Fuzzball. A trailing /v1 is accepted and trimmed.
     string_value: ""
     display_category: Model
   - name: GatewayApiValue

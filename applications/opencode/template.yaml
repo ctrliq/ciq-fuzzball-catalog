@@ -218,9 +218,10 @@ jobs:
 
 
       found = resolve()
+      # URL first: a leading empty field is eaten as whitespace by the reader.
       with open(OUT, "w") as handle:
           for url, endpoint_id in found:
-              handle.write("%s\t%s\n" % (endpoint_id, url))
+              handle.write("%s\t%s\n" % (url, endpoint_id))
       for url, _ in found:
           print("endpoint: " + url)
       PYEOF
@@ -246,8 +247,8 @@ jobs:
         description: "Print connection details once the server is running"
     script: |
       #!/bin/sh
-      first_id=$(head -n 1 {{ $endpoint_file }} | cut -f1)
-      first_url=$(head -n 1 {{ $endpoint_file }} | cut -f2)
+      first_url=$(head -n 1 {{ $endpoint_file }} | cut -f1)
+      first_id=$(head -n 1 {{ $endpoint_file }} | cut -f2)
       echo "Get the server URL with:"
       echo "   fuzzball workflow endpoints list"
       echo ""
@@ -272,15 +273,17 @@ jobs:
       echo "Use ServiceScope=public for the web application or 'opencode attach'."
       {{- end }}
       echo ""
-      echo "Models: the server registered every model the endpoint listed when it"
+      echo "Models: the server registered every model each endpoint listed when"
       {{- if $model }}
-      echo "started, with fuzzball/{{ $model }} as the default. Switch with /models in"
+      echo "it started, with {{ $model }} as the default. Switch with /models in the"
       {{- else }}
-      echo "started, the first of them as the default. Switch with /models in"
+      echo "it started, the first of them as the default. Switch with /models in the"
       {{- end }}
-      echo "the client. The opencode service log names them, one provider per"
-      echo "endpoint it found. A model an endpoint gains later needs a restart of"
-      echo "this workflow. What the first endpoint serves right now:"
+      echo "client. The opencode service log names every provider it registered"
+      echo "-- one per endpoint, 'fuzzball' alone or 'fuzzball-1' upwards -- and"
+      echo "which provider and model it defaulted to. A model an endpoint gains"
+      echo "later needs a restart of this workflow. What the first discovered"
+      echo "endpoint serves right now:"
       {{- if $mint }}
       echo "   fuzzball workflow endpoints generate-token ${first_id}"
       echo "   curl -H \"Authorization: Bearer <that token>\" \\"
@@ -371,7 +374,7 @@ services:
       resolved=/tmp/providers.tsv
       : > "${resolved}"
       index=0
-      while IFS="$(printf '\t')" read -r endpoint_id endpoint_url; do
+      while IFS="$(printf '\t')" read -r endpoint_url endpoint_id; do
         [ -n "${endpoint_url}" ] || continue
         index=$((index + 1))
         if [ "${endpoint_count}" -eq 1 ]; then
@@ -432,8 +435,12 @@ services:
           cat /tmp/probe.err >&2
         fi
 
+        # One id per line, not word-split: a space in an id would forge two, and
+        # a '*' would glob before the character check could reject it.
+        printf '%s\n' "${listed}" > /tmp/listed
         models=""
-        for id in ${listed}; do
+        while IFS= read -r id; do
+          [ -n "${id}" ] || continue
           case "${id}" in
             *[!A-Za-z0-9._:/-]*)
               echo "WARNING: ignoring a model id with unexpected characters: ${id}" >&2
@@ -444,7 +451,7 @@ services:
             *" ${id} "*) continue ;;
           esac
           models="${models}${models:+ }${id}"
-        done
+        done < /tmp/listed
         printf '%s\t%s\t%s\t%s\n' "${provider}" "${endpoint_url}" "${credential}" "${models}" >> "${resolved}"
       done < {{ $endpoint_file }}
       {{- if $mint }}
