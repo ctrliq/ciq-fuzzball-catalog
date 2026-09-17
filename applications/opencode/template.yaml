@@ -92,7 +92,7 @@
 {{- $port := randInt 24001 32000 }}
 {{- $trust_store := "/run/fuzzball-substrate/trusted-certs/root-ca.crt" }}
 {{- $endpoint_dir := "/data/.fuzzball" }}
-{{- $endpoint_file := printf "%s/endpoint.env" $endpoint_dir }}
+{{- $endpoint_file := printf "%s/endpoints.tsv" $endpoint_dir }}
 
 version: v4
 
@@ -178,8 +178,10 @@ jobs:
 
 
       def resolve():
+          # Every visible gateway, not one: several models running at once is the
+          # normal case, and each becomes a provider the client can switch between.
           if FIXED and not NEED_ID:
-              return FIXED, ""
+              return [(FIXED, "")]
           if not (API and TOKEN):
               fail("no workflow API token was injected, so the endpoints API cannot be "
                    "read; set Endpoint with EndpointAuth=api-key instead")
@@ -194,7 +196,7 @@ jobs:
                   if (row.get("url") or "").rstrip("/") == FIXED:
                       if not row.get("id"):
                           fail("the endpoint at " + FIXED + " has no id to mint against")
-                      return FIXED, row["id"]
+                      return [(FIXED, row["id"])]
               fail(FIXED + " is not an endpoint this workflow can reach; set "
                    "EndpointAuth=api-key to treat it as an external API")
           found = [row for row in rows
@@ -203,21 +205,24 @@ jobs:
                    and row.get("url")]
           if not found:
               fail("no endpoint annotated " + ANNOTATION + "=" + WANT + " is visible to "
-                   "this workflow; start the litellm entry, or set Endpoint explicitly")
-          if len(found) > 1:
-              urls = ", ".join(sorted((row.get("url") or "") for row in found))
-              fail("several gateways are visible (" + urls + "); set Endpoint to choose one")
-          row = found[0]
-          if NEED_ID and not row.get("id"):
-              fail("the discovered endpoint has no id to mint against")
-          return (row.get("url") or "").rstrip("/"), row.get("id") or ""
+                   "this workflow; start a model workflow, or set Endpoint explicitly")
+          resolved = []
+          for row in found:
+              if NEED_ID and not row.get("id"):
+                  fail("the endpoint at " + (row.get("url") or "?") +
+                       " has no id to mint against")
+              resolved.append(((row.get("url") or "").rstrip("/"), row.get("id") or ""))
+          # Sorted so the provider order a client sees does not depend on the
+          # order the API happened to return.
+          return sorted(set(resolved))
 
 
-      url, endpoint_id = resolve()
+      found = resolve()
       with open(OUT, "w") as handle:
-          handle.write("ENDPOINT='%s'\n" % url.replace("'", "'\\''"))
-          handle.write("ENDPOINT_ID='%s'\n" % endpoint_id.replace("'", "'\\''"))
-      print("endpoint: " + url)
+          for url, endpoint_id in found:
+              handle.write("%s\t%s\n" % (endpoint_id, url))
+      for url, _ in found:
+          print("endpoint: " + url)
       PYEOF
       exec python3 /tmp/discover.py
     resource:
@@ -241,7 +246,8 @@ jobs:
         description: "Print connection details once the server is running"
     script: |
       #!/bin/sh
-      . {{ $endpoint_file }}
+      first_id=$(head -n 1 {{ $endpoint_file }} | cut -f1)
+      first_url=$(head -n 1 {{ $endpoint_file }} | cut -f2)
       echo "Get the server URL with:"
       echo "   fuzzball workflow endpoints list"
       echo ""
@@ -272,17 +278,18 @@ jobs:
       {{- else }}
       echo "started, the first of them as the default. Switch with /models in"
       {{- end }}
-      echo "the client. The opencode service log names them. A model the endpoint"
-      echo "gains later needs a restart of this workflow. What it serves right now:"
+      echo "the client. The opencode service log names them, one provider per"
+      echo "endpoint it found. A model an endpoint gains later needs a restart of"
+      echo "this workflow. What the first endpoint serves right now:"
       {{- if $mint }}
-      echo "   fuzzball workflow endpoints generate-token ${ENDPOINT_ID}"
+      echo "   fuzzball workflow endpoints generate-token ${first_id}"
       echo "   curl -H \"Authorization: Bearer <that token>\" \\"
       {{- if or $api_key_secret $api_key }}
       echo "        -H \"x-litellm-api-key: <your model API key>\" \\"
       {{- end }}
-      echo "        ${ENDPOINT}/v1/models"
+      echo "        ${first_url}/v1/models"
       {{- else }}
-      echo "   curl -H \"Authorization: Bearer <your model API key>\" ${ENDPOINT}/v1/models"
+      echo "   curl -H \"Authorization: Bearer <your model API key>\" ${first_url}/v1/models"
       {{- end }}
     resource:
       cpu:
@@ -329,11 +336,11 @@ services:
       set -e
       mkdir -p /data/workspace /data/.config
 
-      . {{ $endpoint_file }}
-      if [ -z "${ENDPOINT}" ]; then
-        echo "FATAL: discover-endpoint wrote no endpoint" >&2
+      if [ ! -s {{ $endpoint_file }} ]; then
+        echo "FATAL: discover-endpoint wrote no endpoints" >&2
         exit 1
       fi
+      endpoint_count=$(wc -l < {{ $endpoint_file }})
 
       # Both TLS stacks here need the cluster CA added to the public roots, not
       # substituted for them: this endpoint may be private-CA while the model
@@ -350,119 +357,157 @@ services:
       NODE_EXTRA_CA_CERTS="${bundle}"
       export SSL_CERT_FILE NODE_EXTRA_CA_CERTS
       {{- if $mint }}
-
-      if [ -z "${ENDPOINT_ID}" ]; then
-        echo "FATAL: ${ENDPOINT} has no endpoint id to mint against; use EndpointAuth=api-key" >&2
-        exit 1
-      fi
       if [ -z "${FB_TOKEN}" ]; then
         echo "FATAL: no workflow API token was injected, so no endpoint token can be" >&2
         echo "minted. Use EndpointAuth=api-key with a key for the endpoint." >&2
         exit 1
       fi
+      {{- end }}
 
-      minted=$(wget -nv -O - \
-        --header="Authorization: Bearer ${FB_TOKEN}" \
-        --header="Content-Type: application/json" \
-        --post-data="{\"expirationSeconds\": {{ $token_lifetime }}}" \
-        "${FB_OPENAPI_URL%/}/v4/endpoints/${ENDPOINT_ID}/token" 2> /tmp/mint.err) || {
-        echo "FATAL: could not mint an access token for ${ENDPOINT_ID}:" >&2
-        cat /tmp/mint.err >&2
-        echo "A public endpoint takes no token; use EndpointAuth=api-key for one." >&2
-        exit 1
-      }
-      credential=$(echo "${minted}" | tr -d ' \n' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-      if [ -z "${credential}" ]; then
-        echo "FATAL: no token in the mint response" >&2
-        exit 1
-      fi
+      # One provider per discovered gateway: each has its own base URL and
+      # credential, so they cannot be collapsed. A gateway that fails here is
+      # skipped rather than fatal, since the others are still usable.
+      umask 077
+      resolved=/tmp/providers.tsv
+      : > "${resolved}"
+      index=0
+      while IFS="$(printf '\t')" read -r endpoint_id endpoint_url; do
+        [ -n "${endpoint_url}" ] || continue
+        index=$((index + 1))
+        if [ "${endpoint_count}" -eq 1 ]; then
+          provider="fuzzball"
+        else
+          provider="fuzzball-${index}"
+        fi
+        {{- if $mint }}
+
+        if [ -z "${endpoint_id}" ]; then
+          echo "WARNING: ${endpoint_url} has no endpoint id to mint against; skipping it" >&2
+          continue
+        fi
+        minted=$(wget -nv -O - \
+          --header="Authorization: Bearer ${FB_TOKEN}" \
+          --header="Content-Type: application/json" \
+          --post-data="{\"expirationSeconds\": {{ $token_lifetime }}}" \
+          "${FB_OPENAPI_URL%/}/v4/endpoints/${endpoint_id}/token" 2> /tmp/mint.err) || {
+          echo "WARNING: could not mint an access token for ${endpoint_id}; skipping it" >&2
+          cat /tmp/mint.err >&2
+          continue
+        }
+        credential=$(echo "${minted}" | tr -d ' \n' | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        if [ -z "${credential}" ]; then
+          echo "WARNING: no token in the mint response for ${endpoint_id}; skipping it" >&2
+          continue
+        fi
+        {{- else }}
+
+        credential="${MODEL_API_KEY}"
+        {{- end }}
+
+        # The endpoint decides which models exist: every model it lists is
+        # registered and Model only picks the default. Asking now also surfaces a
+        # rejected credential here rather than at the user's first prompt, since
+        # the readiness probe never reaches the model endpoint.
+        listed=""
+        if body=$(wget -nv -O - \
+          --header="Authorization: Bearer ${credential}" \
+        {{- if and $mint (or $api_key_secret $api_key) }}
+          --header="x-litellm-api-key: ${MODEL_API_KEY}" \
+        {{- end }}
+          "${endpoint_url}/v1/models" 2> /tmp/probe.err); then
+          # Only ids that sit next to "object":"model" are models: vLLM's cards
+          # also carry permission entries with ids of their own.
+          listed=$(printf '%s' "${body}" | tr -d '\n\r\t' \
+            | grep -o '"id" *: *"[^"]*" *, *"object" *: *"model"' \
+            | sed -e 's/^"id" *: *"//' -e 's/" *, *"object".*$//' || true)
+          if [ -z "${listed}" ]; then
+            echo "WARNING: ${endpoint_url} answered /v1/models but listed no models" >&2
+          fi
+        elif grep -q "40[13]" /tmp/probe.err; then
+          echo "WARNING: ${endpoint_url} rejected these credentials; skipping it" >&2
+          cat /tmp/probe.err >&2
+          continue
+        else
+          echo "WARNING: ${endpoint_url} did not answer /v1/models" >&2
+          cat /tmp/probe.err >&2
+        fi
+
+        models=""
+        for id in ${listed}; do
+          case "${id}" in
+            *[!A-Za-z0-9._:/-]*)
+              echo "WARNING: ignoring a model id with unexpected characters: ${id}" >&2
+              continue
+              ;;
+          esac
+          case " ${models} " in
+            *" ${id} "*) continue ;;
+          esac
+          models="${models}${models:+ }${id}"
+        done
+        printf '%s\t%s\t%s\t%s\n' "${provider}" "${endpoint_url}" "${credential}" "${models}" >> "${resolved}"
+      done < {{ $endpoint_file }}
+      {{- if $mint }}
       # The agent runs arbitrary shell: leave it no workflow API credential.
       unset FB_TOKEN FB_OPENAPI_URL
-      {{- else }}
-
-      credential="${MODEL_API_KEY}"
       {{- end }}
 
-      # The endpoint decides which models exist: every model it lists is
-      # registered and Model only picks the default. Asking now also surfaces a
-      # rejected credential here rather than at the user's first prompt, since
-      # the readiness probe never reaches the model endpoint.
-      listed=""
-      if body=$(wget -nv -O - \
-        --header="Authorization: Bearer ${credential}" \
-      {{- if and $mint (or $api_key_secret $api_key) }}
-        --header="x-litellm-api-key: ${MODEL_API_KEY}" \
-      {{- end }}
-        "${ENDPOINT}/v1/models" 2> /tmp/probe.err); then
-        # Only ids that sit next to "object":"model" are models: vLLM's cards
-        # also carry permission entries with ids of their own.
-        listed=$(printf '%s' "${body}" | tr -d '\n\r\t' \
-          | grep -o '"id" *: *"[^"]*" *, *"object" *: *"model"' \
-          | sed -e 's/^"id" *: *"//' -e 's/" *, *"object".*$//' || true)
-        if [ -z "${listed}" ]; then
-          echo "WARNING: the model endpoint answered /v1/models but listed no models" >&2
-        fi
-      else
-        if grep -q "40[13]" /tmp/probe.err; then
-          echo "FATAL: the model endpoint rejected these credentials:" >&2
-          cat /tmp/probe.err >&2
-          exit 1
-        fi
-        echo "WARNING: the model endpoint did not answer /v1/models:" >&2
-        cat /tmp/probe.err >&2
-      fi
-
-      default_model="{{ $model }}"
-      models=""
-      while IFS= read -r id; do
-        [ -n "${id}" ] || continue
-        case "${id}" in
-          *[!A-Za-z0-9._:/-]*)
-            echo "WARNING: ignoring a model id with unexpected characters: ${id}" >&2
-            continue
-            ;;
-        esac
-        case " ${models} " in
-          *" ${id} "*) continue ;;
-        esac
-        models="${models}${models:+ }${id}"
-        [ -n "${default_model}" ] || default_model="${id}"
-      done <<IDS
-      ${default_model}
-      ${listed}
-      IDS
-      if [ -z "${models}" ]; then
-        echo "FATAL: the endpoint listed no models and Model is empty; set Model to a name the endpoint serves" >&2
+      if [ ! -s "${resolved}" ]; then
+        echo "FATAL: none of the discovered endpoints could be reached" >&2
         exit 1
       fi
-      echo "Models registered from ${ENDPOINT}: ${models}"
-      echo "Default model: fuzzball/${default_model}"
 
-      models_json=""
-      for id in ${models}; do
-        entry="\"${id}\": { \"name\": \"${id} on Fuzzball\", \"limit\": { \"context\": {{ $context_size }}, \"output\": {{ $output_limit }} } }"
-        models_json="${models_json}${models_json:+, }${entry}"
-      done
+      # Model names the default. Whichever provider serves it wins; if none
+      # lists it, it is registered on the first provider anyway, since an
+      # endpoint may serve a model it does not advertise.
+      default_model="{{ $model }}"
+      default_provider=""
+      first_provider=$(head -n 1 "${resolved}" | cut -f1)
+      while IFS="$(printf '\t')" read -r provider url credential models; do
+        for id in ${models}; do
+          if [ -z "${default_model}" ]; then
+            default_model="${id}"
+            default_provider="${provider}"
+          elif [ "${id}" = "${default_model}" ] && [ -z "${default_provider}" ]; then
+            default_provider="${provider}"
+          fi
+        done
+      done < "${resolved}"
+      if [ -z "${default_model}" ]; then
+        echo "FATAL: no endpoint listed a model and Model is empty; set Model to a name an endpoint serves" >&2
+        exit 1
+      fi
+      [ -n "${default_provider}" ] || default_provider="${first_provider}"
 
-      umask 077
+      providers_json=""
+      while IFS="$(printf '\t')" read -r provider url credential models; do
+        if [ "${provider}" = "${default_provider}" ]; then
+          case " ${models} " in
+            *" ${default_model} "*) ;;
+            *) models="${models}${models:+ }${default_model}" ;;
+          esac
+        fi
+        echo "Models registered from ${url} as ${provider}: ${models}"
+        models_json=""
+        for id in ${models}; do
+          entry="\"${id}\": { \"name\": \"${id} on Fuzzball\", \"limit\": { \"context\": {{ $context_size }}, \"output\": {{ $output_limit }} } }"
+          models_json="${models_json}${models_json:+, }${entry}"
+        done
+        headers=""
+      {{- if and $mint (or $api_key_secret $api_key) }}
+        headers=",\"headers\": { \"x-litellm-api-key\": \"${MODEL_API_KEY}\" }"
+      {{- end }}
+        entry="\"${provider}\": { \"npm\": \"@ai-sdk/openai-compatible\", \"name\": \"Fuzzball (${url})\", \"options\": { \"baseURL\": \"${url}/v1\", \"apiKey\": \"${credential}\"${headers} }, \"models\": { ${models_json} } }"
+        providers_json="${providers_json}${providers_json:+, }${entry}"
+      done < "${resolved}"
+      rm -f "${resolved}"
+      echo "Default model: ${default_provider}/${default_model}"
+
       cat > /data/.config/opencode.json <<EOF
       {
         "\$schema": "https://opencode.ai/config.json",
-        "provider": {
-          "fuzzball": {
-            "npm": "@ai-sdk/openai-compatible",
-            "name": "Fuzzball",
-            "options": {
-              "baseURL": "${ENDPOINT}/v1",
-              "apiKey": "${credential}"
-      {{- if and $mint (or $api_key_secret $api_key) }}
-              ,"headers": { "x-litellm-api-key": "${MODEL_API_KEY}" }
-      {{- end }}
-            },
-            "models": { ${models_json} }
-          }
-        },
-        "model": "fuzzball/${default_model}"
+        "provider": { ${providers_json} },
+        "model": "${default_provider}/${default_model}"
       }
       EOF
 

@@ -24,23 +24,31 @@ fuzzball workflow catalog start OpenCode --values Endpoint=https://<gateway-endp
 fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKey=sk-...
 ```
 
-`Endpoint` is optional. Left empty it is discovered at start: the
-`discover-endpoint` job lists the Fuzzball endpoints this workflow's own
-identity can reach and takes the one annotated `ciq.com/api: openai-gateway`,
-which is what the `litellm` entry stamps on its own endpoint. Discovery stops
-the workflow rather than guessing when no such endpoint is visible, or when
-several are -- set `Endpoint` to choose. Set it also to reach an
-OpenAI-compatible API outside Fuzzball, which additionally needs
-`EndpointAuth=api-key`.
+`Endpoint` is optional. Left empty, the `discover-endpoint` job lists the
+Fuzzball endpoints this workflow's own identity can reach and takes **every**
+one annotated `ciq.com/api: openai-gateway` -- what the `litellm` entry and a
+`vllm` pool in its default proxied mode both stamp on their endpoint. Running
+several models at once is the normal case, so each becomes its own provider and
+every model it serves joins the picker. Only a run that can see no such
+endpoint at all stops.
 
-To point at one particular workflow, get its endpoint URL with `fuzzball
-workflow endpoints list`, and its LiteLLM key from its definition (`fuzzball
-workflow get <workflow id>`). When the server starts it registers every model
-the endpoint lists at `/v1/models`, so pointed at the LiteLLM Model Gateway
-entry (`litellm`) it offers everything the gateway had discovered at that
-moment. `Model` is optional and only picks the default, named as the endpoint
-serves it (for the `vllm` entry, its `Model` value without the `hf://`
-prefix); without it the first listed model is the default.
+Each endpoint has its own base URL and credential, so they stay separate
+providers rather than merging. With one endpoint the provider is `fuzzball`,
+exactly as before; with several they are `fuzzball-1`, `fuzzball-2` and so on,
+ordered by URL. An endpoint that cannot be reached or rejects the credential is
+skipped with a warning -- the rest still work.
+
+Set `Endpoint` to pin one particular endpoint and ignore the others, or to
+reach an OpenAI-compatible API outside Fuzzball, which additionally needs
+`EndpointAuth=api-key`. To find one, use `fuzzball workflow endpoints list`,
+and get its LiteLLM key from its definition (`fuzzball workflow get <workflow
+id>`).
+
+`Model` is optional and only picks the default, named as the endpoint serves it
+(for the `vllm` entry, its `Model` value without the `hf://` prefix). Whichever
+provider serves it becomes the default; if none advertises it, it is registered
+on the first provider anyway, since an endpoint may serve a model it does not
+list. Without `Model`, the first model of the first provider is the default.
 
 To see the models:
 
