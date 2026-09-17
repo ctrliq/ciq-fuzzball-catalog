@@ -2,8 +2,19 @@ values:
   - name: Endpoint
     display_name: >-
       Base URL of the OpenAI-compatible endpoint to code against, e.g. the endpoint URL of a
-      vllm or litellm workflow. Required; a trailing /v1 is accepted and trimmed.
+      vllm or litellm workflow. Leave empty -- the default -- to find the gateway
+      automatically: this workflow lists the Fuzzball endpoints its own identity can reach
+      and takes the one annotated as a gateway. Set this to pin one particular endpoint, or
+      to reach an OpenAI-compatible API outside Fuzzball. A trailing /v1 is accepted and
+      trimmed.
     string_value: ""
+    display_category: Model
+  - name: GatewayApiValue
+    display_name: >-
+      Value of the ciq.com/api endpoint annotation that marks a gateway during automatic
+      discovery. It must match what the litellm entry annotates its own endpoint with.
+      Ignored when Endpoint is set.
+    string_value: openai-gateway
     display_category: Model
   - name: Model
     display_name: >-
@@ -95,7 +106,9 @@ values:
       third-party images should point this at its own build.
     string_value: docker://ghcr.io/anomalyco/opencode:1.18.23
     display_category: Versions
-  - name: CurlImage
-    display_name: Image used by the short-lived job that prints how to reach the server.
-    string_value: docker://curlimages/curl:8.17.0
+  - name: HelperImage
+    display_name: >-
+      Image for the short-lived jobs that resolve the endpoint and print how to reach the
+      server. It needs a JSON parser, which the OpenCode image does not carry.
+    string_value: docker://python:3.12-alpine
     display_category: Versions

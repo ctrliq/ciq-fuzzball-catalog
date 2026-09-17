@@ -5,12 +5,15 @@
        for a few forbidden characters: a newline forges env entries, and '#', '$'
        or a backtick changes what the script runs. */}}
 
+{{- /* Left empty, the endpoint is discovered at run time. */}}
 {{- $endpoint := trimSuffix "/v1" (trimSuffix "/" (trim .Endpoint)) }}
-{{- if not $endpoint }}
-  {{- fail "Endpoint is required: the base URL of an OpenAI-compatible endpoint, e.g. a vllm or litellm workflow endpoint" }}
-{{- end }}
-{{- if not (regexMatch "^https?://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._/-]*)?$" $endpoint) }}
+{{- if and $endpoint (not (regexMatch "^https?://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._/-]*)?$" $endpoint)) }}
   {{- fail "Endpoint must be an http(s) URL, e.g. https://endpoint-<id>.endpoints.<cluster domain>" }}
+{{- end }}
+
+{{- $gateway_api := trim .GatewayApiValue }}
+{{- if not (regexMatch "^[A-Za-z0-9._/-]+$" $gateway_api) }}
+  {{- fail "GatewayApiValue may contain only letters, digits, and . _ / -" }}
 {{- end }}
 
 {{- $model := trim .Model }}
@@ -44,6 +47,10 @@
 {{- if and (eq $auth "api-key") (not (or $api_key_secret $api_key)) }}
   {{- fail "EndpointAuth=api-key needs ApiKeySecret or ApiKey" }}
 {{- end }}
+{{- /* Discovery reads the endpoints API, which an api-key run has no identity for. */}}
+{{- if and (eq $auth "api-key") (not $endpoint) }}
+  {{- fail "EndpointAuth=api-key needs an explicit Endpoint: only gateway discovery can find one" }}
+{{- end }}
 
 {{- $token_lifetime := int .TokenLifetime }}
 {{- if lt $token_lifetime 300 }}
@@ -68,9 +75,9 @@
 {{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._@:/-]+$" $image) }}
   {{- fail "Image must be a docker:// or oras:// container reference" }}
 {{- end }}
-{{- $curl_image := trim .CurlImage }}
-{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._@:/-]+$" $curl_image) }}
-  {{- fail "CurlImage must be a docker:// or oras:// container reference" }}
+{{- $helper_image := trim .HelperImage }}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._@:/-]+$" $helper_image) }}
+  {{- fail "HelperImage must be a docker:// or oras:// container reference" }}
 {{- end }}
 
 {{- $mint := eq $auth "fuzzball-token" }}
@@ -84,6 +91,8 @@
 
 {{- $port := randInt 24001 32000 }}
 {{- $trust_store := "/run/fuzzball-substrate/trusted-certs/root-ca.crt" }}
+{{- $endpoint_dir := "/data/.fuzzball" }}
+{{- $endpoint_file := printf "%s/endpoint.env" $endpoint_dir }}
 
 version: v4
 
@@ -97,15 +106,142 @@ volumes:
     {{- end }}
 
 jobs:
+  discover-endpoint:
+    image:
+      uri: {{ $helper_image }}
+    mounts:
+      /data:
+        volume: data
+    env:
+      {{- if $endpoint }}
+      - FIXED_ENDPOINT={{ $endpoint }}
+      {{- end }}
+      - GATEWAY_API_VALUE={{ $gateway_api }}
+      - ENDPOINT_FILE={{ $endpoint_file }}
+      {{- if $mint }}
+      - NEED_ENDPOINT_ID=1
+      {{- end }}
+    script: |
+      #!/bin/sh
+      set -e
+      mkdir -p {{ $endpoint_dir }}
+
+      # The endpoints API may be private-CA; add the cluster root to the public ones.
+      bundle=/tmp/ca-bundle.pem
+      cat /etc/ssl/certs/ca-certificates.crt > "${bundle}"
+      if [ -f {{ $trust_store }} ]; then
+        cat {{ $trust_store }} >> "${bundle}"
+      fi
+      SSL_CERT_FILE="${bundle}"
+      export SSL_CERT_FILE
+
+      cat > /tmp/discover.py <<'PYEOF'
+      import json, os, sys, urllib.error, urllib.parse, urllib.request
+
+      API = (os.environ.get("FB_OPENAPI_URL") or "").rstrip("/")
+      TOKEN = os.environ.get("FB_TOKEN", "")
+      OWN = os.environ.get("FB_WORKFLOW_ID", "")
+      FIXED = os.environ.get("FIXED_ENDPOINT", "").rstrip("/")
+      WANT = os.environ["GATEWAY_API_VALUE"]
+      NEED_ID = os.environ.get("NEED_ENDPOINT_ID") == "1"
+      OUT = os.environ["ENDPOINT_FILE"]
+      ANNOTATION = "ciq.com/api"
+
+
+      def fail(msg):
+          sys.stderr.write("FATAL: " + msg + "\n")
+          raise SystemExit(1)
+
+
+      def call(url):
+          req = urllib.request.Request(url, headers={"Authorization": "Bearer " + TOKEN})
+          with urllib.request.urlopen(req, timeout=30) as resp:
+              raw = resp.read().decode("utf-8")
+          return json.loads(raw) if raw else {}
+
+
+      def endpoints():
+          # Every page or none: a truncated walk is indistinguishable from the
+          # gateway having disappeared, and would pick an arbitrary one instead.
+          rows = []
+          page = ""
+          for _ in range(100):
+              url = API + "/v4/endpoints?pageSize=500"
+              if page:
+                  url = url + "&pageToken=" + urllib.parse.quote(page, safe="")
+              body = call(url)
+              rows.extend(body.get("endpoints") or [])
+              page = body.get("pageToken") or ""
+              if not page:
+                  return rows
+          fail("endpoint listing did not terminate after 100 pages")
+
+
+      def resolve():
+          if FIXED and not NEED_ID:
+              return FIXED, ""
+          if not (API and TOKEN):
+              fail("no workflow API token was injected, so the endpoints API cannot be "
+                   "read; set Endpoint with EndpointAuth=api-key instead")
+          try:
+              rows = endpoints()
+          except urllib.error.HTTPError as err:
+              fail("the endpoints API returned HTTP %d" % err.code)
+          except Exception as err:
+              fail("could not read the endpoints API: %s" % err)
+          if FIXED:
+              for row in rows:
+                  if (row.get("url") or "").rstrip("/") == FIXED:
+                      if not row.get("id"):
+                          fail("the endpoint at " + FIXED + " has no id to mint against")
+                      return FIXED, row["id"]
+              fail(FIXED + " is not an endpoint this workflow can reach; set "
+                   "EndpointAuth=api-key to treat it as an external API")
+          found = [row for row in rows
+                   if (row.get("annotations") or {}).get(ANNOTATION) == WANT
+                   and row.get("workflowId") != OWN
+                   and row.get("url")]
+          if not found:
+              fail("no endpoint annotated " + ANNOTATION + "=" + WANT + " is visible to "
+                   "this workflow; start the litellm entry, or set Endpoint explicitly")
+          if len(found) > 1:
+              urls = ", ".join(sorted((row.get("url") or "") for row in found))
+              fail("several gateways are visible (" + urls + "); set Endpoint to choose one")
+          row = found[0]
+          if NEED_ID and not row.get("id"):
+              fail("the discovered endpoint has no id to mint against")
+          return (row.get("url") or "").rstrip("/"), row.get("id") or ""
+
+
+      url, endpoint_id = resolve()
+      with open(OUT, "w") as handle:
+          handle.write("ENDPOINT='%s'\n" % url.replace("'", "'\\''"))
+          handle.write("ENDPOINT_ID='%s'\n" % endpoint_id.replace("'", "'\\''"))
+      print("endpoint: " + url)
+      PYEOF
+      exec python3 /tmp/discover.py
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 256MB
+    policy:
+      timeout:
+        execute: 5m
+
   show-server:
     image:
-      uri: {{ $curl_image }}
+      uri: {{ $helper_image }}
+    mounts:
+      /data:
+        volume: data
     depends-on:
       - name: opencode
         status: RUNNING
         description: "Print connection details once the server is running"
     script: |
       #!/bin/sh
+      . {{ $endpoint_file }}
       echo "Get the server URL with:"
       echo "   fuzzball workflow endpoints list"
       echo ""
@@ -139,15 +275,14 @@ jobs:
       echo "the client. The opencode service log names them. A model the endpoint"
       echo "gains later needs a restart of this workflow. What it serves right now:"
       {{- if $mint }}
-      endpoint_id=$(echo "{{ $endpoint }}" | sed -e 's#^[a-z]*://##' -e 's#/.*##' -e 's#:.*##' | cut -d. -f1)
-      echo "   fuzzball workflow endpoints generate-token ${endpoint_id}"
+      echo "   fuzzball workflow endpoints generate-token ${ENDPOINT_ID}"
       echo "   curl -H \"Authorization: Bearer <that token>\" \\"
       {{- if or $api_key_secret $api_key }}
       echo "        -H \"x-litellm-api-key: <your model API key>\" \\"
       {{- end }}
-      echo "        {{ $endpoint }}/v1/models"
+      echo "        ${ENDPOINT}/v1/models"
       {{- else }}
-      echo "   curl -H \"Authorization: Bearer <your model API key>\" {{ $endpoint }}/v1/models"
+      echo "   curl -H \"Authorization: Bearer <your model API key>\" ${ENDPOINT}/v1/models"
       {{- end }}
     resource:
       cpu:
@@ -162,6 +297,10 @@ services:
   opencode:
     image:
       uri: {{ $image }}
+    depends-on:
+      - name: discover-endpoint
+        status: FINISHED
+        description: "Resolve the model endpoint before the server configures itself"
     mounts:
       /data:
         volume: data
@@ -190,6 +329,12 @@ services:
       set -e
       mkdir -p /data/workspace /data/.config
 
+      . {{ $endpoint_file }}
+      if [ -z "${ENDPOINT}" ]; then
+        echo "FATAL: discover-endpoint wrote no endpoint" >&2
+        exit 1
+      fi
+
       # Both TLS stacks here need the cluster CA added to the public roots, not
       # substituted for them: this endpoint may be private-CA while the model
       # endpoint or a provider is public. The image's own bundle is read-only to
@@ -206,14 +351,10 @@ services:
       export SSL_CERT_FILE NODE_EXTRA_CA_CERTS
       {{- if $mint }}
 
-      endpoint_id=$(echo "{{ $endpoint }}" | sed -e 's#^[a-z]*://##' -e 's#/.*##' -e 's#:.*##' | cut -d. -f1)
-      case "${endpoint_id}" in
-        endpoint-*) ;;
-        *)
-          echo "FATAL: {{ $endpoint }} is not a Fuzzball endpoint URL; use EndpointAuth=api-key" >&2
-          exit 1
-          ;;
-      esac
+      if [ -z "${ENDPOINT_ID}" ]; then
+        echo "FATAL: ${ENDPOINT} has no endpoint id to mint against; use EndpointAuth=api-key" >&2
+        exit 1
+      fi
       if [ -z "${FB_TOKEN}" ]; then
         echo "FATAL: no workflow API token was injected, so no endpoint token can be" >&2
         echo "minted. Use EndpointAuth=api-key with a key for the endpoint." >&2
@@ -224,8 +365,8 @@ services:
         --header="Authorization: Bearer ${FB_TOKEN}" \
         --header="Content-Type: application/json" \
         --post-data="{\"expirationSeconds\": {{ $token_lifetime }}}" \
-        "${FB_OPENAPI_URL%/}/v4/endpoints/${endpoint_id}/token" 2> /tmp/mint.err) || {
-        echo "FATAL: could not mint an access token for ${endpoint_id}:" >&2
+        "${FB_OPENAPI_URL%/}/v4/endpoints/${ENDPOINT_ID}/token" 2> /tmp/mint.err) || {
+        echo "FATAL: could not mint an access token for ${ENDPOINT_ID}:" >&2
         cat /tmp/mint.err >&2
         echo "A public endpoint takes no token; use EndpointAuth=api-key for one." >&2
         exit 1
@@ -252,7 +393,7 @@ services:
       {{- if and $mint (or $api_key_secret $api_key) }}
         --header="x-litellm-api-key: ${MODEL_API_KEY}" \
       {{- end }}
-        "{{ $endpoint }}/v1/models" 2> /tmp/probe.err); then
+        "${ENDPOINT}/v1/models" 2> /tmp/probe.err); then
         # Only ids that sit next to "object":"model" are models: vLLM's cards
         # also carry permission entries with ids of their own.
         listed=$(printf '%s' "${body}" | tr -d '\n\r\t' \
@@ -294,7 +435,7 @@ services:
         echo "FATAL: the endpoint listed no models and Model is empty; set Model to a name the endpoint serves" >&2
         exit 1
       fi
-      echo "Models registered from {{ $endpoint }}: ${models}"
+      echo "Models registered from ${ENDPOINT}: ${models}"
       echo "Default model: fuzzball/${default_model}"
 
       models_json=""
@@ -312,7 +453,7 @@ services:
             "npm": "@ai-sdk/openai-compatible",
             "name": "Fuzzball",
             "options": {
-              "baseURL": "{{ $endpoint }}/v1",
+              "baseURL": "${ENDPOINT}/v1",
               "apiKey": "${credential}"
       {{- if and $mint (or $api_key_secret $api_key) }}
               ,"headers": { "x-litellm-api-key": "${MODEL_API_KEY}" }

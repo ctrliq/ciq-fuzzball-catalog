@@ -18,19 +18,29 @@ model is reached over an OpenAI-compatible endpoint such as the one published by
 the `vllm` or `litellm` entries.
 
 ```
+fuzzball workflow catalog start OpenCode
+fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>
 fuzzball workflow catalog start OpenCode --values Endpoint=https://<gateway-endpoint-url>,EndpointAuth=api-key,ApiKeySecret=secret://user/litellm-key,ServiceScope=public
-fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>,ApiKeySecret=secret://user/litellm-key
 fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKey=sk-...
 ```
 
-Get the endpoint URL of the model workflow with `fuzzball workflow endpoints
-list`, and its LiteLLM key from its definition (`fuzzball workflow get
-<workflow id>`). When the server starts it registers every model the endpoint
-lists at `/v1/models`, so pointed at the LiteLLM Model Gateway entry
-(`litellm`) it offers everything the gateway had discovered at that moment.
-`Model` is optional and only picks the default, named as the endpoint serves
-it (for the `vllm` entry, its `Model` value without the `hf://` prefix);
-without it the first listed model is the default.
+`Endpoint` is optional. Left empty it is discovered at start: the
+`discover-endpoint` job lists the Fuzzball endpoints this workflow's own
+identity can reach and takes the one annotated `ciq.com/api: openai-gateway`,
+which is what the `litellm` entry stamps on its own endpoint. Discovery stops
+the workflow rather than guessing when no such endpoint is visible, or when
+several are -- set `Endpoint` to choose. Set it also to reach an
+OpenAI-compatible API outside Fuzzball, which additionally needs
+`EndpointAuth=api-key`.
+
+To point at one particular workflow, get its endpoint URL with `fuzzball
+workflow endpoints list`, and its LiteLLM key from its definition (`fuzzball
+workflow get <workflow id>`). When the server starts it registers every model
+the endpoint lists at `/v1/models`, so pointed at the LiteLLM Model Gateway
+entry (`litellm`) it offers everything the gateway had discovered at that
+moment. `Model` is optional and only picks the default, named as the endpoint
+serves it (for the `vllm` entry, its `Model` value without the `hf://`
+prefix); without it the first listed model is the default.
 
 To see the models:
 
