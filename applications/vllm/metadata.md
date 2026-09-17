@@ -94,26 +94,39 @@ decides who finds the pool without being given a URL.
 `Proxy=true` annotates the proxy endpoint `ciq.com/api: openai-gateway`, the
 same marker the `litellm` entry puts on its own endpoint. Agents such as
 `opencode` and `hermes-agent` attach to it directly, so a single pool and one
-agent need no gateway workflow between them. A standalone `litellm` gateway
-deliberately ignores that value, so it will not try to nest one proxy behind
-another.
+agent need no gateway workflow between them. A standalone `litellm` gateway does
+not nest one proxy behind another: it registers only endpoints that also carry
+`ciq.com/model`, and a proxy endpoint never does. Its `DiscoveryApiValue` knob
+is a weaker guard -- it is set to `openai` by default, but it is user-settable.
 
 `Proxy=false` annotates the per-replica endpoints `ciq.com/api: openai` plus
 `ciq.com/model`, which is what a `litellm` gateway registers. Agents do not
-attach to these; reach them through the gateway.
+attach to these; reach them through the gateway. A gateway another identity
+runs only sees them if `Scope` is widened to reach it -- at the `user` default
+a pool published for someone else's gateway is never registered, and nothing
+reports why.
 
 Discovery only considers endpoints the caller's identity can reach, and `Scope`
 defaults to `user` so a pool does not appear in a colleague's candidate set.
 Widen it deliberately. What an agent does with several visible gateways is the
 agent's choice -- `opencode` registers each as its own provider, `hermes-agent`
-refuses to guess -- so with several pools running at once, either narrow the
-scopes or name the endpoint on the agent.
+refuses to guess -- so with several pools running at once, name the endpoint on
+the agent. Narrowing `Scope` does not help: `user` is already the narrowest, and
+two pools you started yourself collide inside it.
+
+`Scope=public` carries no `ciq.com/api` annotation at all, so a public pool is
+not discoverable. The listing surfaces a public endpoint to every member of the
+organization, and an agent that found one would then fail minting the token a
+public endpoint does not need.
 
 Discovery finds the URL, not the credential. At `Proxy=true` the LiteLLM proxy
-still enforces `ApiKey`, which is generated per workflow start when left empty
-and so cannot be guessed by anything that discovered the endpoint. Set `ApiKey`
-explicitly and give the agent the same value (`ApiKeySecret` on `opencode` and
-`hermes-agent`), or the agent finds the pool and is refused by it.
+still enforces `ApiKey`. Left empty it is generated once, when the template is
+rendered, and written into the rendered workflow definition -- so re-rendering
+produces a different key, and anyone who can read the workflow can read the key.
+It is not a secret from them, only from something that discovered the endpoint
+alone. Set `ApiKey` explicitly and give the agent the same value (`ApiKeySecret`
+on `opencode` and `hermes-agent`), or the agent finds the pool and is refused
+by it.
 
 ## Expert parallelism and multi-node serving
 
@@ -186,8 +199,9 @@ Before choosing `Nodes` above 1:
 - `Proxy`: whether to front the pool with an in-workflow LiteLLM proxy.
 - `Scope`: authorization scope of the service endpoint (`user`, `group`,
   `organization`, `public`), defaulting to `user`. It also bounds who discovers
-  the pool. Note that a `public` pool endpoint is served without authentication
-  and therefore never wakes a pool idling at zero.
+  the pool, and `public` opts out of discovery entirely. Note that a `public`
+  pool endpoint is served without authentication and therefore never wakes a
+  pool idling at zero.
 - `MinReplicas` / `MaxReplicas`: replica pool bounds. `MinReplicas=0`
   enables scale-to-zero.
 - `ApiKey`: OpenAI API key enforced by the LiteLLM proxy. Must start with

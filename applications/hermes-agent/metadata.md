@@ -50,7 +50,8 @@ untouched. The agent supplies the first itself and takes the second from
 With `Endpoint` left empty -- the default -- the gateway is discovered rather
 than configured. The agent lists `/v4/endpoints` with its own injected identity
 and takes the endpoint annotated `ciq.com/api: openai-gateway`, which is what
-the `litellm` entry marks its endpoint with. Discovery fails loudly, and the
+the `litellm` entry marks its endpoint with -- and, at `Proxy=true`, the `vllm`
+entry marks its in-workflow proxy with. Discovery fails loudly, and the
 service stops, when no gateway is visible or when more than one is: at that
 point set `Endpoint` to choose. `Model` works the same way -- left empty, the
 agent adopts whatever the gateway is serving when it starts.
@@ -249,14 +250,16 @@ Switch between the cluster and anything else you have configured with
 - **A discovered `vllm` pool still needs its key.** With `Proxy=true`, which is
   its default, `vllm` annotates its in-workflow LiteLLM proxy endpoint
   `ciq.com/api: openai-gateway`, so this entry discovers it with no `Endpoint`
-  set. That proxy enforces `vllm`'s own `ApiKey`, which is generated afresh on
-  every workflow start when left empty -- set it explicitly on `vllm` and give
-  this entry the same value as `ApiKeySecret`, or discovery finds the pool and
-  the pool refuses the request. Starting `vllm` with `Proxy=false` instead
-  publishes annotated per-replica endpoints for a `litellm` gateway to front.
+  set. That proxy enforces `vllm`'s own `ApiKey`, which is generated for you
+  when left empty -- set it explicitly on `vllm` and give this entry the same
+  value as `ApiKeySecret`, or discovery finds the pool and the pool refuses the
+  request. Starting `vllm` with `Proxy=false` instead publishes annotated
+  per-replica endpoints for a `litellm` gateway to front.
 - **Two visible gateways stop the agent.** A `vllm` pool at `Proxy=true` is a
-  gateway for this purpose, so running one alongside a `litellm` entry leaves
-  this agent refusing to choose. Narrow one of the scopes, or set `Endpoint`.
+  gateway for this purpose, so running one alongside a `litellm` entry -- or
+  alongside a second `Proxy=true` pool -- leaves this agent refusing to choose.
+  Set `Endpoint`. Narrowing scope is not an alternative: `user` is already the
+  narrowest, and endpoints you started yourself collide inside it.
 - **A gateway that serves no models yet stops the agent.** Discovery reads
   `/v1/models`, and a gateway whose model pools have not started serves an
   empty list, which is indistinguishable from a misconfigured gateway. Start

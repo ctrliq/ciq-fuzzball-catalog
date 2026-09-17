@@ -130,7 +130,10 @@ To confirm a model was picked up, watch `fuzzball workflow log <workflow> gatewa
 - **Callers borrow the owner's reach.** The gateway discovers and authenticates to models
   as the identity that started it, so the gateway's endpoint scope (`ServiceScope`)
   decides who can use every model it serves -- regardless of the callers' own grants.
+  It defaults to `user`, so a gateway meant to be shared has to be widened on purpose.
+  `group` is not "my team": it binds to whichever group the submitter had selected, frozen
+  at creation. Pick the reach you actually want, usually `organization`.
 - **A generated master key is readable by anyone who can read the workflow.** Without
-  `MasterKeySecret` it is minted fresh on every workflow start and embedded in the workflow
-  definition. Set `MasterKeySecret` to keep the key out of the definition, and hand callers
-  virtual keys, never the master key.
+  `MasterKeySecret` it is generated once, when the template is rendered, and embedded in
+  the rendered workflow definition. Set `MasterKeySecret` to keep the key out of the
+  definition, and hand callers virtual keys, never the master key.
