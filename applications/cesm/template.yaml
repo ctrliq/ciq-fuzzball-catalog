@@ -1,6 +1,6 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $volume := trim .VolumeReference }}
-{{- if not $volume }}
+{{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
   {{- fail "VolumeReference must be 'ephemeral' or the name of a persistent volume" }}
 {{- end }}
 {{- $persistent := ne (lower $volume) "ephemeral" }}
