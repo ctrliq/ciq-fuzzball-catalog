@@ -112,8 +112,8 @@ To confirm a model was picked up, watch `fuzzball workflow log <workflow> gatewa
   another release's schema accepts writes and then never routes the model. Changing
   `LiteLLMVersion` means starting with a fresh database.
 - **The default volume is ephemeral**, so virtual keys, budgets and spend history are lost
-  when the workflow stops. Point `DataVolume` at a persistent volume for anything you rely
-  on.
+  when the workflow stops. Set `Volume` to the name of a persistent volume for anything you
+  rely on.
 - **The cluster CA comes from the node trust store.** Fuzzball mounts its CA into every
   workflow container at `/run/fuzzball-substrate/trusted-certs/root-ca.crt` and the gateway
   appends it to its bundle, so a private-CA cluster needs no configuration. Nodes must run

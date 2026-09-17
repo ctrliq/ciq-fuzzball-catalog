@@ -133,13 +133,12 @@
 version: v4
 
 volumes:
+  {{- if eq (lower $volume) "ephemeral" }}
+  data: {}
+  {{- else }}
   data:
-    {{- if eq (lower $volume) "ephemeral" }}
-    use: ephemeral
-    {{- else }}
-    use: persistent
     name: "{{ $volume }}"
-    {{- end }}
+  {{- end }}
 
 jobs:
   show-agent:

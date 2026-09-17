@@ -142,10 +142,7 @@ version: v4
 
 volumes:
   data:
-    {{- if eq (lower $volume) "ephemeral" }}
-    use: ephemeral
-    {{- else }}
-    use: persistent
+    {{- if ne (lower $volume) "ephemeral" }}
     name: "{{ $volume }}"
     {{- end }}
     ingress:

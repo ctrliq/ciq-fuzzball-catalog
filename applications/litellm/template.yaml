@@ -15,9 +15,9 @@
 {{- $masterKey = printf "sk-%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
 {{- end }}
 {{- $dbPassword := printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
-{{- $dataVolume := trim .DataVolume }}
-{{- if not (hasPrefix "volume://" $dataVolume) }}
-{{- fail "DataVolume must be a volume:// reference, e.g. volume://user/ephemeral" }}
+{{- $volume := trim .Volume }}
+{{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
+{{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
 {{- end }}
 {{- $dbPort := randInt 10000 17000 }}
 {{- $llmPort := randInt 17000 24000 }}
@@ -30,8 +30,12 @@
 version: v4
 
 volumes:
+  {{- if eq (lower $volume) "ephemeral" }}
+  db: {}
+  {{- else }}
   db:
-    reference: {{ $dataVolume }}
+    name: "{{ $volume }}"
+  {{- end }}
 
 services:
   # The gateway's state -- virtual keys, per-team budgets, spend history, and the

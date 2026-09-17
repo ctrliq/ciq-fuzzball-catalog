@@ -16,14 +16,13 @@ values:
       reference: ""
     display_category: "Access"
 
-  - name: "DataVolume"
+  - name: "Volume"
     display_name: >-
-      Volume holding the gateway database (virtual keys, budgets, spend history), as
-      volume://<scope>/<provisioner>[/<volume-name>]. The default is ephemeral, so all of
-      it is lost when the workflow stops -- for anything you rely on, name an existing
-      persistent volume, e.g. volume://user/default/my-gateway-db. Mounted at
+      Volume holding the gateway database (virtual keys, budgets, spend history):
+      'ephemeral' (default; all of it is lost when the workflow stops) or the name of an
+      existing persistent volume to keep the gateway state across restarts. Mounted at
       /var/lib/postgresql/data
-    string_value: volume://user/ephemeral
+    string_value: ephemeral
     display_category: "Storage"
 
   - name: "DiscoveryApiValue"
