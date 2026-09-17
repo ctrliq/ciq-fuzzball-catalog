@@ -12,7 +12,8 @@
 {{- end }}
 
 {{- $gateway_api := trim .GatewayApiValue }}
-{{- if not (regexMatch "^[A-Za-z0-9._/-]+$" $gateway_api) }}
+{{- /* Only discovery reads it; an explicit Endpoint leaves it unused. */}}
+{{- if and (not $endpoint) (not (regexMatch "^[A-Za-z0-9._/-]+$" $gateway_api)) }}
   {{- fail "GatewayApiValue may contain only letters, digits, and . _ / -" }}
 {{- end }}
 
@@ -343,7 +344,6 @@ services:
         echo "FATAL: discover-endpoint wrote no endpoints" >&2
         exit 1
       fi
-      endpoint_count=$(wc -l < {{ $endpoint_file }})
 
       # Both TLS stacks here need the cluster CA added to the public roots, not
       # substituted for them: this endpoint may be private-CA while the model
@@ -373,15 +373,8 @@ services:
       umask 077
       resolved=/tmp/providers.tsv
       : > "${resolved}"
-      index=0
       while IFS="$(printf '\t')" read -r endpoint_url endpoint_id; do
         [ -n "${endpoint_url}" ] || continue
-        index=$((index + 1))
-        if [ "${endpoint_count}" -eq 1 ]; then
-          provider="fuzzball"
-        else
-          provider="fuzzball-${index}"
-        fi
         {{- if $mint }}
 
         if [ -z "${endpoint_id}" ]; then
@@ -405,6 +398,10 @@ services:
         {{- else }}
 
         credential="${MODEL_API_KEY}"
+        if [ -z "${credential}" ]; then
+          echo "WARNING: no API key resolved for ${endpoint_url}; skipping it" >&2
+          continue
+        fi
         {{- end }}
 
         # The endpoint decides which models exist: every model it lists is
@@ -452,7 +449,7 @@ services:
           esac
           models="${models}${models:+ }${id}"
         done < /tmp/listed
-        printf '%s\t%s\t%s\t%s\n' "${provider}" "${endpoint_url}" "${credential}" "${models}" >> "${resolved}"
+        printf '%s\t%s\t%s\n' "${endpoint_url}" "${credential}" "${models}" >> "${resolved}"
       done < {{ $endpoint_file }}
       {{- if $mint }}
       # The agent runs arbitrary shell: leave it no workflow API credential.
@@ -463,6 +460,23 @@ services:
         echo "FATAL: none of the discovered endpoints could be reached" >&2
         exit 1
       fi
+
+      # Numbered over the endpoints that survived, not the ones discovered: a
+      # skipped endpoint would otherwise leave a lone provider called fuzzball-1.
+      resolved_count=$(wc -l < "${resolved}")
+      named=/tmp/providers.named.tsv
+      : > "${named}"
+      index=0
+      while IFS="$(printf '\t')" read -r url credential models; do
+        index=$((index + 1))
+        if [ "${resolved_count}" -eq 1 ]; then
+          provider="fuzzball"
+        else
+          provider="fuzzball-${index}"
+        fi
+        printf '%s\t%s\t%s\t%s\n' "${provider}" "${url}" "${credential}" "${models}" >> "${named}"
+      done < "${resolved}"
+      mv "${named}" "${resolved}"
 
       # Model names the default. Whichever provider serves it wins; if none
       # lists it, it is registered on the first provider anyway, since an

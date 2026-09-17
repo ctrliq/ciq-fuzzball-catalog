@@ -76,8 +76,10 @@ v1.97.0 and later honour and the proxy leaves untouched.
 
 Set `EndpointAuth=api-key` for a public Fuzzball endpoint or a third-party API,
 where the key is sent as the bearer token and nothing is minted. A public
-endpoint needs no token and the server refuses to mint one for it, so
-`fuzzball-token` against a public endpoint stops the workflow with that message.
+endpoint needs no token and the server refuses to mint one for it. Under
+`fuzzball-token` such an endpoint is logged as a warning and skipped rather than
+stopping the workflow, so if it was the only one the service stops with `none of
+the discovered endpoints could be reached` and the reason is in the log above it.
 
 The token is minted by the service itself rather than a preparatory job, because
 the server grants an endpoint token no more lifetime than the calling workflow
