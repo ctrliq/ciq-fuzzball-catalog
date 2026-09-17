@@ -1,4 +1,12 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+{{- $volume := trim .VolumeReference }}
+{{- if not $volume }}
+  {{- fail "VolumeReference must be 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+{{- $persistent := ne (lower $volume) "ephemeral" }}
+{{- /* An empty mapping is not the same as a key with nothing under it, which
+       decodes to no volume at all. */}}
+{{- $workdir_empty := and (not $persistent) .UseInlineAnimationScript (not .VideoDestination) (not .GifDestination) }}
 version: v4
 
 {{- if .UseInlineAnimationScript }}
@@ -129,11 +137,9 @@ defaults:
       /home/user: workdir
 
 volumes:
-  workdir:
-    {{- if .PersistentVolumeName }}
-    name: {{ .PersistentVolumeName }}
-    {{- else }}
-    use: ephemeral
+  workdir:{{ if $workdir_empty }} {}{{ end }}
+    {{- if $persistent }}
+    name: "{{ $volume }}"
     {{- end }}
     {{- if not .UseInlineAnimationScript }}
     ingress:
