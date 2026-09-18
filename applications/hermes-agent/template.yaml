@@ -24,9 +24,12 @@
   {{- fail "Model must name the model as the gateway serves it, e.g. openai/gpt-oss-20b" }}
 {{- end }}
 
+{{- /* Hermes refuses to start a session below its own MINIMUM_CONTEXT_LENGTH,
+       so a value the agent would reject is caught here rather than at the
+       first prompt, where the dashboard is already up and attach has passed. */}}
 {{- $context_size := int .MaxContextSize }}
-{{- if lt $context_size 1024 }}
-  {{- fail "MaxContextSize must be at least 1024" }}
+{{- if lt $context_size 64000 }}
+  {{- fail "MaxContextSize must be at least 64000: Hermes rejects any model whose context window is smaller, and the agent fails on its first message rather than at startup" }}
 {{- end }}
 
 {{- $auth := lower (trim .EndpointAuth) }}
@@ -133,13 +136,12 @@
 version: v4
 
 volumes:
+  {{- if eq (lower $volume) "ephemeral" }}
+  data: {}
+  {{- else }}
   data:
-    {{- if eq (lower $volume) "ephemeral" }}
-    use: ephemeral
-    {{- else }}
-    use: persistent
     name: "{{ $volume }}"
-    {{- end }}
+  {{- end }}
 
 jobs:
   show-agent:
@@ -158,8 +160,9 @@ jobs:
       echo "   username: hermes"
       echo "   password: {{ $dashboard_password }}"
       echo ""
-      echo "A browser cannot use that URL -- the proxy wants an Authorization header"
-      echo "it cannot send. Forward the port instead:"
+      echo "Open that URL in a browser already signed in to the Fuzzball web UI --"
+      echo "the session it holds satisfies the endpoint scope. Without one, or to"
+      echo "keep that session cookie away from the page, forward the port instead:"
       echo "   fuzzball workflow port-forward <workflow id> hermes 19119:{{ $dashboard_port }}"
       echo "   then open http://127.0.0.1:19119"
       echo ""
@@ -180,7 +183,8 @@ jobs:
       {{- end }}
       echo ""
       echo "The endpoint scope is {{ $scope }}, so requests through the dashboard URL"
-      echo "also need a Fuzzball credential in the Authorization header:"
+      echo "need a Fuzzball credential. A signed-in browser sends one as a cookie;"
+      echo "anything that sets headers uses a token in Authorization:"
       echo "   fuzzball workflow endpoints generate-token <endpoint id>"
       echo ""
       echo "Watch the agent attach to its gateway with:"

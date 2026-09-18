@@ -18,19 +18,41 @@ model is reached over an OpenAI-compatible endpoint such as the one published by
 the `vllm` or `litellm` entries.
 
 ```
+fuzzball workflow catalog start OpenCode
+fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>
 fuzzball workflow catalog start OpenCode --values Endpoint=https://<gateway-endpoint-url>,EndpointAuth=api-key,ApiKeySecret=secret://user/litellm-key,ServiceScope=public
-fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>,ApiKeySecret=secret://user/litellm-key
 fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKey=sk-...
 ```
 
-Get the endpoint URL of the model workflow with `fuzzball workflow endpoints
-list`, and its LiteLLM key from its definition (`fuzzball workflow get
-<workflow id>`). When the server starts it registers every model the endpoint
-lists at `/v1/models`, so pointed at the LiteLLM Model Gateway entry
-(`litellm`) it offers everything the gateway had discovered at that moment.
-`Model` is optional and only picks the default, named as the endpoint serves
-it (for the `vllm` entry, its `Model` value without the `hf://` prefix);
-without it the first listed model is the default.
+`Endpoint` is optional. Left empty, the `discover-endpoint` job lists the
+Fuzzball endpoints this workflow's own identity can reach and takes **every**
+one annotated `ciq.com/api: openai-gateway` -- what the `litellm` entry stamps
+on its endpoint, so start a gateway before starting this with no values.
+Running several gateways at once is the normal case, so each becomes its own
+provider and every model it serves joins the picker. A run that can see no such
+endpoint at all stops, and so does one where none of them could be reached.
+
+Each endpoint has its own base URL and credential, so they stay separate
+providers rather than merging. With one endpoint the provider is `fuzzball`,
+exactly as before; with several they are `fuzzball-1`, `fuzzball-2` and so on,
+ordered by URL. An endpoint that rejects the credential is dropped with a
+warning and the rest still work. One that does not answer at all is kept, since
+a pool still starting up answers later, so it contributes no models to the
+picker for this run.
+
+Set `Endpoint` to pin one particular endpoint and ignore the others, or to
+reach an OpenAI-compatible API outside Fuzzball, which additionally needs
+`EndpointAuth=api-key`. To find one, use `fuzzball workflow endpoints list`,
+and get its LiteLLM key from its definition (`fuzzball workflow get <workflow
+id>`).
+
+`Model` is optional and only picks the default, named as the endpoint serves it
+(for the `vllm` entry, its `Model` value without the `hf://` prefix). Whichever
+provider serves it becomes the default; if none advertises it, it is registered
+on the first provider anyway, since an endpoint may serve a model it does not
+list. Without `Model`, the first model of the first provider is the default --
+so a run where nothing listed a model and `Model` is empty has no default to
+set, and stops.
 
 To see the models:
 
@@ -54,8 +76,10 @@ v1.97.0 and later honour and the proxy leaves untouched.
 
 Set `EndpointAuth=api-key` for a public Fuzzball endpoint or a third-party API,
 where the key is sent as the bearer token and nothing is minted. A public
-endpoint needs no token and the server refuses to mint one for it, so
-`fuzzball-token` against a public endpoint stops the workflow with that message.
+endpoint needs no token and the server refuses to mint one for it. Under
+`fuzzball-token` such an endpoint is logged as a warning and skipped rather than
+stopping the workflow, so if it was the only one the service stops with `none of
+the discovered endpoints could be reached` and the reason is in the log above it.
 
 The token is minted by the service itself rather than a preparatory job, because
 the server grants an endpoint token no more lifetime than the calling workflow
@@ -106,8 +130,10 @@ before the agent starts, so a prompt injection cannot walk off with it.
   v2 API that the bundled web application queries, so the model picker offers only
   OpenCode's own hosted models. Drive the server through the v1 session API
   (`POST /session`, then `POST /session/{id}/message` with
-  `{"model":{"providerID":"fuzzball","modelID":"<model id>"},"parts":[...]}`) or
-  attach a local client.
+  `{"model":{"providerID":"<provider id>","modelID":"<model id>"},"parts":[...]}`)
+  or attach a local client. The provider id is `fuzzball` when one endpoint was
+  discovered and `fuzzball-1` upwards when several were; the `opencode` service
+  log names them.
 - *Tool calling depends on the serving side.* Agentic work needs a model that
   supports tool calls and a server configured to parse them; with the `vllm`
   entry, pass the appropriate flags in `ExtraArgs` (for example

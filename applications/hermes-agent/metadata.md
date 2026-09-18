@@ -93,16 +93,18 @@ definition*, which is a narrower promise than keeping it off disk.
 
 ## Reaching the agent
 
-The service publishes one endpoint: the web dashboard. Reaching it needs a
-forwarded port rather than the endpoint URL, for the reason set out below.
+The service publishes one endpoint: the web dashboard. Open its URL in a browser
+that is signed in to the Fuzzball web UI and you get the agent's own sign-in
+page.
 
-The agent also runs its own OpenAI-compatible API, but **it is never published
-as an endpoint**. It accepts its key only as an `Authorization` bearer, and the
-Fuzzball endpoint proxy strips that header before the request reaches the
+The agent also runs its own OpenAI-compatible API, but **it is not published as
+an endpoint**. It accepts its key only as an `Authorization` bearer, and the
+Fuzzball endpoint proxy consumes that header before the request reaches the
 container -- verified: a request carrying it arrives with the header absent and
 `x-fuzzball-account-id` added in its place. An endpoint in front of it therefore
 could not be authenticated at any scope this entry offers. The dashboard is
-unaffected because it signs in with a form and a cookie.
+unaffected because it signs in with a form and a cookie, and the application's
+own cookies reach the container untouched.
 
 `ApiServerAccess` decides how far that API reaches. At `loopback`, the default,
 it is bound inside the container only -- enough for the dashboard and for the
@@ -117,26 +119,37 @@ fuzzball workflow exec <workflow id> hermes -- \
 
 Two layers of authentication apply and neither is redundant:
 
-- The endpoint scope. At `user`, `group`, or `organization`, requests through
-  an endpoint URL need an [endpoint access
+- The endpoint scope. At `user`, `group`, or `organization`, a request through
+  the endpoint URL has to carry a Fuzzball credential. A browser already signed
+  in to the Fuzzball web UI sends one as a cookie, which is what makes the
+  dashboard URL work there. Anything else -- `curl`, a script, a client you
+  control -- supplies an [endpoint access
   token](https://ui.stable.fuzzball.ciq.dev/docs/advanced-features/workflow-endpoints/)
-  in `Authorization`. There is no interactive sign-in at this layer: an
-  unauthenticated request gets a bare `401`, with no redirect to a login and no
-  `WWW-Authenticate` challenge. That is fine for `curl` and for anything that
-  can set a header, and it means **a browser cannot open the dashboard URL
-  directly** -- see below.
+  in `Authorization`. There is no interactive sign-in at this layer, so a
+  browser carrying no Fuzzball session gets a bare `401`, with no redirect to a
+  login and no `WWW-Authenticate` challenge.
 - The agent's own credentials -- a dashboard password and an API key, both
   generated at submit time and printed by the `show-agent` job. A plain service
   binds its port on the node it runs on, so the endpoint proxy is not the only
   way in and the scope alone protects nothing -- which is why `ApiServerAccess`
   defaults to `loopback`, so the one listener that can run shell commands is not
   on the node's network unless you ask for it.
+
+Two consequences follow:
+
 - **Shell access here is the workflow's Fuzzball identity.** Anyone who reaches
   the agent can run commands as it, and the agent's own credential file holds a
   token that mints endpoint tokens for everything its owner can see -- not just
   the gateway. The entry drops `FB_TOKEN` from the environment before starting
   the agent, which removes the most obvious route but not the file. Treat
   reaching this agent as equivalent to holding the submitter's endpoint access.
+- **Opening any Fuzzball endpoint in a browser shows your own session token to
+  scripts running on the page it serves.** The cookie a browser uses to satisfy
+  the endpoint scope is set for the whole cluster domain and is not hidden from
+  scripts, so the page can read it -- this dashboard's included. That is a
+  property of Fuzzball endpoints rather than of this entry, but it weighs more
+  here than for a notebook, because the page comes from an agent that runs
+  commands. The forwarded port avoids it: no proxy in the path, no cookie sent.
 
 `public` is deliberately not offered as a scope. Hermes refuses to serve an
 unauthenticated dashboard on a non-loopback bind at all -- upstream removed the
@@ -147,9 +160,16 @@ remembers, and spend model capacity, so prefer the narrowest scope that fits.
 
 ### From a workstation
 
-The dashboard is a browser application behind a proxy that only accepts a
-header, so the two do not meet. Forward the port instead and the proxy drops out
-of the picture, leaving only the agent's own sign-in:
+Take the dashboard URL from `fuzzball workflow endpoints list`, or use the
+**Connect** button on the workflow in the Fuzzball web UI, and open it in the
+same browser you signed in to that UI with. The session that browser already
+holds satisfies the endpoint scope, so what you see is the agent's own sign-in:
+username `hermes`, password from `show-agent`.
+
+A browser with no Fuzzball session has no way to present a Fuzzball credential
+and gets a `401`. Forward the port instead, which takes the proxy out of the
+picture entirely -- leaving only the agent's own sign-in, and keeping your
+Fuzzball session cookie away from the page:
 
 ```sh
 fuzzball workflow port-forward <workflow id> hermes <local port>:<dashboard port>
@@ -160,15 +180,14 @@ An SSH tunnel to the node the service landed on does the same thing if you have
 shell access to it. Verified end to end from a laptop: the sign-in page renders
 over the tunnel and the password printed by `show-agent` is accepted.
 
-Anything that can set headers -- `curl`, a script, a client you control -- can
-use the endpoint URL directly from anywhere, with an endpoint access token in
-`Authorization`. Only the browser case needs the tunnel.
+A header-setting client reaches the endpoint URL from anywhere, no browser
+session involved.
 
-Reaching a *gateway* from outside the cluster does work, because its two
-credentials travel in two different headers -- the proxy consumes
-`Authorization` and passes `x-litellm-api-key` through untouched. That is what
-makes the workstation setup below possible, and it is exactly what the agent's
-own API lacks.
+Reaching a *gateway* from outside the cluster works for `curl` and any other
+header-setting client, because its two credentials travel in two different
+headers -- the proxy consumes `Authorization` and passes `x-litellm-api-key`
+through untouched. That is what makes the workstation setup below possible, and
+it is exactly what the agent's own API lacks.
 
 ## Using a Fuzzball model from Hermes on your workstation
 
@@ -268,8 +287,8 @@ Switch between the cluster and anything else you have configured with
   `litellm` entry keeps its virtual keys in its database, which is on an
   ephemeral volume by default, so restarting the gateway destroys them. The agent
   will rediscover the new gateway and mint a fresh Fuzzball token for it, then
-  fail authentication with the dead LiteLLM key. Point the gateway's `DataVolume`
-  at a persistent volume, or expect to mint a new key and restart the agent.
+  fail authentication with the dead LiteLLM key. Set the gateway's `Volume` to the
+  name of a persistent volume, or expect to mint a new key and restart the agent.
 - **Generation length is bounded by the endpoint proxy's 10-minute idle
   timeout.** A response that produces nothing for longer than that window is
   cut off, which a long agentic turn on a slow model can reach.
@@ -279,9 +298,13 @@ Switch between the cluster and anything else you have configured with
   Messages protocol, but this entry does not expose that choice. Anthropic's own
   API works because it publishes an OpenAI-compatible layer at that path; a
   Messages-only proxy would not.
-- **`MaxContextSize` is not discovered.** Hermes compresses its context against
-  whatever this says, so a value above what the model serves produces requests
-  the model rejects. Match it to the serving entry.
+- **`MaxContextSize` is not discovered, and 64000 is a hard floor.** Hermes
+  refuses to start a session against a context window smaller than that, and it
+  refuses at the first message rather than at startup -- the dashboard comes up,
+  the agent attaches, and then every prompt fails. So match this to the serving
+  entry, but only among models that serve at least 64K: a value above what the
+  model serves produces requests the model rejects, and a smaller model cannot
+  run this entry at all.
 - **The agent borrows the owner's reach.** It discovers and authenticates to the
   gateway as the identity that started it, so its endpoint scope decides who can
   use it, regardless of the callers' own grants.

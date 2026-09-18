@@ -112,8 +112,8 @@ To confirm a model was picked up, watch `fuzzball workflow log <workflow> gatewa
   another release's schema accepts writes and then never routes the model. Changing
   `LiteLLMVersion` means starting with a fresh database.
 - **The default volume is ephemeral**, so virtual keys, budgets and spend history are lost
-  when the workflow stops. Point `DataVolume` at a persistent volume for anything you rely
-  on.
+  when the workflow stops. Set `Volume` to the name of a persistent volume for anything you
+  rely on. A persistent volume brings its own constraints -- see below.
 - **The cluster CA comes from the node trust store.** Fuzzball mounts its CA into every
   workflow container at `/run/fuzzball-substrate/trusted-certs/root-ca.crt` and the gateway
   appends it to its bundle, so a private-CA cluster needs no configuration. Nodes must run
@@ -137,3 +137,31 @@ To confirm a model was picked up, watch `fuzzball workflow log <workflow> gatewa
   `MasterKeySecret` it is generated once, when the template is rendered, and embedded in
   the rendered workflow definition. Set `MasterKeySecret` to keep the key out of the
   definition, and hand callers virtual keys, never the master key.
+
+### On a persistent volume
+
+None of these apply while `Volume` is `ephemeral`.
+
+- **The volume name is resolved across the organization.** Fuzzball searches every
+  provisioner you can reach for a volume of that name and binds the single match. `Volume`
+  cannot pin a provisioner, which the `volume://<scope>/<provisioner>/<name>` form this
+  entry used to take could: give the volume a name that is unique across provisioners.
+  Two matches fail the submit, and the error's advice to specify a provisioner with `use:`
+  is not something this entry can express.
+- **Give it an empty volume you created yourself.** Fuzzball never changes a volume's
+  ownership when it mounts one, and new volumes are created 0750, so a volume created by
+  another user or imported with `fuzzball volume provisioner scan` leaves the data
+  directory unwritable. That surfaces as `FATAL: postgres exited before the password was
+  reset`, which mentions neither permissions nor the volume.
+- **The PostgreSQL major version comes from the data directory, not `PostgresVersion`.** A
+  reused volume carries the cluster `initdb` wrote, so raising `PostgresVersion` across a
+  major boundary makes the image refuse the directory and produce that same FATAL. Dump and
+  restore, or point `Volume` at a new volume. The same goes for a `LiteLLMVersion` change:
+  starting with a fresh database is automatic only while the volume is ephemeral.
+- **`POSTGRES_INITDB_ARGS` applies only to an empty volume.** A data directory initialized
+  anywhere else brings its own `pg_hba.conf`, and with `network: host: true` `initdb`'s
+  default `trust` on 127.0.0.1 lets any process on the node connect as superuser. Only a
+  data directory this entry initialized is known to close that.
+- **Run one gateway per volume.** Nothing stops a second workflow from mounting the same
+  volume. Its password reset succeeds and rewrites the shared role's password, so the first
+  workflow's `DATABASE_URL` stops working while both keep looking healthy.

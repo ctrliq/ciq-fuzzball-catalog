@@ -25,8 +25,11 @@ values:
     display_name: >-
       Maximum input tokens the model accepts. Hermes compresses its context against this
       number, so a value above what the model serves produces requests the model rejects, and
-      one far below it makes the agent compress away history it could have kept.
-    uint_value: 32768
+      one far below it makes the agent compress away history it could have kept. Hermes
+      refuses to start a session below 64000, so that is the floor here whatever the model
+      serves -- an agent needs a large context and a model with a smaller window cannot run
+      this entry at all.
+    uint_value: 131072
     display_category: Model
 
   - name: EndpointAuth

@@ -72,11 +72,12 @@ values:
 
   - name: Volume
     display_name: >-
-      Volume holding the downloaded model: 'ephemeral' (default), or the name of an
-      existing persistent volume to keep the model across workflow restarts.
-      Mounted at /data. The download directory is keyed on the repository and,
-      when Model pins one with ?revision=, the revision — so several models and
-      revisions can share one persistent volume without overwriting each other.
+      Volume holding the downloaded model: 'ephemeral' (default; the model is
+      downloaded again every time the workflow starts) or the name of an existing
+      persistent volume to keep the model across workflow restarts. Mounted at
+      /data. The download directory is keyed on the repository and, when Model
+      pins one with ?revision=, the revision -- so several models and revisions
+      can share one persistent volume without overwriting each other.
     string_value: ephemeral
     display_category: Storage
   - name: IngressTimeout
