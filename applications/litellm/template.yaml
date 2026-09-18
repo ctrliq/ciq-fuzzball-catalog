@@ -120,6 +120,7 @@ services:
       - TOKEN_TTL={{ .TokenLifetime }}
       - COLD_START_RETRIES={{ .ColdStartRetries }}
       - FB_CA_BUNDLE={{ $caBundle }}
+      - PYTHONPATH=/etc/litellm
     depends-on:
       - name: database
         status: RUNNING
@@ -178,6 +179,108 @@ services:
       else
         echo "WARNING: node trust store {{ $nodeTrustStore }} is missing; discovery only works if the Fuzzball API uses a publicly trusted certificate" >&2
       fi
+
+      # Agents on this cluster present the endpoint's signed caller identity
+      # instead of a key. mode auto runs this first and falls back to LiteLLM's
+      # own key check when it raises, which is what keeps virtual keys,
+      # x-litellm-api-key and the master key working.
+      mkdir -p /etc/litellm
+      cat > /etc/litellm/config.yaml <<'YAMLEOF'
+      general_settings:
+        custom_auth: fuzzball_auth.user_api_key_auth
+        custom_auth_settings:
+          mode: auto
+      YAMLEOF
+
+      cat > /etc/litellm/fuzzball_auth.py <<'PYEOF'
+      # Authenticates a Fuzzball caller-identity assertion, which the proxy in front
+      # of a model receives from the endpoint instead of a key. Every failure raises
+      # a plain Exception so custom_auth_settings.mode auto falls back to LiteLLM's
+      # own key check; a ProxyException would be re-raised as a 401 instead.
+      import json
+      import os
+      import threading
+
+      import jwt
+      from litellm.proxy._types import UserAPIKeyAuth
+
+      HEADER = "x-fuzzball-caller-identity"
+      KEYS_PATH = "/run/fuzzball-substrate/trusted-certs/signing-keys.json"
+
+      CACHE_LOCK = threading.Lock()
+      CACHE = dict(mtime=None, keys=None)
+
+
+      class CallerIdentityError(Exception):
+          pass
+
+
+      def forget_keys():
+          with CACHE_LOCK:
+              CACHE.update(mtime=None, keys=None)
+
+
+      def load_keys(path):
+          # Re-read only when the file changes: this runs on every request.
+          mtime = os.stat(path).st_mtime
+          with CACHE_LOCK:
+              if CACHE["keys"] is None or CACHE["mtime"] != mtime:
+                  with open(path) as handle:
+                      CACHE.update(mtime=mtime, keys=jwt.PyJWKSet.from_dict(json.load(handle)))
+              return CACHE["keys"]
+
+
+      def verify_assertion(raw, keys_path, audiences, verify_exp=True):
+          if not raw:
+              raise CallerIdentityError("no caller identity header")
+          if not audiences:
+              raise CallerIdentityError("no endpoint id to bind to")
+          try:
+              keys = load_keys(keys_path)
+          except FileNotFoundError:
+              raise CallerIdentityError("signing keys not present on this node") from None
+          kid = jwt.get_unverified_header(raw).get("kid")
+          key = next((k for k in keys.keys if k.key_id == kid), None)
+          if key is None:
+              raise CallerIdentityError(f"unknown kid {kid}")
+          try:
+              return jwt.decode(
+                  raw,
+                  key.key,
+                  algorithms=["ES256"],
+                  audience=audiences,
+                  options={"verify_exp": verify_exp, "require": ["exp", "sub", "aud"]},
+              )
+          except jwt.PyJWTError as err:
+              raise CallerIdentityError(str(err)) from None
+
+
+      def authenticate(raw, audiences):
+          try:
+              return verify_assertion(raw, KEYS_PATH, audiences)
+          except CallerIdentityError as err:
+              if not str(err).startswith("unknown kid"):
+                  raise
+          # An unknown kid can be a rotation the mtime check missed; re-read once.
+          forget_keys()
+          return verify_assertion(raw, KEYS_PATH, audiences)
+
+
+      async def user_api_key_auth(request, api_key):
+          # The endpoint the assertion must be bound to. FB_ENDPOINT_ID names the
+          # first endpoint in definition order, which is not necessarily this one.
+          endpoint_id = os.environ.get("FB_ENDPOINT_ID_OPENAI", "")
+          audiences = [f"endpoint:{endpoint_id}"] if endpoint_id else []
+          try:
+              claims = authenticate(request.headers.get(HEADER), audiences)
+          except Exception as err:
+              raise Exception(f"caller identity not accepted: {err}") from None
+          return UserAPIKeyAuth(
+              user_id=claims["sub"],
+              user_email=claims.get("email"),
+              api_key="caller-identity",
+          )
+      PYEOF
 
       cat > /tmp/reconcile.py <<'PYEOF'
       # Keeps LiteLLM's deployment list equal to the set of annotated endpoints
@@ -384,7 +487,7 @@ services:
           time.sleep(INTERVAL)
       PYEOF
 
-      litellm --port "${LLM_PORT}" &
+      litellm --config /etc/litellm/config.yaml --port "${LLM_PORT}" &
       python3 /tmp/reconcile.py &
 
       # Forward shutdown to both children so litellm can flush in-flight state.
@@ -448,8 +551,14 @@ jobs:
         echo "   (none yet -- annotate a model endpoint with ciq.com/api and ciq.com/model)"
       echo ""
 
-      echo "Every call through the endpoint carries two credentials: a Fuzzball"
-      echo "credential in Authorization, and a LiteLLM key in x-litellm-api-key."
+      echo "An agent running on this cluster needs no key at all: the endpoint"
+      echo "signs the caller's Fuzzball identity and the gateway accepts it, so"
+      echo "access is governed by the endpoint scope. A key is needed only for"
+      echo "external clients, a public endpoint, or a cluster without caller"
+      echo "identity."
+      echo ""
+      echo "Such a call carries two credentials: a Fuzzball credential in"
+      echo "Authorization, and a LiteLLM key in x-litellm-api-key."
       echo ""
       echo "Create a virtual key:"
       echo "   curl -X POST \\"

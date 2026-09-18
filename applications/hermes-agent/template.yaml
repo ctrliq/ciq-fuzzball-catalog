@@ -106,12 +106,6 @@
 {{- end }}
 
 {{- $mint := eq $auth "fuzzball-token" }}
-{{- /* A LiteLLM gateway always enforces a key, and its own is the only thing
-       this workflow cannot work out for itself. Caught here rather than as a
-       401 several minutes into startup. */}}
-{{- if and $mint (not (or $api_key_secret $api_key)) }}
-  {{- fail "A gateway key is required: set ApiKeySecret (preferred) or ApiKey" }}
-{{- end }}
 
 {{- $dashboard_username := trim .DashboardUsername }}
 {{- if not (regexMatch "^[A-Za-z0-9._@-]+$" $dashboard_username) }}
