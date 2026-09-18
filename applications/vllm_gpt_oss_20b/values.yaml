@@ -32,10 +32,21 @@ values:
     options_input:
       options: ["user", "group", "organization", "public"]
     display_category: Access
+  - name: ApiKeySecret
+    display_name: >-
+      Fuzzball secret holding the key the LiteLLM proxy enforces (master key), as
+      secret://user/<name>. Must be a user-scoped secret of type value whose content
+      starts with sk-. The definition carries only the reference; the key is resolved
+      at run time. Preferred over ApiKey, and used in preference to it when both
+      are set. Unused when proxy is disabled.
+    secret_value:
+      reference: ""
+    display_category: Access
   - name: ApiKey
     display_name: >-
-      OpenAI API key enforced by the LiteLLM proxy (master key). Must start with sk-.
-      Auto-generated when left empty; set an explicit strong key for public endpoints.
+      OpenAI API key enforced by the LiteLLM proxy (master key), in plain text and stored
+      in the rendered definition (prefer ApiKeySecret). Must start with sk-. With neither
+      set, a key is generated at every workflow start and embedded in the definition.
       Unused when proxy is disabled; access is then governed by the endpoint scope.
     string_value: ""
     display_category: Access
