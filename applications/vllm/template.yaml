@@ -117,13 +117,29 @@
 {{- end }}
 {{- $hf_token_secret := trim .HfTokenSecret }}
 
+{{- /* The proxy's master key reaches LiteLLM as LITELLM_MASTER_KEY, and the
+       dynamic-config file names that variable rather than the key: that file
+       is rendered by the orchestrator in a sandboxed shell with an empty
+       environment, where a secret reference could never be resolved. Only the
+       container's own env is resolved by Fuzzball at run time.
+       Named as a secret, the definition carries the reference alone. Given
+       literally or generated, the key itself lives in the definition, readable
+       by anyone who can get the workflow. */}}
+{{- /* The platform accepts only user-scoped value secrets in env entries. */}}
+{{- $api_key_secret := trim .ApiKeySecret }}
+{{- if and $api_key_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $api_key_secret)) }}
+  {{- fail "ApiKeySecret must be a user-scoped secret reference, e.g. secret://user/vllm-proxy-key" }}
+{{- end }}
 {{- $api_key := trim .ApiKey }}
+{{- if and $api_key (not (regexMatch "^sk-[A-Za-z0-9_-]+$" $api_key)) }}
+  {{- fail "ApiKey must start with sk- and contain only letters, digits, '-' and '_'" }}
+{{- end }}
+{{- /* ApiKeySecret wins when both are set, as in the hermes-agent and opencode
+       entries. With neither, a key is generated at every workflow start. */}}
 {{- if .Proxy }}
-  {{- if $api_key }}
-    {{- if not (regexMatch "^sk-[A-Za-z0-9_-]+$" $api_key) }}
-      {{- fail "ApiKey must start with sk- and contain only letters, digits, '-' and '_'" }}
-    {{- end }}
-  {{- else }}
+  {{- if $api_key_secret }}
+    {{- $api_key = $api_key_secret }}
+  {{- else if not $api_key }}
     {{- $api_key = printf "sk-fb-%d%d%d%d" (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) }}
   {{- end }}
 {{- end }}
@@ -411,6 +427,8 @@ services:
     persist: true
     image:
       uri: {{ .LitellmImage }}
+    env:
+      - LITELLM_MASTER_KEY={{ $api_key }}
     resource:
       cpu:
         cores: 2
@@ -458,7 +476,10 @@ services:
         fi
         cat <<'EOF'
         general_settings:
-          master_key: "{{ $api_key }}"
+          # The key itself cannot be written here -- this file is rendered by
+          # the orchestrator in a sandbox with an empty environment -- so name
+          # the variable and let LiteLLM read it from its own container env.
+          master_key: os.environ/LITELLM_MASTER_KEY
         litellm_settings:
           callbacks: ["prometheus"]
           num_retries: 2
@@ -468,6 +489,13 @@ services:
         EOF
     script: |
       #!/bin/bash
+      # A key from ApiKeySecret is first visible here, once Fuzzball has
+      # resolved it; a literal or generated one always carries the prefix.
+      case "${LITELLM_MASTER_KEY}" in
+        sk-*) ;;
+        *) echo "FATAL: the master key must start with sk-; check the secret named in ApiKeySecret" >&2; exit 1 ;;
+      esac
+
       # LiteLLM reads its config only at startup, while Fuzzball re-renders the
       # dynamic-config file in place as the pool scales; watch the file and
       # restart LiteLLM whenever the backend list changes.

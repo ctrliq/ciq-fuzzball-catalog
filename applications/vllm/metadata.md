@@ -207,11 +207,36 @@ Before choosing `Nodes` above 1:
   and therefore never wakes a pool idling at zero.
 - `MinReplicas` / `MaxReplicas`: replica pool bounds. `MinReplicas=0`
   enables scale-to-zero.
-- `ApiKey`: OpenAI API key enforced by the LiteLLM proxy. Must start with
-  `sk-`. Auto-generated when left empty — the generated key is visible in the
-  started workflow's rendered definition (`fuzzball workflow describe`). Set an
-  explicit strong key for `public` endpoints. Unused with `Proxy=false`, where
-  access is governed by the endpoint scope instead.
+- `ApiKeySecret`: a Fuzzball secret holding the key the LiteLLM proxy enforces,
+  as `secret://user/<name>`. The definition carries the reference, not the key,
+  and Fuzzball resolves it at run time. Preferred over `ApiKey`. Unused with
+  `Proxy=false`.
+- `ApiKey`: the same key in plain text. Must start with `sk-`. `ApiKeySecret`
+  wins if both are set; with neither, a key is generated at every workflow
+  start. A literal or generated key is stored in the started workflow's definition,
+  where anyone who can `fuzzball workflow get` the workflow can read it. Unused
+  with `Proxy=false`, where access is governed by the endpoint scope instead.
+
+Both are unset by default, so a pool started without either enforces a freshly
+generated key. Read it back with `fuzzball workflow get <workflow>` and look for
+`LITELLM_MASTER_KEY` on the `litellm` service — that is the `${API_KEY}` the
+request examples above need. It is fixed for the life of the workflow, and a
+different one is generated the next time the entry is started.
+
+On a `public` endpoint this key is the only thing standing in front of the
+model — set a strong one deliberately rather than relying on the generated
+default. To keep one key across workflow starts and out of the definition,
+create a user-scoped secret of type `value` and name it in `ApiKeySecret`:
+
+```sh
+printf 'sk-...' | fuzzball secret create secret://user/vllm-proxy-key --type value
+fuzzball workflow catalog start vLLM --values ApiKeySecret=secret://user/vllm-proxy-key
+```
+
+The secret's content must itself start with `sk-`; the proxy exits at start
+with a message naming `ApiKeySecret` if it does not. Naming a secret keeps the
+key out of the definition but not out of the running container — its owner can
+still read it there.
 
 Resource, image-version, scaling, and vLLM tuning knobs are available under
 the Resources, Versions, Scaling, and Model Configuration categories. Under
