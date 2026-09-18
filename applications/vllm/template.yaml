@@ -427,6 +427,14 @@ services:
           protocol: http
           type: subdomain
           scope: {{ $scope }}
+          {{- if ne $scope "public" }}
+          # One base URL over every replica, which is what an agent attaches to.
+          # Not at public scope: the listing surfaces a public endpoint to the
+          # whole organization, and an agent that discovered it would then fail
+          # minting a token no public endpoint needs.
+          annotations:
+            ciq.com/api: openai-gateway
+          {{- end }}
     dynamic-config:
       path: /etc/litellm/config.yaml
       services: [vllm]

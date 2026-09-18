@@ -86,6 +86,51 @@ Gateway catalog entry (`litellm`) picks the pool up automatically. An authentica
 idles at zero starts the first replica and returns `503` with a `Retry-After`
 header.
 
+## Being discovered
+
+Which annotation the endpoint carries follows from which mode it is in, and
+decides who finds the pool without being given a URL.
+
+`Proxy=true` annotates the proxy endpoint `ciq.com/api: openai-gateway`, the
+same marker the `litellm` entry puts on its own endpoint. The `hermes-agent`
+entry attaches to it directly, so a single pool and one agent need no gateway
+workflow between them. A standalone `litellm` gateway does
+not nest one proxy behind another: it registers only endpoints that also carry
+`ciq.com/model`, and a proxy endpoint never does. Its `DiscoveryApiValue` knob
+is a weaker guard -- it is set to `openai` by default, but it is user-settable.
+
+`Proxy=false` annotates the per-replica endpoints `ciq.com/api: openai` plus
+`ciq.com/model`, which is what a `litellm` gateway registers. Agents do not
+attach to these; reach them through the gateway. A gateway another identity
+runs only sees them if `Scope` is widened to reach it -- at the `user` default
+a pool published for someone else's gateway is never registered, and nothing
+reports why.
+
+Discovery only considers endpoints the caller's identity can reach, and `Scope`
+defaults to `user` so a pool does not appear in a colleague's candidate set.
+Widen it deliberately. What an agent does with several visible gateways is the
+agent's choice, and `hermes-agent` refuses to guess -- so with several pools
+running at once, name the endpoint on the agent. Narrowing `Scope` does not
+help: `user` is already the narrowest, and two pools you started yourself
+collide inside it.
+
+At `Proxy=true`, `Scope=public` carries no `ciq.com/api` annotation, so a public
+proxied pool is not discovered. The listing surfaces a public endpoint to every
+member of the organization, and an agent that found one would then fail minting
+the token a public endpoint does not need. This does not extend to `Proxy=false`:
+the per-replica endpoints carry their annotations at every scope, so a public
+pool is still registered by any gateway in the organization -- and that gateway
+then cannot mint for it either. Do not publish a pool for a gateway at `public`.
+
+Discovery finds the URL, not the credential. At `Proxy=true` the LiteLLM proxy
+still enforces `ApiKey`. Left empty it is generated once, when the template is
+rendered, and written into the rendered workflow definition -- so re-rendering
+produces a different key, and anyone who can read the workflow can read the key.
+It is not a secret from them, only from something that discovered the endpoint
+alone. Set `ApiKey` explicitly and give the agent the same value (`ApiKeySecret`
+on `opencode` and `hermes-agent`), or the agent finds the pool and is refused
+by it.
+
 ## Expert parallelism and multi-node serving
 
 Mixture-of-experts models can serve with expert parallelism instead of tensor
@@ -156,8 +201,10 @@ Before choosing `Nodes` above 1:
   spaces.
 - `Proxy`: whether to front the pool with an in-workflow LiteLLM proxy.
 - `Scope`: authorization scope of the service endpoint (`user`, `group`,
-  `organization`, `public`). Note that a `public` pool endpoint is served
-  without authentication and therefore never wakes a pool idling at zero.
+  `organization`, `public`), defaulting to `user`. It also bounds who discovers
+  the pool, and at `Proxy=true` `public` opts the proxy endpoint out of
+  discovery. Note that a `public` pool endpoint is served without authentication
+  and therefore never wakes a pool idling at zero.
 - `MinReplicas` / `MaxReplicas`: replica pool bounds. `MinReplicas=0`
   enables scale-to-zero.
 - `ApiKey`: OpenAI API key enforced by the LiteLLM proxy. Must start with

@@ -28,7 +28,7 @@ values:
     display_category: Access
   - name: Scope
     display_name: "Authorization scope of the service endpoint: user, group, organization, or public."
-    string_value: group
+    string_value: user
     options_input:
       options: ["user", "group", "organization", "public"]
     display_category: Access
