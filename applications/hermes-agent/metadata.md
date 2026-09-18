@@ -22,6 +22,7 @@ workflows.
 fuzzball workflow catalog start hermes-agent --values ApiKeySecret=secret://user/litellm-key
 fuzzball workflow catalog start hermes-agent --values ApiKeySecret=secret://user/litellm-key,Volume=my-hermes
 fuzzball workflow catalog start hermes-agent --values ApiKeySecret=secret://user/litellm-key,Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b
+fuzzball workflow catalog start hermes-agent --values ApiKeySecret=secret://user/litellm-key,DashboardPasswordSecret=secret://user/hermes-dashboard-password,DashboardSessionSecret=secret://user/hermes-dashboard-session
 ```
 
 The one thing you must supply is the gateway's LiteLLM key. Mint a virtual key
@@ -108,8 +109,8 @@ own cookies reach the container untouched.
 `ApiServerAccess` decides how far that API reaches. At `loopback`, the default,
 it is bound inside the container only -- enough for the dashboard and for the
 agent's own scheduled work, and the right default for an API that can run shell
-commands. At `node` it binds the node's port, where the key printed by
-`show-agent` is the only thing protecting it. Reach it either way with:
+commands. At `node` it binds the node's port, where the API key is the only
+thing protecting it. Reach it either way with:
 
 ```sh
 fuzzball workflow exec <workflow id> hermes -- \
@@ -127,8 +128,9 @@ Two layers of authentication apply and neither is redundant:
   in `Authorization`. There is no interactive sign-in at this layer, so a
   browser carrying no Fuzzball session gets a bare `401`, with no redirect to a
   login and no `WWW-Authenticate` challenge.
-- The agent's own credentials -- a dashboard password and an API key, both
-  generated at submit time and printed by the `show-agent` job. A plain service
+- The agent's own credentials -- a dashboard password and an API key, each
+  taken from a Fuzzball secret you name or generated at submit time and printed
+  by the `show-agent` job (see [Credentials](#credentials)). A plain service
   binds its port on the node it runs on, so the endpoint proxy is not the only
   way in and the scope alone protects nothing -- which is why `ApiServerAccess`
   defaults to `loopback`, so the one listener that can run shell commands is not
@@ -163,7 +165,8 @@ Take the dashboard URL from `fuzzball workflow endpoints list`, or use the
 **Connect** button on the workflow in the Fuzzball web UI, and open it in the
 same browser you signed in to that UI with. The session that browser already
 holds satisfies the endpoint scope, so what you see is the agent's own sign-in:
-username `hermes`, password from `show-agent`.
+the username in `DashboardUsername` (`hermes` by default) and the password,
+which `show-agent` prints unless `DashboardPasswordSecret` names it.
 
 A browser with no Fuzzball session has no way to present a Fuzzball credential
 and gets a `401`. Forward the port instead, which takes the proxy out of the
@@ -172,12 +175,12 @@ Fuzzball session cookie away from the page:
 
 ```sh
 fuzzball workflow port-forward <workflow id> hermes <local port>:<dashboard port>
-# then open http://127.0.0.1:<local port> and sign in as 'hermes'
+# then open http://127.0.0.1:<local port> and sign in with the dashboard credentials
 ```
 
 An SSH tunnel to the node the service landed on does the same thing if you have
 shell access to it. Verified end to end from a laptop: the sign-in page renders
-over the tunnel and the password printed by `show-agent` is accepted.
+over the tunnel and the dashboard password is accepted.
 
 A header-setting client reaches the endpoint URL from anywhere, no browser
 session involved.
@@ -187,6 +190,59 @@ header-setting client, because its two credentials travel in two different
 headers -- the proxy consumes `Authorization` and passes `x-litellm-api-key`
 through untouched. That is what makes the workstation setup below possible, and
 it is exactly what the agent's own API lacks.
+
+## Credentials
+
+The agent enforces three credentials of its own: the dashboard password, the
+key the dashboard signs its sessions with, and the key for its OpenAI-compatible
+API. By default each is generated at every workflow start and embedded in the
+workflow definition, which is convenient and has two costs. Anyone who can read
+the workflow can read them, and every start replaces all three -- so each
+resubmit means looking up a new password, and no dashboard session survives it.
+
+Name a user-scoped secret of type `value` for any of them and the container
+receives the reference instead: Fuzzball resolves it at start, the value never
+enters the definition or the `show-agent` log, and it is the same after every
+start. Someone who can read the workflow no longer sees it; its owner can
+still read it from the running container, as with `ApiKeySecret`. Each secret
+left empty keeps the generated behaviour. The username is not a secret, so
+`DashboardUsername` takes it in plain text.
+
+| Value                     | What it sets                               | Accepted content            |
+|---------------------------|--------------------------------------------|-----------------------------|
+| `DashboardUsername`       | the sign-in username                       | plain text; default `hermes` |
+| `DashboardPasswordSecret` | the sign-in password                       | non-empty                   |
+| `DashboardSessionSecret`  | the key dashboard sessions are signed with | at least 16 bytes           |
+| `ApiServerKeySecret`      | the API's bearer key                       | at least 16 characters      |
+
+```sh
+printf '%s' 'a password you choose' | fuzzball secret create secret://user/hermes-dashboard-password --type value
+openssl rand -hex 32 | fuzzball secret create secret://user/hermes-dashboard-session --type value
+openssl rand -hex 32 | fuzzball secret create secret://user/hermes-api-key --type value
+fuzzball workflow catalog start hermes-agent --values \
+  ApiKeySecret=secret://user/litellm-key,DashboardPasswordSecret=secret://user/hermes-dashboard-password,DashboardSessionSecret=secret://user/hermes-dashboard-session,ApiServerKeySecret=secret://user/hermes-api-key
+```
+
+The constraints on the three secrets are Hermes' own, and it enforces them in
+ways an operator cannot see: the dashboard plugin declines to register on an empty
+password or a session key under 16 bytes, after which the dashboard refuses
+every request, and the API server refuses to start on a key under 16
+characters, taking the dashboard with it. The template cannot inspect a secret's
+contents, so the service checks each resolved value at start and stops with a
+message naming the offending value instead.
+
+Rotating a credential means updating the secret and starting the workflow
+again; the running container holds the value it started with. A stable session
+key only helps where the browser keeps reaching the same address, such as a
+forwarded port: a resubmitted workflow publishes its dashboard under a new
+endpoint hostname, whose cookies start empty whatever the key. A secret reference is
+accepted only in the `user` scope, the one scope environment-variable secrets
+take, so a `group` or `organization` reference fails at render.
+
+Hermes also accepts a precomputed scrypt hash of the password, which is its
+preferred form for configuration at rest. This entry does not offer it: a
+Fuzzball secret already keeps the plaintext out of the definition, and Hermes
+gives a plaintext password from the environment precedence over a hash anyway.
 
 ## Using a Fuzzball model from Hermes on your workstation
 
@@ -300,11 +356,15 @@ Switch between the cluster and anything else you have configured with
 - **The agent borrows the owner's reach.** It discovers and authenticates to the
   gateway as the identity that started it, so its endpoint scope decides who can
   use it, regardless of the callers' own grants.
-- **Anyone who can read the workflow can read both credentials, and they cannot
-  be rotated.** The dashboard password and API key are generated fresh on every
-  start and embedded in the workflow definition, so changing either means
+- **Generated credentials are readable by anyone who can read the workflow,
+  and change on every workflow start.** Without `DashboardPasswordSecret`,
+  `DashboardSessionSecret` and `ApiServerKeySecret`, the dashboard password,
+  its session signing key and the API key are generated fresh at every workflow
+  start and embedded in the workflow definition. Changing one then means
   stopping and resubmitting the workflow -- which on an ephemeral `Volume` also
-  destroys everything the agent has accumulated.
+  destroys everything the agent has accumulated -- and no dashboard session
+  survives a resubmit. Name secrets to keep the values out of the definition
+  and the same from one start to the next; see [Credentials](#credentials).
 - **The entry does not use the image's entrypoint.** The published image is
   built for Docker, where it starts as root and drops to its own baked user. Its
   entrypoint and wrapper both refuse to start under any other uid, and Fuzzball

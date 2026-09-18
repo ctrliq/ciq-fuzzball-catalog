@@ -80,26 +80,63 @@ values:
       Who can reach the agent's endpoints. Anyone who reaches them can run shell commands in
       this workflow's container, read everything the agent remembers, and spend model
       capacity, so prefer the narrowest scope that fits. The dashboard always enforces its own
-      password and the API its own key -- both printed by the show-agent job -- because the
-      service also listens on its node's port, where no endpoint proxy sits in front of it.
-      'public' is deliberately not offered: an internet-reachable agent dashboard is how the
-      June 2026 Hermes compromises started.
+      password and the API its own key -- taken from the Secret values below, or generated at
+      submit time and printed by the show-agent job -- because the service also listens on its
+      node's port, where no endpoint proxy sits in front of it. 'public' is deliberately not
+      offered: an internet-reachable agent dashboard is how the June 2026 Hermes compromises
+      started.
     string_value: user
     options_input:
       options: [user, group, organization]
+    display_category: Access
+  - name: DashboardUsername
+    display_name: >-
+      Username the dashboard sign-in page asks for. A username is not a secret, so it is set
+      here in plain text.
+    string_value: hermes
+    display_category: Access
+  - name: DashboardPasswordSecret
+    display_name: >-
+      Fuzzball secret holding the dashboard password, as secret://user/<name>. Must be a
+      user-scoped secret of type value with non-empty content. Left empty, a password is
+      generated at every workflow start, embedded in the workflow definition and printed by
+      the show-agent job.
+    secret_value:
+      reference: ""
+    display_category: Access
+  - name: DashboardSessionSecret
+    display_name: >-
+      Fuzzball secret holding the key the dashboard signs its sessions with, as
+      secret://user/<name>. Must be a user-scoped secret of type value whose content is at
+      least 16 bytes; 32 random bytes as hex or base64 is what Hermes recommends. Sessions
+      signed with it stay valid from one workflow start to the next, which a browser sees
+      only where it keeps reaching the same address, such as a forwarded port. Left empty, a
+      key is generated at every workflow start and no session survives a resubmit.
+    secret_value:
+      reference: ""
     display_category: Access
   - name: ApiServerAccess
     display_name: >-
       How far the agent's own OpenAI-compatible API is reachable. 'loopback' binds it
       inside the container only, which is enough for the dashboard and the agent's
       scheduled work and is the safer default for an API that can run shell commands.
-      'node' binds it on the node's port, where the key printed by the show-agent job is
-      the only thing protecting it. It is never published as an endpoint at either
-      setting: it authenticates with an Authorization bearer and the endpoint proxy
-      consumes that header, so an endpoint in front of it could not be authenticated.
+      'node' binds it on the node's port, where the API key is the only thing protecting
+      it. It is never published as an endpoint at either setting: it authenticates with an
+      Authorization bearer and the endpoint proxy consumes that header, so an endpoint in
+      front of it could not be authenticated.
     string_value: loopback
     options_input:
       options: [loopback, node]
+    display_category: Access
+  - name: ApiServerKeySecret
+    display_name: >-
+      Fuzzball secret holding the key for the agent's own OpenAI-compatible API, as
+      secret://user/<name>. Must be a user-scoped secret of type value whose content is at
+      least 16 characters; Hermes refuses to start the API server on anything shorter, and the
+      dashboard depends on that API. Left empty, a key is generated at every workflow start,
+      embedded in the workflow definition and printed by the show-agent job.
+    secret_value:
+      reference: ""
     display_category: Access
 
   - name: Volume
