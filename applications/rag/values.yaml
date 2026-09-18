@@ -2,20 +2,25 @@ values:
   - name: Endpoint
     display_name: >-
       Base URL of an OpenAI-compatible endpoint serving the embedding model (and the
-      generation model, if set) -- e.g. the vllm catalog entry's endpoint URL. When
-      empty the services start but ingestion and search fail with a provider error;
-      start a new workflow with endpoint set for real use.
+      generation model, if set) -- e.g. the vllm catalog entry's endpoint URL. Required;
+      a trailing /v1 or / is accepted and normalized. At startup each service verifies
+      the endpoint serves the configured model(s) and fails fast if it does not.
     string_value: ""
     display_category: Models
   - name: EmbeddingModel
     display_name: >-
-      Embedding model name served by the endpoint. The corpus is permanently bound to
-      this model: changing it against an existing corpus fails at startup (rebuild
-      with 'haiku-rag rebuild --set-embedder' to migrate).
-    string_value: nomic-embed-text
+      Embedding model name, exactly as the endpoint serves it. Required, with no working
+      default: no catalog entry serves embeddings yet, so set this to a model your Endpoint
+      lists. The corpus is permanently bound to this model: changing it against an existing
+      corpus fails at startup (rebuild with 'haiku-rag rebuild --set-embedder' to migrate).
+    string_value: ""
     display_category: Models
   - name: EmbeddingDim
-    display_name: Vector dimension of the embedding model.
+    display_name: >-
+      Vector dimension of the embedding model. Must match the model exactly (the
+      default is only a common placeholder); the startup check embeds a probe and
+      fails fast, naming the correct value, if the endpoint's vectors are a
+      different length.
     uint_value: 768
     display_category: Models
   - name: GenerationModel
@@ -55,10 +60,10 @@ values:
     display_category: Access
   - name: Scope
     display_name: >-
-      Authorization scope of the service endpoints. The ingest jobs API is
-      reachable through its endpoint URL only at 'public' (the proxy consumes
-      auth headers at other scopes), where the generated token in the rendered
-      definition is its only gate.
+      Authorization scope of the mcp (retrieval) endpoint. At non-public scopes an agent
+      must send a Fuzzball endpoint token; at 'public' the endpoint is reachable by anyone
+      with the URL, so use it only for a non-sensitive corpus. The ingester's job API is
+      not published at any scope (reach it in-cluster via port-forward).
     string_value: group
     options_input:
       options: [user, group, organization, public]

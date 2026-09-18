@@ -19,24 +19,40 @@ over streamable HTTP that any MCP-capable agent can call from outside the
 cluster. The corpus and its index are files on the workflow's volume (embedded
 LanceDB) — there is no database service to operate.
 
+`Endpoint` and `EmbeddingModel` are required (no catalog endpoint serves
+embeddings, so there is no default that works), and `EmbeddingDim` must match
+the model's true vector dimension -- the startup check fails fast, naming the
+correct value, if it does not:
+
 ```
-fuzzball workflow catalog start rag
-fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=https://<vllm-endpoint-url>/v1
-fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=...,EmbeddingModel=Qwen/Qwen3-Embedding-8B,EmbeddingDim=4096
-fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=...,ReadOnly=false
+fuzzball workflow catalog start rag --values Endpoint=https://<vllm-endpoint-url>,EmbeddingModel=Qwen/Qwen3-Embedding-8B,EmbeddingDim=4096
+fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=https://<vllm-endpoint-url>,EmbeddingModel=Qwen/Qwen3-Embedding-8B,EmbeddingDim=4096
+fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=...,EmbeddingModel=...,EmbeddingDim=...,GenerationModel=<chat-model>
+fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=...,EmbeddingModel=...,EmbeddingDim=...,ReadOnly=false
 ```
+
+A trailing `/v1` or `/` on `Endpoint` is accepted and normalized.
 
 Embeddings (and generation, when `GenerationModel` is set) are served by the
 OpenAI-compatible `Endpoint` — typically the `vllm` catalog entry or a LiteLLM
-gateway. For a Fuzzball endpoint in your scope, authentication is automatic:
-with no token configured, each service mints an endpoint access token at
-startup using this workflow's own identity, so no credential is stored
-anywhere. The minted token is valid for up to 7 days and is not renewed; its
-expiry is invisible to the readiness probes (they check the port, not the
-model endpoint), so a long-lived corpus service starts failing embedding calls
-while looking healthy — restart the workflow to mint afresh, or pass a token
-minted with `fuzzball workflow endpoints generate-token <endpoint-id>
---expiration <lifetime>` via `EndpointTokenSecret`. That value is also the path for
+gateway. At startup each service embeds a probe string against the endpoint and
+checks the result is `EmbeddingModel` returning `EmbeddingDim`-length vectors,
+so a wrong URL, an unreachable endpoint, a wrong or non-embedding model name, a
+bad credential, or a mismatched dimension surfaces immediately (in the service
+log — `fuzzball workflow log <workflow id> mcp`) rather than as a provider
+error on the first search. A model pool that is merely still warming (a
+scaled-to-zero `vllm` endpoint) is retried for up to five minutes before the
+check gives up, so a cold endpoint is not mistaken for a broken one.
+
+For a Fuzzball endpoint in your scope, authentication is automatic: with no
+token configured, each service mints an endpoint access token at startup using
+this workflow's own identity, so no credential is stored anywhere. That minted
+token is valid for up to 7 days and is not renewed — and because the startup
+check runs only at startup, a token that lapses mid-life leaves the service
+looking healthy (the readiness probe checks the port) while embedding calls
+fail. Restart the workflow to mint afresh, or pass a longer-lived token minted
+with `fuzzball workflow endpoints generate-token <endpoint-id> --expiration
+<lifetime>` via `EndpointTokenSecret`. That value is also the path for
 credentials the endpoint itself requires (a LiteLLM virtual key, a third-party
 API key). The workflow makes no network connections beyond the configured
 endpoint, so it operates air-gapped (document-parsing models are baked into
@@ -50,18 +66,18 @@ service:
 - **Inbox directory**: any file placed under `/data/inbox` on the volume is
   ingested automatically; re-adding a changed file replaces its previous
   content instead of duplicating it.
-- **Jobs monitoring API** on the `ingest` endpoint: `GET /jobs` and
-  `GET /jobs/{id}` report each document's status
-  (queued/claimed/succeeded/failed), with retry and a dead-letter queue. Failed
-  documents leave no partial content in the corpus. Submission itself happens
-  through the inbox (or the MCP write tools with `ReadOnly=false`) -- the API
-  monitors and manages jobs, it does not accept uploads. Its bearer token is
-  the generated `auth_token` in the rendered workflow definition — but at any
-  non-public `Scope` the endpoint proxy consumes the `Authorization` header,
-  so through the endpoint URL the API is only reachable at `Scope=public`
-  (where that token is the sole gate). At other scopes, call it from inside
-  the cluster at the service's own address, or follow progress in the
-  ingester's logs.
+- **Jobs monitoring API**: `GET /jobs` and `GET /jobs/{id}` report each
+  document's status (queued/claimed/succeeded/failed), with retry and a
+  dead-letter queue. Failed documents leave no partial content in the corpus.
+  Submission itself happens through the inbox (or the MCP write tools with
+  `ReadOnly=false`) -- the API monitors and manages jobs, it does not accept
+  uploads. It is deliberately not published as an endpoint: it is a read-only
+  status API, accepts no uploads, and the endpoint proxy would consume its
+  bearer at any non-public scope. Reach it from inside the cluster with
+  `fuzzball workflow port-forward <workflow id> ingester <local port>:<ingest
+  port>`, authenticating with the generated `auth_token`, or just follow
+  progress in the ingester's logs. The `show-connection` job prints the token
+  and the exact port-forward command.
 
 With `ReadOnly=false`, no ingester runs and the MCP surface itself exposes
 document-management tools (add/delete) alongside retrieval.
