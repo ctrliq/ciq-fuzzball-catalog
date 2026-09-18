@@ -53,7 +53,8 @@ Fuzzball endpoint proxy consumes on any endpoint whose scope is not public. The
 gateway learns who the caller is from the identity that endpoint signs, so that
 one credential is the whole request. Where a key applies, it travels in
 `x-litellm-api-key`, which the proxy leaves untouched, and the agent takes it
-from `ApiKeySecret`.
+from `ApiKeySecret`. A key sent that way decides the request; the signed identity
+is used only when no key is sent.
 
 With `Endpoint` left empty -- the default -- the gateway is discovered rather
 than configured. The agent lists `/v4/endpoints` with its own injected identity

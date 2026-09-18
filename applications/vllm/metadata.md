@@ -76,7 +76,9 @@ curl -H "Authorization: Bearer ${FUZZBALL_ENDPOINT_TOKEN}" \
 A key is needed in two cases. On a `public` endpoint, where nothing is signed,
 pass it as a standard OpenAI `Authorization: Bearer` header. On a cluster whose
 nodes do not sign caller identity, the proxy falls back to its own key check;
-pass the key in `x-litellm-api-key`, which the endpoint proxy leaves untouched.
+pass the key in `x-litellm-api-key`, which the endpoint proxy leaves untouched. A
+key sent that way decides the request; the signed identity is used only when no
+key is sent.
 
 With `Proxy=false` no LiteLLM service is started. Instead the replica pool
 itself carries the endpoint: the pool URL stays stable for the life of the
@@ -227,7 +229,8 @@ Before choosing `Nodes` above 1:
   with `Proxy=false`, where access is governed by the endpoint scope instead.
 
 Both are unset by default, so a pool started without either generates a key the
-proxy will also accept, which the request example above does not need. Read it
+proxy will also accept; on a cluster that signs caller identity the request
+example above does not need it. Read it
 back with `fuzzball workflow get <workflow>` and look for `LITELLM_MASTER_KEY` on
 the `litellm` service. It is fixed for the life of the workflow, and a different
 one is generated the next time the entry is started.

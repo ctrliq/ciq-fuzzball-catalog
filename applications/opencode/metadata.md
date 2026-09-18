@@ -43,8 +43,10 @@ picker for this run.
 Set `Endpoint` to pin one particular endpoint and ignore the others, or to
 reach an OpenAI-compatible API outside Fuzzball, which additionally needs
 `EndpointAuth=api-key`. To find one, use `fuzzball workflow endpoints list`; a
-key is needed only where caller identity does not apply, and a Fuzzball
-endpoint's own key is in its definition (`fuzzball workflow get <workflow id>`).
+key is needed only where caller identity does not apply. A pool or gateway
+started without `ApiKeySecret` or `MasterKeySecret` keeps its generated key in
+its definition (`fuzzball workflow get <workflow id>`); started with one, the key
+never enters the definition, so give this entry the same secret reference.
 
 `Model` is optional and only picks the default, named as the endpoint serves it
 (for the `vllm` entry, its `Model` value without the `hf://` prefix). Whichever
@@ -73,8 +75,9 @@ the definition. The endpoint signs the caller's identity for the LiteLLM in fron
 of the model, which admits the request on that alone, so no key is needed either.
 A key set anyway (`ApiKey` or `ApiKeySecret`) is still sent, in the
 `x-litellm-api-key` header, which LiteLLM v1.97.0 and later honour and the
-endpoint proxy leaves untouched -- that is what a cluster whose nodes do not sign
-caller identity falls back to.
+endpoint proxy leaves untouched -- and a key sent that way decides the request,
+with the signed identity used only when no key is sent. That is what a cluster
+whose nodes do not sign caller identity falls back to.
 
 Set `EndpointAuth=api-key` for a public Fuzzball endpoint or a third-party API,
 where the key is sent as the bearer token and nothing is minted. A public
