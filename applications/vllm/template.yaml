@@ -57,13 +57,8 @@
 {{- end }}
 
 {{- $volume := trim .Volume }}
-{{- if not $volume }}
+{{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
   {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
-{{- end }}
-{{- /* Only structural integrity: name validity is the server's job, but a quote
-       or backslash would corrupt the rendered YAML before the server sees it. */}}
-{{- if or (contains "\"" $volume) (contains "\\" $volume) }}
-  {{- fail "Volume must not contain quotes or backslashes" }}
 {{- end }}
 
 {{- $min_replicas := int .MinReplicas }}
@@ -142,10 +137,7 @@ version: v4
 
 volumes:
   data:
-    {{- if eq (lower $volume) "ephemeral" }}
-    use: ephemeral
-    {{- else }}
-    use: persistent
+    {{- if ne (lower $volume) "ephemeral" }}
     name: "{{ $volume }}"
     {{- end }}
     ingress:

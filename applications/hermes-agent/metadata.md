@@ -279,8 +279,8 @@ Switch between the cluster and anything else you have configured with
   `litellm` entry keeps its virtual keys in its database, which is on an
   ephemeral volume by default, so restarting the gateway destroys them. The agent
   will rediscover the new gateway and mint a fresh Fuzzball token for it, then
-  fail authentication with the dead LiteLLM key. Point the gateway's `DataVolume`
-  at a persistent volume, or expect to mint a new key and restart the agent.
+  fail authentication with the dead LiteLLM key. Set the gateway's `Volume` to the
+  name of a persistent volume, or expect to mint a new key and restart the agent.
 - **Generation length is bounded by the endpoint proxy's 10-minute idle
   timeout.** A response that produces nothing for longer than that window is
   cut off, which a long agentic turn on a slow model can reach.
