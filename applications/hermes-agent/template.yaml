@@ -342,9 +342,11 @@ services:
         echo "FATAL: the dashboard password is empty; check the secret named in DashboardPasswordSecret" >&2
         exit 1
       fi
-      # Hermes tries base64 and hex before falling back to the raw text, and
-      # both decodings are shorter than their input, so the raw length is the
-      # one that has to clear its 16-byte floor.
+      # Hermes tries base64 and hex first but keeps a decoding only when it
+      # is already 16 bytes or more; anything shorter falls through to the
+      # raw text. A decoding is never longer than its input, so the raw
+      # length alone decides: a 16-character hex value is used as its 16 raw
+      # bytes and accepted, and a 15-byte value is rejected however encoded.
       if [ "$(byte_length "${HERMES_DASHBOARD_BASIC_AUTH_SECRET}")" -lt 16 ]; then
         echo "FATAL: the dashboard session secret must be at least 16 bytes; check the secret named in DashboardSessionSecret" >&2
         exit 1
