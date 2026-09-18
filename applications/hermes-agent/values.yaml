@@ -46,16 +46,19 @@ values:
     display_category: Model
   - name: ApiKeySecret
     display_name: >-
-      Fuzzball secret (secret://user/<name>) holding the gateway's LiteLLM key. Mint a virtual
-      key from the gateway rather than handing this workflow the master key. Injected at
-      runtime and never stored in the rendered definition. Preferred over ApiKey.
+      Fuzzball secret (secret://user/<name>) holding the gateway's LiteLLM key. Needed only
+      with EndpointAuth=api-key, or on a cluster that does not sign caller identity;
+      otherwise the endpoint identifies this workflow to the gateway and no key is involved.
+      Mint a virtual key from the gateway rather than handing this workflow the master key.
+      Injected at runtime and never stored in the rendered definition. Preferred over ApiKey.
     secret_value:
       reference: ""
     display_category: Model
   - name: ApiKey
     display_name: >-
       Gateway LiteLLM key in plain text, stored in the rendered definition (prefer
-      ApiKeySecret). Required with EndpointAuth=api-key.
+      ApiKeySecret). Needed only with EndpointAuth=api-key, or on a cluster that does not
+      sign caller identity.
     string_value: ""
     display_category: Model
   - name: TokenLifetime

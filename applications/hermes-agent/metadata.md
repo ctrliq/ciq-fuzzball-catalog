@@ -19,14 +19,21 @@ provider into the agent's configuration. Nothing has to be copied between
 workflows.
 
 ```
-fuzzball workflow catalog start hermes-agent --values ApiKeySecret=secret://user/litellm-key
-fuzzball workflow catalog start hermes-agent --values ApiKeySecret=secret://user/litellm-key,Volume=my-hermes
-fuzzball workflow catalog start hermes-agent --values ApiKeySecret=secret://user/litellm-key,Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b
-fuzzball workflow catalog start hermes-agent --values ApiKeySecret=secret://user/litellm-key,DashboardPasswordSecret=secret://user/hermes-dashboard-password,DashboardSessionSecret=secret://user/hermes-dashboard-session
+fuzzball workflow catalog start hermes-agent
+fuzzball workflow catalog start hermes-agent --values Volume=my-hermes
+fuzzball workflow catalog start hermes-agent --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b
+fuzzball workflow catalog start hermes-agent --values DashboardPasswordSecret=secret://user/hermes-dashboard-password,DashboardSessionSecret=secret://user/hermes-dashboard-session
 ```
 
-The one thing you must supply is the gateway's LiteLLM key. Mint a virtual key
-from the gateway rather than handing this workflow the master key:
+You supply nothing for the model. The agent reaches the gateway as you: the
+endpoint signs the caller's Fuzzball identity and the gateway accepts it, so
+access is the endpoint's scope.
+
+A gateway key applies in two cases only -- with `EndpointAuth=api-key`, where it
+is the bearer token and nothing is minted, and on a cluster whose nodes do not
+sign caller identity, where the gateway falls back to its own key check. For
+those, mint a virtual key from the gateway rather than handing this workflow the
+master key:
 
 ```sh
 curl -X POST \
@@ -41,12 +48,13 @@ then store it as a user-scoped Fuzzball secret and pass the reference as
 
 ## Attaching to the gateway
 
-Every call to a LiteLLM gateway on Fuzzball carries two credentials, because
-the Fuzzball endpoint proxy consumes the `Authorization` header on any endpoint
-whose scope is not public: a Fuzzball credential in `Authorization`, and the
-gateway's own LiteLLM key in `x-litellm-api-key`, which the proxy leaves
-untouched. The agent supplies the first itself and takes the second from
-`ApiKeySecret`.
+The agent supplies its own Fuzzball credential in `Authorization`, which the
+Fuzzball endpoint proxy consumes on any endpoint whose scope is not public. The
+gateway learns who the caller is from the identity that endpoint signs, so that
+one credential is the whole request. Where a key applies, it travels in
+`x-litellm-api-key`, which the proxy leaves untouched, and the agent takes it
+from `ApiKeySecret`. A key sent that way decides the request; the signed identity
+is used only when no key is sent.
 
 With `Endpoint` left empty -- the default -- the gateway is discovered rather
 than configured. The agent lists `/v4/endpoints` with its own injected identity
@@ -87,10 +95,10 @@ through a YAML parser, so comments and hand-formatting do not survive. It sets
 the active model on the first attach and then leaves it alone, so a model you
 select from the dashboard stays selected.
 
-The gateway key is written into that file, which means a persistent `Volume`
-keeps it after the workflow ends, and the agent can read it like any other file
-it has shell access to. `ApiKeySecret` keeps the key out of the *rendered
-definition*, which is a narrower promise than keeping it off disk.
+A gateway key, where one is set, is written into that file, which means a
+persistent `Volume` keeps it after the workflow ends, and the agent can read it
+like any other file it has shell access to. `ApiKeySecret` keeps the key out of
+the *rendered definition*, which is a narrower promise than keeping it off disk.
 
 ## Reaching the agent
 
@@ -322,14 +330,12 @@ Switch between the cluster and anything else you have configured with
 
 ## Things to know before you start it
 
-- **A discovered `vllm` pool still needs its key.** With `Proxy=true`, which is
-  its default, `vllm` annotates its in-workflow LiteLLM proxy endpoint
+- **A discovered `vllm` pool needs no key.** With `Proxy=true`, which is its
+  default, `vllm` annotates its in-workflow LiteLLM proxy endpoint
   `ciq.com/api: openai-gateway`, so this entry discovers it with no `Endpoint`
-  set. That proxy enforces `vllm`'s own `ApiKey`, which is generated for you
-  when left empty -- set it explicitly on `vllm` and give this entry the same
-  value as `ApiKeySecret`, or discovery finds the pool and the pool refuses the
-  request. Starting `vllm` with `Proxy=false` instead publishes annotated
-  per-replica endpoints for a `litellm` gateway to front.
+  set, and that proxy admits the agent on the identity the endpoint signs.
+  Starting `vllm` with `Proxy=false` instead publishes annotated per-replica
+  endpoints for a `litellm` gateway to front.
 - **Two visible gateways stop the agent.** A `vllm` pool at `Proxy=true` is a
   gateway for this purpose, so running one alongside a `litellm` entry -- or
   alongside a second `Proxy=true` pool -- leaves this agent refusing to choose.
@@ -339,7 +345,7 @@ Switch between the cluster and anything else you have configured with
   `/v1/models`, and a gateway whose model pools have not started serves an
   empty list, which is indistinguishable from a misconfigured gateway. Start
   the model workflow first, or set `Model` explicitly to skip the check.
-- **A gateway restart can invalidate the key you gave this workflow.** The
+- **A gateway restart can invalidate a key you gave this workflow.** The
   `litellm` entry keeps its virtual keys in its database, which is on an
   ephemeral volume by default, so restarting the gateway destroys them. The agent
   will rediscover the new gateway and mint a fresh Fuzzball token for it, then

@@ -25,8 +25,12 @@ Python, meant to be copied as the starting point for your own gateway.
 
 ## Using it
 
-Every call to the gateway carries two credentials: a Fuzzball token in `Authorization`
-(the endpoint's scope is the access control), and a LiteLLM key in `x-litellm-api-key`.
+A caller on this cluster needs no key. The endpoint signs the caller's Fuzzball
+identity, the gateway authenticates it, and access is the endpoint's scope -- the same
+control that governs every other Fuzzball endpoint. Spend is recorded against the
+Fuzzball user who made the call. A caller admitted by identity is an ordinary user of
+the gateway: management routes such as `/key/generate` and `/spend/logs` still need the
+master key.
 
 1. Get the gateway URL:
 
@@ -34,49 +38,60 @@ Every call to the gateway carries two credentials: a Fuzzball token in `Authoriz
    fuzzball workflow endpoints list
    ```
 
-2. Get the master key. By default it is generated at submit time; read it with
-   `fuzzball workflow log <workflow> show-gateway`, or from the workflow definition via
-   `fuzzball workflow get <workflow>`. To use your own instead, store it in a user-scoped
-   secret of type `value` and name that secret in `MasterKeySecret`. The key then stays out
-   of the workflow definition, so someone who can read the workflow no longer sees it (its
-   owner can still read it from the running container), and it stays the same across
-   workflow starts:
-
-   ```sh
-   printf 'sk-...' | fuzzball secret create secret://user/gateway-master-key --type value
-   fuzzball workflow catalog start "LiteLLM Model Gateway" \
-        --values MasterKeySecret=secret://user/gateway-master-key
-   ```
-
-3. Get a Fuzzball token: your own user token works, or mint one bound to the gateway's
+2. Get a Fuzzball token: your own user token works, or mint one bound to the gateway's
    endpoint with `fuzzball workflow endpoints generate-token <endpoint id>`.
 
-4. Mint a virtual key for each caller, so the master key never leaves the operator:
-
-   ```sh
-   curl -X POST \
-        -H "Authorization: Bearer ${FUZZBALL_TOKEN}" \
-        -H "x-litellm-api-key: ${MASTER_KEY}" \
-        -H "Content-Type: application/json" \
-        "${GATEWAY_URL}/key/generate" -d '{"models": []}'
-   ```
-
-5. Point any OpenAI client at the gateway with the virtual key:
+3. Point any OpenAI client at the gateway:
 
    ```sh
    curl -H "Authorization: Bearer ${FUZZBALL_TOKEN}" \
-        -H "x-litellm-api-key: ${VIRTUAL_KEY}" \
         -H "Content-Type: application/json" \
         "${GATEWAY_URL}/v1/chat/completions" \
         -d '{"model": "<alias>", "messages": [{"role": "user", "content": "hello"}]}'
    ```
 
-`GET /v1/models` (same two credentials) lists whatever the gateway has discovered.
+`GET /v1/models` (same credential) lists whatever the gateway has discovered.
 
 The gateway's own endpoint is annotated `ciq.com/api: openai-gateway`, so a client
 can find it without being told a URL -- that is how the `hermes-agent` entry attaches
 itself. The value deliberately differs from the one the gateway discovers models on,
 so a second gateway does not mistake this one for a model server.
+
+### Where a key is still needed
+
+Two cases. A `public` endpoint authenticates nothing and forwards no identity, so the
+key is the only barrier and travels as a standard `Authorization: Bearer`. And on a
+cluster whose nodes do not sign caller identity, the gateway falls back to its own key
+check; the call then carries two credentials, a Fuzzball token in `Authorization` and a
+LiteLLM key in `x-litellm-api-key`, which the endpoint proxy leaves untouched. A key sent
+that way decides the request; the signed identity is used only when no key is sent, so a
+management call such as `/key/generate` is authenticated by the key it carries.
+
+The master key is generated at submit time; read it with
+`fuzzball workflow log <workflow> show-gateway`, or from the workflow definition via
+`fuzzball workflow get <workflow>`. To use your own instead, store it in a user-scoped
+secret of type `value` and name that secret in `MasterKeySecret`. The key then stays out
+of the workflow definition, so someone who can read the workflow no longer sees it (its
+owner can still read it from the running container), and it stays the same across
+workflow starts:
+
+```sh
+printf 'sk-...' | fuzzball secret create secret://user/gateway-master-key --type value
+fuzzball workflow catalog start "LiteLLM Model Gateway" \
+     --values MasterKeySecret=secret://user/gateway-master-key
+```
+
+Mint a virtual key for each caller, so the master key never leaves the operator:
+
+```sh
+curl -X POST \
+     -H "Authorization: Bearer ${FUZZBALL_TOKEN}" \
+     -H "x-litellm-api-key: ${MASTER_KEY}" \
+     -H "Content-Type: application/json" \
+     "${GATEWAY_URL}/key/generate" -d '{"models": []}'
+```
+
+then send `x-litellm-api-key: ${VIRTUAL_KEY}` alongside the Fuzzball token.
 
 ## Publishing a model to it
 

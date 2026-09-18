@@ -51,15 +51,18 @@ values:
   - name: ApiKeySecret
     display_name: >-
       User-scoped Fuzzball secret (secret://user/<name>) holding the model API key, e.g. the
-      LiteLLM key of a vllm or litellm workflow. Injected at runtime and never stored in the
-      rendered definition. Preferred over ApiKey.
+      LiteLLM key of a vllm or litellm workflow. Needed only with EndpointAuth=api-key, or on
+      a cluster that does not sign caller identity; otherwise the endpoint identifies this
+      workflow to the proxy and no key is involved. Injected at runtime and never stored in
+      the rendered definition. Preferred over ApiKey.
     secret_value:
       reference: ""
     display_category: Model
   - name: ApiKey
     display_name: >-
       Model API key in plain text, stored in the rendered definition (prefer ApiKeySecret).
-      Required with EndpointAuth=api-key.
+      Needed only with EndpointAuth=api-key, or on a cluster that does not sign caller
+      identity.
     string_value: ""
     display_category: Model
   - name: TokenLifetime

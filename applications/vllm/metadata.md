@@ -62,19 +62,26 @@ must be retried by the client. Requests already dispatched to a draining
 replica are unaffected and run to completion within `DrainPeriod`.
 
 On endpoint scopes other than `public`, the Fuzzball endpoint proxy consumes
-the `Authorization` header (it carries your Fuzzball endpoint token), so pass
-the LiteLLM API key in the `x-litellm-api-key` header instead:
+the `Authorization` header (it carries your Fuzzball endpoint token) and signs
+the caller's identity for the proxy, which admits the request on that alone --
+no key is needed:
 
 ```sh
 curl -H "Authorization: Bearer ${FUZZBALL_ENDPOINT_TOKEN}" \
-     -H "x-litellm-api-key: ${API_KEY}" \
      -H "Content-Type: application/json" \
      "${ENDPOINT_URL%/}/v1/chat/completions" \
      -d '{"model": "openai/gpt-oss-20b", "messages": [{"role": "user", "content": "hello"}]}'
 ```
 
-On a `public` endpoint, pass the key as a standard OpenAI
-`Authorization: Bearer` header.
+A caller admitted by identity is an ordinary user of that proxy: management routes
+such as `/key/generate` and `/spend/logs` still need the master key.
+
+A key is needed in two cases. On a `public` endpoint, where nothing is signed,
+pass it as a standard OpenAI `Authorization: Bearer` header. On a cluster whose
+nodes do not sign caller identity, the proxy falls back to its own key check;
+pass the key in `x-litellm-api-key`, which the endpoint proxy leaves untouched. A
+key sent that way decides the request; the signed identity is used only when no
+key is sent.
 
 With `Proxy=false` no LiteLLM service is started. Instead the replica pool
 itself carries the endpoint: the pool URL stays stable for the life of the
@@ -122,13 +129,14 @@ the per-replica endpoints carry their annotations at every scope, so a public
 pool is still registered by any gateway in the organization -- and that gateway
 then cannot mint for it either. Do not publish a pool for a gateway at `public`.
 
-Discovery finds the URL, not the credential. At `Proxy=true` the LiteLLM proxy
-still enforces its master key, and an agent that discovered the endpoint but
-not the key is refused by it. The clean way to pair the two is one Fuzzball
-secret named on both sides: set this entry's `ApiKeySecret` to it, and set the
-agent's own `ApiKeySecret` (`opencode` and `hermes-agent` each have a value by
-that name) to the same reference. Neither workflow definition then carries the
-key.
+Discovery finds the URL, and on a cluster that signs caller identity that is all
+an agent needs: the proxy admits it on the identity the endpoint forwards, so
+nothing has to be paired between the two workflows. Where a key does apply -- a
+`public` endpoint, or a cluster without caller identity -- the clean way to pair
+the two is one Fuzzball secret named on both sides: set this entry's
+`ApiKeySecret` to it, and set the agent's own `ApiKeySecret` (`opencode` and
+`hermes-agent` each have a value by that name) to the same reference. Neither
+workflow definition then carries the key.
 
 Set plainly instead, or left to generate, the key is written into the rendered
 workflow definition -- so re-rendering produces a different key, and anyone who
@@ -212,20 +220,23 @@ Before choosing `Nodes` above 1:
 - `MinReplicas` / `MaxReplicas`: replica pool bounds. `MinReplicas=0`
   enables scale-to-zero.
 - `ApiKeySecret`: a Fuzzball secret holding the key the LiteLLM proxy enforces,
-  as `secret://user/<name>`. The definition carries the reference, not the key,
-  and Fuzzball resolves it at run time. Preferred over `ApiKey`. Unused with
-  `Proxy=false`.
+  as `secret://user/<name>`. Needed only on a `public` endpoint, or on a cluster
+  that does not sign caller identity; otherwise the endpoint identifies the
+  caller and the proxy asks for no key. The definition carries the reference, not
+  the key, and Fuzzball resolves it at run time. Preferred over `ApiKey`. Unused
+  with `Proxy=false`.
 - `ApiKey`: the same key in plain text. Must start with `sk-`. `ApiKeySecret`
   wins if both are set; with neither, a key is generated at every workflow
   start. A literal or generated key is stored in the started workflow's definition,
   where anyone who can `fuzzball workflow get` the workflow can read it. Unused
   with `Proxy=false`, where access is governed by the endpoint scope instead.
 
-Both are unset by default, so a pool started without either enforces a freshly
-generated key. Read it back with `fuzzball workflow get <workflow>` and look for
-`LITELLM_MASTER_KEY` on the `litellm` service — that is the `${API_KEY}` the
-request examples above need. It is fixed for the life of the workflow, and a
-different one is generated the next time the entry is started.
+Both are unset by default, so a pool started without either generates a key the
+proxy will also accept; on a cluster that signs caller identity the request
+example above does not need it. Read it
+back with `fuzzball workflow get <workflow>` and look for `LITELLM_MASTER_KEY` on
+the `litellm` service. It is fixed for the life of the workflow, and a different
+one is generated the next time the entry is started.
 
 On a `public` endpoint this key is the only thing standing in front of the
 model — set a strong one deliberately rather than relying on the generated
