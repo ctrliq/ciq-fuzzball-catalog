@@ -30,8 +30,10 @@
   {{- fail "GenerationModel must not contain quotes, backslashes, or comments" }}
 {{- end }}
 {{- $endpoint_token_secret := trim .EndpointTokenSecret }}
-{{- if or (contains "\"" $endpoint_token_secret) (contains "\\" $endpoint_token_secret) (contains "\n" $endpoint_token_secret) (contains "#" $endpoint_token_secret) }}
-  {{- fail "EndpointTokenSecret must not contain quotes, backslashes, or comments" }}
+{{- /* Positive allow-list, matching the opencode/hermes-agent ApiKeySecret rule:
+       a typo'd reference should fail at render, not opaquely at runtime. */}}
+{{- if and $endpoint_token_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $endpoint_token_secret)) }}
+  {{- fail "EndpointTokenSecret must be a user-scoped secret reference, e.g. secret://user/rag-endpoint-token" }}
 {{- end }}
 {{- $endpoint_token := trim .EndpointToken }}
 {{- /* Positive allow-list, matching the opencode/hermes-agent ApiKey rule: a
@@ -88,6 +90,13 @@
   {{- $mint = true }}
   {{- $api_key = "${RAG_ENDPOINT_TOKEN}" }}
 {{- end }}
+{{- /* The startup embeddings probe waking a scaled-to-zero model pool is the
+       ordinary case, so it retries for this window before giving up; the
+       readiness probe beside it must outlast the same window (its port opens
+       only once the probe passes), so both derive from this one value. */}}
+{{- $bootstrap_window := 900 }}
+{{- $probe_period := 10 }}
+{{- $readiness_failures := add (div $bootstrap_window $probe_period) 12 }}
 {{- $mcp_port := randInt 24001 28000 }}
 {{- $ingester_port := randInt 28001 32000 }}
 {{- $ingester_token := printf "rt-%d%d%d%d" (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) }}
@@ -214,8 +223,12 @@ files:
     # execs, so a broken configuration (including a dimension that silently would
     # not match the corpus) fails loudly at startup. A model pool that is still
     # warming -- a scaled-to-zero vllm endpoint, the primary target -- is the
-    # ordinary case, so retry for a bootstrap window; give up fast only on a
-    # definitive rejection (a wrong or non-embedding model, a bad credential).
+    # ordinary case, so retry for a bootstrap window. Fast-fail is limited to what
+    # a warming pool never produces: a bad credential (401/403), an unprocessable
+    # request (422), or a 2xx answer that is not an embedding of the right size.
+    # A wrong model name, a wrong URL, or an unreachable endpoint are
+    # indistinguishable from a cold pool (400/404/connection error), so they are
+    # retried and only surface when the window expires.
     RAG_API_KEY="{{ $api_key }}" python - <<'__CHECK__'
     import os
     import sys
@@ -225,10 +238,15 @@ files:
 
     base = "{{ $endpoint }}/v1"
     key = os.environ.get("RAG_API_KEY") or ""
-    headers = {"Authorization": "Bearer " + key} if key and key != "unused" else {}
+    # Send exactly what haiku.rag sends at runtime: it always puts api_key in an
+    # Authorization: Bearer header (including the "unused" placeholder). Omitting
+    # it here would probe a request shape the service never makes -- post-caller-
+    # identity those take different paths at a gateway, so the gate could pass
+    # while the service cannot work.
+    headers = {"Authorization": "Bearer " + key} if key else {}
     model = "{{ $embedding_model }}"
     dim = {{ $embedding_dim }}
-    deadline = time.time() + 300
+    deadline = time.time() + {{ $bootstrap_window }}
     last = "no attempt"
     while True:
         try:
@@ -241,15 +259,18 @@ files:
             r.raise_for_status()
         except httpx.HTTPStatusError as exc:
             code = exc.response.status_code
-            # A definitive rejection (a bad request, a bad credential) will not
-            # fix itself -- fail now, not after the window. A 404/405/5xx is
-            # transient while a replica pool registers (the endpoint proxy
-            # answers 404 until a replica is live), so those fall through to the
-            # retry. A non-embedding model is caught below as a 2xx envelope,
-            # not here, so it does not need a status code of its own.
-            if code in (400, 401, 403, 422):
+            # A bad credential (401/403) or an unprocessable request (422) is
+            # definitive -- fail now, not after the window. 400/404/405/5xx are
+            # treated as transient because a registering model pool produces them
+            # and cannot be told apart from a real one: a LiteLLM gateway renders
+            # an empty model_list at zero replicas and answers with 400, and the
+            # endpoint proxy answers 404 until a replica is live. The cost is that
+            # a wrong model NAME (also 400/404) is retried to the deadline, not
+            # flagged fast. A model that IS served but cannot embed instead
+            # answers 2xx and is caught by the parse-guard below.
+            if code in (401, 403, 422):
                 print(
-                    "FATAL: endpoint %s rejected an embedding with model %r (HTTP %d): %s"
+                    "FATAL: endpoint %s rejected the embedding request for model %r (HTTP %d): %s"
                     % (base, model, code, exc.response.text[:200]),
                     file=sys.stderr,
                 )
@@ -281,12 +302,12 @@ files:
             break
         if time.time() >= deadline:
             print(
-                "FATAL: model endpoint %s not ready after 300s (last error: %s)"
+                "FATAL: model endpoint %s not ready after {{ $bootstrap_window }}s (last error: %s)"
                 % (base, last),
                 file=sys.stderr,
             )
             sys.exit(1)
-        time.sleep(10)
+        time.sleep({{ $probe_period }})
     __CHECK__
 
 jobs:
@@ -385,10 +406,11 @@ services:
         size: {{ $ingester_memory }}
     network:
       # The haiku ingester's job-monitoring API (GET /jobs) is intentionally not
-      # published as an endpoint: it accepts no uploads (ingestion is the
-      # /data/inbox watch and the MCP write tools), the endpoint proxy would
-      # consume its bearer at any non-public scope, and publishing it would only
-      # expose a read-only status API. Reach it in-cluster via port-forward.
+      # published as an endpoint: it is a read-only status surface that accepts
+      # no uploads (ingestion is the /data/inbox watch and the MCP write tools),
+      # and it is a third-party API with no caller-identity integration -- so
+      # publishing it would add an outward surface gated only by its static
+      # auth_token, for no gain. Reach it in-cluster via port-forward.
       ports:
         - name: ingest-api
           port: {{ $ingester_port }}
@@ -404,11 +426,12 @@ services:
       tcp-socket:
         port: {{ $ingester_port }}
       initial-delay-seconds: 15
-      period-seconds: 10
+      period-seconds: {{ $probe_period }}
       timeout-seconds: 5
-      # Generous: the startup endpoint check may retry a warming model pool for
-      # up to a 300s bootstrap window before the service opens its port.
-      failure-threshold: 60
+      # Outlasts the startup embeddings probe: the port opens only after that
+      # probe passes, which may retry a warming model pool for the whole
+      # bootstrap window ({{ $bootstrap_window }}s), so this is derived from it.
+      failure-threshold: {{ $readiness_failures }}
       success-threshold: 1
   {{- end }}
 
@@ -466,9 +489,10 @@ services:
       tcp-socket:
         port: {{ $mcp_port }}
       initial-delay-seconds: 15
-      period-seconds: 10
+      period-seconds: {{ $probe_period }}
       timeout-seconds: 5
-      # Generous: the startup endpoint check may retry a warming model pool for
-      # up to a 300s bootstrap window before the service opens its port.
-      failure-threshold: 60
+      # Outlasts the startup embeddings probe: the port opens only after that
+      # probe passes, which may retry a warming model pool for the whole
+      # bootstrap window ({{ $bootstrap_window }}s), so this is derived from it.
+      failure-threshold: {{ $readiness_failures }}
       success-threshold: 1

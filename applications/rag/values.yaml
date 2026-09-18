@@ -4,7 +4,8 @@ values:
       Base URL of an OpenAI-compatible endpoint serving the embedding model (and the
       generation model, if set) -- e.g. the vllm catalog entry's endpoint URL. Required;
       a trailing /v1 or / is accepted and normalized. At startup each service verifies
-      the endpoint serves the configured model(s) and fails fast if it does not.
+      the endpoint actually embeds before serving (a bad credential or wrong dimension
+      fails fast; a still-warming pool is retried for up to ~15 min).
     string_value: ""
     display_category: Models
   - name: EmbeddingModel
@@ -31,22 +32,22 @@ values:
     display_category: Models
   - name: EndpointTokenSecret
     display_name: >-
-      Fuzzball secret (secret://user/<name>) holding the bearer token for the model
-      endpoint; injected at runtime and never stored in the rendered definition.
-      Preferred over EndpointToken for real credentials. Usually unnecessary for a
-      Fuzzball endpoint: with no token configured, the services mint their own
-      endpoint access token at startup.
+      Fuzzball secret (secret://user/<name>) holding the model endpoint's API key,
+      injected at runtime and never stored in the rendered definition. Preferred over
+      EndpointToken. Needed only for a 'public' endpoint, a third-party/external API, or
+      a cluster that does not sign caller identity; otherwise a Fuzzball endpoint in your
+      scope identifies this workflow to the proxy and no key is used (the services mint
+      their own endpoint access token at startup).
     secret_value:
       reference: ""
     display_category: Models
   - name: EndpointToken
     display_name: >-
-      Bearer token for the model endpoint, stored in plain text in the rendered
-      definition (prefer EndpointTokenSecret). Requires Endpoint. Usually
-      unnecessary for a Fuzzball endpoint: when both token values are empty, the
-      services mint their own endpoint access token at startup (valid up to 7
-      days; restart to renew), falling back to a harmless placeholder for
-      endpoints that take no token.
+      Model endpoint API key in plain text, stored in the rendered definition (prefer
+      EndpointTokenSecret). Same purpose and precedence as EndpointTokenSecret: a key
+      that is sent decides the request, and the signed caller identity is used only when
+      no key is sent. Needed only for a 'public' endpoint, an external API, or a cluster
+      that does not sign caller identity.
     string_value: ""
     display_category: Models
 
@@ -60,10 +61,13 @@ values:
     display_category: Access
   - name: Scope
     display_name: >-
-      Authorization scope of the mcp (retrieval) endpoint. At non-public scopes an agent
-      must send a Fuzzball endpoint token; at 'public' the endpoint is reachable by anyone
-      with the URL, so use it only for a non-sensitive corpus. The ingester's job API is
-      not published at any scope (reach it in-cluster via port-forward).
+      Authorization scope of the mcp (retrieval) endpoint -- the access control on it,
+      the same as any Fuzzball endpoint: at non-public scopes a caller in scope reaches
+      it with a Fuzzball credential, at 'public' anyone with the URL does, so use public
+      only for a non-sensitive corpus. Note the endpoint cannot tell one in-scope caller
+      from another, so with ReadOnly=false the document add/delete tools are open to
+      everyone in scope. The ingester's job API is not published at any scope (reach it
+      in-cluster via port-forward).
     string_value: group
     options_input:
       options: [user, group, organization, public]
