@@ -73,6 +73,9 @@ curl -H "Authorization: Bearer ${FUZZBALL_ENDPOINT_TOKEN}" \
      -d '{"model": "openai/gpt-oss-20b", "messages": [{"role": "user", "content": "hello"}]}'
 ```
 
+A caller admitted by identity is an ordinary user of that proxy: management routes
+such as `/key/generate` and `/spend/logs` still need the master key.
+
 A key is needed in two cases. On a `public` endpoint, where nothing is signed,
 pass it as a standard OpenAI `Authorization: Bearer` header. On a cluster whose
 nodes do not sign caller identity, the proxy falls back to its own key check;

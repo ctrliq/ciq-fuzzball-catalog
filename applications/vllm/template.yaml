@@ -488,6 +488,8 @@ services:
           custom_auth: fuzzball_auth.user_api_key_auth
           custom_auth_settings:
             mode: auto
+          # Without this, configuring custom_auth turns off LiteLLM's own route RBAC.
+          custom_auth_run_common_checks: true
         EOF
     script: |
       #!/bin/bash
@@ -513,7 +515,7 @@ services:
       import threading
 
       import jwt
-      from litellm.proxy._types import UserAPIKeyAuth
+      from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
 
       HEADER = "x-fuzzball-caller-identity"
       KEY_HEADER = "x-litellm-api-key"
@@ -591,10 +593,13 @@ services:
               claims = authenticate(request.headers.get(HEADER), audiences)
           except Exception as err:
               raise Exception(f"caller identity not accepted: {err}") from None
+          # An ordinary user, never an admin. custom_auth_run_common_checks in
+          # the config is what makes LiteLLM enforce that on management routes.
           return UserAPIKeyAuth(
               user_id=claims["sub"],
               user_email=claims.get("email"),
               api_key="caller-identity",
+              user_role=LitellmUserRoles.INTERNAL_USER,
           )
       PYEOF
       if [ ! -s /etc/litellm/fuzzball_auth.py ]; then

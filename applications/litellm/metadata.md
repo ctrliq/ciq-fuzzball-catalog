@@ -28,7 +28,9 @@ Python, meant to be copied as the starting point for your own gateway.
 A caller on this cluster needs no key. The endpoint signs the caller's Fuzzball
 identity, the gateway authenticates it, and access is the endpoint's scope -- the same
 control that governs every other Fuzzball endpoint. Spend is recorded against the
-Fuzzball user who made the call.
+Fuzzball user who made the call. A caller admitted by identity is an ordinary user of
+the gateway: management routes such as `/key/generate` and `/spend/logs` still need the
+master key.
 
 1. Get the gateway URL:
 
