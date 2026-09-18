@@ -239,18 +239,15 @@ files:
                 timeout=30,
             )
             r.raise_for_status()
-            vec = r.json()["data"][0]["embedding"]
-            if len(vec) != dim:
-                print(
-                    "FATAL: %s embeds %d-dimensional vectors but EmbeddingDim=%d; "
-                    "set EmbeddingDim=%d" % (model, len(vec), dim, len(vec)),
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-            break
         except httpx.HTTPStatusError as exc:
             code = exc.response.status_code
-            if code in (400, 401, 403, 404, 405, 422):
+            # A definitive rejection (a bad request, a bad credential) will not
+            # fix itself -- fail now, not after the window. A 404/405/5xx is
+            # transient while a replica pool registers (the endpoint proxy
+            # answers 404 until a replica is live), so those fall through to the
+            # retry. A non-embedding model is caught below as a 2xx envelope,
+            # not here, so it does not need a status code of its own.
+            if code in (400, 401, 403, 422):
                 print(
                     "FATAL: endpoint %s rejected an embedding with model %r (HTTP %d): %s"
                     % (base, model, code, exc.response.text[:200]),
@@ -260,6 +257,28 @@ files:
             last = "HTTP %d" % code
         except Exception as exc:
             last = str(exc)
+        else:
+            # 2xx: the endpoint answered. A body we cannot read as an OpenAI
+            # embedding (e.g. a chat model that has no /embeddings schema) is a
+            # definitive misconfiguration, not a warming pool -- fail fast.
+            try:
+                vec = r.json()["data"][0]["embedding"]
+            except (ValueError, KeyError, IndexError, TypeError):
+                print(
+                    "FATAL: endpoint %s answered /embeddings for model %r but not with an "
+                    "OpenAI embeddings response (is it an embedding model?): %s"
+                    % (base, model, r.text[:200]),
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if len(vec) != dim:
+                print(
+                    "FATAL: %s embeds %d-dimensional vectors but EmbeddingDim=%d; "
+                    "set EmbeddingDim=%d" % (model, len(vec), dim, len(vec)),
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            break
         if time.time() >= deadline:
             print(
                 "FATAL: model endpoint %s not ready after 300s (last error: %s)"
