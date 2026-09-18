@@ -117,26 +117,28 @@
 {{- end }}
 {{- $hf_token_secret := trim .HfTokenSecret }}
 
-{{- /* The proxy's master key reaches LiteLLM as LITELLM_MASTER_KEY, and the
-       dynamic-config file names that variable rather than the key: that file
-       is rendered by the orchestrator in a sandboxed shell with an empty
-       environment, where a secret reference could never be resolved. Only the
-       container's own env is resolved by Fuzzball at run time.
+{{- /* The proxy's master key reaches LiteLLM as LITELLM_MASTER_KEY and stays
+       out of the dynamic-config file, which is rendered by the orchestrator in
+       a sandboxed shell with an empty environment where a secret reference
+       could never be resolved. Only the container's own env is resolved by
+       Fuzzball at run time.
        Named as a secret, the definition carries the reference alone. Given
        literally or generated, the key itself lives in the definition, readable
        by anyone who can get the workflow. */}}
-{{- /* The platform accepts only user-scoped value secrets in env entries. */}}
 {{- $api_key_secret := trim .ApiKeySecret }}
-{{- if and $api_key_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $api_key_secret)) }}
-  {{- fail "ApiKeySecret must be a user-scoped secret reference, e.g. secret://user/vllm-proxy-key" }}
-{{- end }}
 {{- $api_key := trim .ApiKey }}
-{{- if and $api_key (not (regexMatch "^sk-[A-Za-z0-9_-]+$" $api_key)) }}
-  {{- fail "ApiKey must start with sk- and contain only letters, digits, '-' and '_'" }}
-{{- end }}
-{{- /* ApiKeySecret wins when both are set, as in the hermes-agent and opencode
-       entries. With neither, a key is generated at every workflow start. */}}
+{{- /* Both are documented as unused without the proxy, so neither is validated
+       here without it. ApiKeySecret wins when both are set, as in the
+       hermes-agent and opencode entries. With neither, a key is generated at
+       every workflow start. */}}
 {{- if .Proxy }}
+  {{- /* The platform accepts only user-scoped value secrets in env entries. */}}
+  {{- if and $api_key_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $api_key_secret)) }}
+    {{- fail "ApiKeySecret must be a user-scoped secret reference, e.g. secret://user/vllm-proxy-key" }}
+  {{- end }}
+  {{- if and $api_key (not (regexMatch "^sk-[A-Za-z0-9_-]+$" $api_key)) }}
+    {{- fail "ApiKey must start with sk- and contain only letters, digits, '-' and '_'" }}
+  {{- end }}
   {{- if $api_key_secret }}
     {{- $api_key = $api_key_secret }}
   {{- else if not $api_key }}
@@ -475,11 +477,6 @@ services:
           done
         fi
         cat <<'EOF'
-        general_settings:
-          # The key itself cannot be written here -- this file is rendered by
-          # the orchestrator in a sandbox with an empty environment -- so name
-          # the variable and let LiteLLM read it from its own container env.
-          master_key: os.environ/LITELLM_MASTER_KEY
         litellm_settings:
           callbacks: ["prometheus"]
           num_retries: 2

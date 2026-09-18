@@ -123,13 +123,17 @@ pool is still registered by any gateway in the organization -- and that gateway
 then cannot mint for it either. Do not publish a pool for a gateway at `public`.
 
 Discovery finds the URL, not the credential. At `Proxy=true` the LiteLLM proxy
-still enforces `ApiKey`. Left empty it is generated once, when the template is
-rendered, and written into the rendered workflow definition -- so re-rendering
-produces a different key, and anyone who can read the workflow can read the key.
-It is not a secret from them, only from something that discovered the endpoint
-alone. Set `ApiKey` explicitly and give the agent the same value (`ApiKeySecret`
-on `opencode` and `hermes-agent`), or the agent finds the pool and is refused
-by it.
+still enforces its master key, and an agent that discovered the endpoint but
+not the key is refused by it. The clean way to pair the two is one Fuzzball
+secret named on both sides: set this entry's `ApiKeySecret` to it, and set the
+agent's own `ApiKeySecret` (`opencode` and `hermes-agent` each have a value by
+that name) to the same reference. Neither workflow definition then carries the
+key.
+
+Set plainly instead, or left to generate, the key is written into the rendered
+workflow definition -- so re-rendering produces a different key, and anyone who
+can read the workflow can read it. It is not a secret from them, only from
+something that discovered the endpoint alone.
 
 ## Expert parallelism and multi-node serving
 
