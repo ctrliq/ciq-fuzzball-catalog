@@ -431,7 +431,7 @@ services:
       uri: {{ .LitellmImage }}
     env:
       - LITELLM_MASTER_KEY={{ $api_key }}
-      - PYTHONPATH=/etc/litellm
+      - PYTHONPATH=/tmp/litellm
     resource:
       cpu:
         cores: 2
@@ -504,8 +504,9 @@ services:
       # instead of a key. mode auto runs the hook first and falls back to
       # LiteLLM's own key check when it raises, which is what keeps the master
       # key and x-litellm-api-key working.
-      mkdir -p /etc/litellm
-      cat > /etc/litellm/fuzzball_auth.py <<'PYEOF'
+      # Under /tmp: the container runs as the workflow user, who cannot write /etc.
+      mkdir -p /tmp/litellm
+      cat > /tmp/litellm/fuzzball_auth.py <<'PYEOF'
       # Authenticates a Fuzzball caller-identity assertion, which the proxy in front
       # of a model receives from the endpoint instead of a key. Every failure raises
       # a plain Exception so custom_auth_settings.mode auto falls back to LiteLLM's
@@ -602,8 +603,8 @@ services:
               user_role=LitellmUserRoles.INTERNAL_USER,
           )
       PYEOF
-      if [ ! -s /etc/litellm/fuzzball_auth.py ]; then
-        echo "FATAL: could not write the caller-identity hook to /etc/litellm" >&2
+      if [ ! -s /tmp/litellm/fuzzball_auth.py ]; then
+        echo "FATAL: could not write the caller-identity hook to /tmp/litellm" >&2
         exit 1
       fi
 
