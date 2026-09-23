@@ -59,10 +59,17 @@
 
 {{- $mcp_memory := trim .McpMemory }}
 {{- $ingester_memory := trim .IngesterMemory }}
+{{- $arch := lower (trim .Arch) }}
+{{- if not (has $arch (list "amd64" "arm64")) }}
+  {{- fail "Arch must be one of: amd64, arm64" }}
+{{- end }}
 {{- $image := trim .Image }}
+{{- if eq $arch "arm64" }}
+  {{- $image = trim .ImageArm64 }}
+{{- end }}
 {{- range $v := list $mcp_memory $ingester_memory $image }}
   {{- if or (not $v) (contains "\"" $v) (contains "\\" $v) (contains "\n" $v) (contains "#" $v) }}
-    {{- fail "McpMemory, IngesterMemory, and Image must be non-empty and free of quotes, backslashes, and comments" }}
+    {{- fail "McpMemory, IngesterMemory, and the Image for the selected Arch must be non-empty and free of quotes, backslashes, and comments" }}
   {{- end }}
 {{- end }}
 {{- $image_secret := trim .ImageSecret }}
