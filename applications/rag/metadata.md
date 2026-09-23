@@ -66,7 +66,8 @@ one case rag cannot serve is a non-signing cluster fronted by a LiteLLM gateway,
 which wants a Fuzzball token *and* a separate `x-litellm-api-key` at once — use a
 signing cluster or a direct (non-gateway) endpoint there. The workflow makes no
 network connections beyond the configured endpoint, so it operates air-gapped
-(document-parsing models are baked into the image).
+(document-parsing models are baked into the image). The image is published per
+CPU architecture: on arm64 compute nodes, such as DGX Spark, set `Arch=arm64`.
 
 ## Ingestion
 

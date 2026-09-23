@@ -7,6 +7,12 @@
 #
 # .def files without this comment are skipped.
 #
+# A .def file may also declare the CPU architectures to build:
+#
+#   # arch: amd64 arm64
+#
+# Allowed values are amd64 and arm64. Without the comment only amd64 is built.
+#
 # TRIGGERS AND BEHAVIOR
 #
 # pull_request (targeting main):
@@ -64,7 +70,6 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  ARM64_ENABLED: ${{ vars.ARM64_ENABLED || 'false' }}
 
 jobs:
   discover:
@@ -171,10 +176,15 @@ jobs:
               continue
             fi
 
-            arches="amd64"
-            if [[ "${ARM64_ENABLED}" == "true" ]]; then
-              arches="amd64 arm64"
-            fi
+            # Architectures may be declared as '# arch: amd64 arm64' in the .def file
+            arches="$(perl -nle 'if (m/^#\s*arch\s*:\s*([a-z0-9 ]{1,64})/){print $1; exit}' < "${file}")"
+            arches="${arches:-amd64}"
+            for arch in ${arches}; do
+              if [[ "${arch}" != "amd64" && "${arch}" != "arm64" ]]; then
+                echo "'${file}' declares unsupported arch '${arch}' (allowed: amd64 arm64)"
+                exit 1
+              fi
+            done
             for arch in ${arches}; do
 
               item="$(jq -cn \
@@ -204,14 +214,12 @@ jobs:
           echo "pr:     ${pr_number:-}"
 
   build:
-    # NOTE: ARM64 builds require a runner with the `ubuntu-24.04-arm64` label.
-    # Ensure that a suitable self-hosted or custom-labeled ARM64 runner is
-    # configured in this repository or organization, otherwise ARM64 jobs
-    # will fail to start with a "no matching runner" error.
+    # arm64 builds run on the GitHub-hosted `ubuntu-24.04-arm` runner, which is
+    # available to public repositories. A self-hosted runner needs that label.
     name: Build ${{ matrix.recipe_name }} (${{ matrix.arch }})
     needs: discover
     if: needs.discover.outputs.action == 'build' && needs.discover.outputs.matrix != '{"include":[]}'
-    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm64' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.discover.outputs.matrix) }}

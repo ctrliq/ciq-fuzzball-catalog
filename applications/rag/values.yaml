@@ -106,12 +106,27 @@ values:
     string_value: 8GiB
     display_category: Resources
 
+  - name: Arch
+    display_name: >-
+      CPU architecture of the compute nodes: amd64 or arm64 (for example DGX Spark).
+      Selects Image or ImageArm64.
+    string_value: amd64
+    options_input:
+      options: ["amd64", "arm64"]
+    display_category: Versions
   - name: Image
     display_name: >-
-      haiku.rag container image, built from this entry's definition_files/haiku-rag.def
-      by the catalog's container CI; must bundle the full package, the ingester extra,
-      and pre-downloaded parsing models for air-gapped operation.
+      haiku.rag container image for amd64 nodes, built from this entry's
+      definition_files/haiku-rag.def by the catalog's container CI; must bundle the full
+      package, the ingester extra, and pre-downloaded parsing models for air-gapped
+      operation.
     string_value: oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/rag-haiku-rag:0.78.0-0-amd64
+    display_category: Versions
+  - name: ImageArm64
+    display_name: >-
+      haiku.rag container image for arm64 nodes, the same build as Image for that
+      architecture. Used when Arch is arm64.
+    string_value: oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/rag-haiku-rag:0.78.0-0-arm64
     display_category: Versions
   - name: ImageSecret
     display_name: >-
