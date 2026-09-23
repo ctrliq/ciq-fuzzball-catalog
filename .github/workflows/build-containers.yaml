@@ -176,9 +176,19 @@ jobs:
               continue
             fi
 
-            # Architectures may be declared as '# arch: amd64 arm64' in the .def file
-            arches="$(perl -nle 'if (m/^#\s*arch\s*:\s*([a-z0-9 ]{1,64})/){print $1; exit}' < "${file}")"
-            arches="${arches:-amd64}"
+            # Architectures may be declared as '# arch: amd64 arm64' in the .def file.
+            # The whole declaration is captured so a malformed token fails the run;
+            # an absent comment means amd64, an empty one is an error.
+            arch_decl="$(perl -nle 'if (m/^#\s*arch\s*:\s*(.*?)\s*$/){print "declared:$1"; exit}' < "${file}")"
+            if [[ -z "${arch_decl}" ]]; then
+              arches="amd64"
+            else
+              arches="${arch_decl#declared:}"
+              if [[ -z "${arches}" ]]; then
+                echo "'${file}' has an empty '# arch:' declaration (allowed: amd64 arm64)"
+                exit 1
+              fi
+            fi
             for arch in ${arches}; do
               if [[ "${arch}" != "amd64" && "${arch}" != "arm64" ]]; then
                 echo "'${file}' declares unsupported arch '${arch}' (allowed: amd64 arm64)"
