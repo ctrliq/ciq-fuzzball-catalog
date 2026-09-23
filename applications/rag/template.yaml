@@ -60,8 +60,8 @@
 {{- $mcp_memory := trim .McpMemory }}
 {{- $ingester_memory := trim .IngesterMemory }}
 {{- $arch := lower (trim .Arch) }}
-{{- if and (ne $arch "amd64") (ne $arch "arm64") }}
-  {{- fail "Arch must be amd64 or arm64" }}
+{{- if not (has $arch (list "amd64" "arm64")) }}
+  {{- fail "Arch must be one of: amd64, arm64" }}
 {{- end }}
 {{- $image := trim .Image }}
 {{- if eq $arch "arm64" }}

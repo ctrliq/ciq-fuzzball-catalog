@@ -189,11 +189,19 @@ jobs:
                 exit 1
               fi
             fi
+            seen=""
             for arch in ${arches}; do
               if [[ "${arch}" != "amd64" && "${arch}" != "arm64" ]]; then
                 echo "'${file}' declares unsupported arch '${arch}' (allowed: amd64 arm64)"
                 exit 1
               fi
+              case " ${seen} " in
+                *" ${arch} "*)
+                  echo "'${file}' declares duplicate arch '${arch}'"
+                  exit 1
+                  ;;
+              esac
+              seen="${seen} ${arch}"
             done
             for arch in ${arches}; do
 
@@ -250,6 +258,10 @@ jobs:
 
       # The Apptainer GitHub release ships amd64 packages only, so the arm64
       # runner installs from the Apptainer PPA, which builds both architectures.
+      # The PPA carries only its current release (1.5.4 at the time of writing)
+      # and drops superseded versions, so it is not pinned; arm64 images may be
+      # built with a newer Apptainer than the 1.4.5 pinned for amd64. Accepted:
+      # both produce SIFs the substrate consumes the same way.
       - name: Set up Apptainer (arm64)
         if: matrix.arch == 'arm64'
         run: |
