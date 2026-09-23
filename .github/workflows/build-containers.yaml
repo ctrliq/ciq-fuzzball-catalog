@@ -233,9 +233,20 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up Apptainer
+        if: matrix.arch == 'amd64'
         uses: eWaterCycle/setup-apptainer@4bb22c52d4f63406c49e94c804632975787312b3  # v2
         with:
           apptainer-version: 1.4.5
+
+      # The Apptainer GitHub release ships amd64 packages only, so the arm64
+      # runner installs from the Apptainer PPA, which builds both architectures.
+      - name: Set up Apptainer (arm64)
+        if: matrix.arch == 'arm64'
+        run: |
+          sudo add-apt-repository -y ppa:apptainer/ppa
+          sudo apt-get update
+          sudo apt-get install -y apptainer
+          apptainer --version
 
       - name: Compute image reference
         id: image
