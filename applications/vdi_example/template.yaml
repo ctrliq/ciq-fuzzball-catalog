@@ -67,20 +67,29 @@ services:
         port: {{ $port }}
         scheme: HTTP
       initial-delay-seconds: 10
-    env:
-      - HOME={{ $home }}
-    cwd: {{ $home }}
     image:
       uri: {{ .Container }}
     script: |
       #!/bin/sh
+      set -eu
+
+      mkdir -p /tmp/vnc
+      chmod 700 /tmp/vnc
+
+      export HOME="{{ $home }}"
+      export XAUTHORITY=/tmp/vnc/.Xauthority
+
       mkdir -p "${HOME}"
       cd "${HOME}"
-      echo "Starting desktop and vnc"
-      /usr/local/bin/start-vncserver.sh {{ $port }}
+
+      echo "Starting GPU-accelerated desktop and VNC"
+
+      exec /usr/local/bin/start-vncserver.sh {{ $port }}
     resource:
       cpu:
         cores: {{ .Cores }}
       memory:
         size: {{ .Memory }}
+      devices:
+        nvidia.com/gpu: 1
       exclusive: {{ .Exclusive }}
