@@ -4,13 +4,12 @@
 version: v4
 volumes:
   vol_1:
-    name: vol_1
+    use: ephemeral
     ingress:
       - source:
           uri: {{.InputFileSource}}
         destination:
           uri: file://{{ .WorkingDirectory | trim | trimPrefix "/data" | trimPrefix "/" }}/{{ $filename }}
-    reference: {{ .DataVolume }}
 
 defaults:
   job:
