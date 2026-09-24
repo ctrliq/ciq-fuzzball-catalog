@@ -2,7 +2,7 @@ values:
   - name: "ServiceScope"
     display_name: >-
       Who can reach the gateway endpoint. Callers additionally need a LiteLLM virtual key.
-    string_value: group
+    string_value: user
     options_input:
       options: [user, group, organization]
     display_category: "Access"
@@ -16,14 +16,14 @@ values:
       reference: ""
     display_category: "Access"
 
-  - name: "DataVolume"
+  - name: "Volume"
     display_name: >-
-      Volume holding the gateway database (virtual keys, budgets, spend history), as
-      volume://<scope>/<provisioner>[/<volume-name>]. The default is ephemeral, so all of
-      it is lost when the workflow stops -- for anything you rely on, name an existing
-      persistent volume, e.g. volume://user/default/my-gateway-db. Mounted at
-      /var/lib/postgresql/data
-    string_value: volume://user/ephemeral
+      Volume holding the gateway database (virtual keys, budgets, spend history):
+      'ephemeral' (default; all of it is lost when the workflow stops) or the name of an
+      empty persistent volume you own, to keep the gateway state across restarts. Only one
+      gateway at a time should use a given volume -- nothing enforces it, and a second one
+      breaks the first. Mounted at /var/lib/postgresql/data
+    string_value: ephemeral
     display_category: "Storage"
 
   - name: "DiscoveryApiValue"

@@ -36,8 +36,13 @@ values:
     string_value: ""
     display_category: "Animation"
   - name: "VolumeReference"
-    display_name: "Workspace volume reference. Defaults to ephemeral; supply a persistent volume to cache inputdata between runs."
-    string_value: "volume://user/ephemeral"
+    display_name: >-
+      Workspace volume: 'ephemeral' (default; the case directory and downloaded
+      inputdata are destroyed when the workflow stops), or the name of an
+      existing persistent volume to cache inputdata between runs. Mounted at
+      /home/user. The case directory and archive are cleared at the start of
+      every run; only inputdata is reused.
+    string_value: "ephemeral"
     display_category: "Storage"
   - name: "VideoDestination"
     display_name: "S3 URI for the MP4 (e.g. s3://my-bucket/cesm/output.mp4); leave blank to skip MP4 upload AND visualize job"

@@ -3,13 +3,20 @@
 {{- /* Structural integrity only: a quote or backslash in a value would corrupt
        the rendered YAML (workflow doc and the embedded haiku.rag config file);
        semantic validity is the server's / haiku.rag's job. */}}
-{{- $endpoint := trim .Endpoint }}
-{{- if or (contains "\"" $endpoint) (contains "\\" $endpoint) (contains "\n" $endpoint) (contains "#" $endpoint) }}
-  {{- fail "Endpoint must not contain quotes, backslashes, or comments" }}
+{{- /* A trailing /v1 or / is accepted and normalized: the base_url handed to
+       haiku.rag's openai provider must end in /v1, and pasting the raw endpoint
+       URL (which does not) is the easy mistake -- the hermes-agent and opencode
+       entries normalize the same way. */}}
+{{- $endpoint := trimSuffix "/v1" (trimSuffix "/" (trim .Endpoint)) }}
+{{- if not $endpoint }}
+  {{- fail "Endpoint is required: set it to an OpenAI-compatible base URL that serves EmbeddingModel, e.g. the vllm entry's endpoint URL" }}
+{{- end }}
+{{- if not (regexMatch "^https?://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._/-]*)?$" $endpoint) }}
+  {{- fail "Endpoint must be an http(s) URL, e.g. https://endpoint-<id>.endpoints.<cluster domain>" }}
 {{- end }}
 {{- $embedding_model := trim .EmbeddingModel }}
 {{- if not $embedding_model }}
-  {{- fail "EmbeddingModel must not be empty" }}
+  {{- fail "EmbeddingModel is required: name an embedding model your Endpoint serves (no catalog entry serves embeddings yet, so there is no default that works)" }}
 {{- end }}
 {{- if or (contains "\"" $embedding_model) (contains "\\" $embedding_model) (contains "\n" $embedding_model) (contains "#" $embedding_model) }}
   {{- fail "EmbeddingModel must not contain quotes, backslashes, or comments" }}
@@ -23,30 +30,26 @@
   {{- fail "GenerationModel must not contain quotes, backslashes, or comments" }}
 {{- end }}
 {{- $endpoint_token_secret := trim .EndpointTokenSecret }}
-{{- if or (contains "\"" $endpoint_token_secret) (contains "\\" $endpoint_token_secret) (contains "\n" $endpoint_token_secret) (contains "#" $endpoint_token_secret) }}
-  {{- fail "EndpointTokenSecret must not contain quotes, backslashes, or comments" }}
+{{- /* Positive allow-list, matching the opencode/hermes-agent ApiKeySecret rule:
+       a typo'd reference should fail at render, not opaquely at runtime. */}}
+{{- if and $endpoint_token_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $endpoint_token_secret)) }}
+  {{- fail "EndpointTokenSecret must be a user-scoped secret reference, e.g. secret://user/rag-endpoint-token" }}
 {{- end }}
 {{- $endpoint_token := trim .EndpointToken }}
-{{- if or (contains "\"" $endpoint_token) (contains "\\" $endpoint_token) (contains "\n" $endpoint_token) (contains "#" $endpoint_token) }}
-  {{- fail "EndpointToken must not contain quotes, backslashes, or comments" }}
+{{- /* Positive allow-list, matching the opencode/hermes-agent ApiKey rule: a
+       literal token is interpolated into a shell double-quoted assignment for
+       the startup check, so a '$' or backtick must never reach it. */}}
+{{- if and $endpoint_token (not (regexMatch "^[A-Za-z0-9._~+/=-]+$" $endpoint_token)) }}
+  {{- fail "EndpointToken may contain only letters, digits and . _ ~ + / = -" }}
 {{- end }}
-{{- if and (or $endpoint_token $endpoint_token_secret) (not $endpoint) }}
-  {{- /* Without an endpoint the OpenAI client dials api.openai.com; a real
-         credential must never be sent there by accident. */}}
-  {{- fail "EndpointToken/EndpointTokenSecret require Endpoint to be set" }}
-{{- end }}
-
 {{- $scope := lower (trim .Scope) }}
 {{- if not (has $scope (list "user" "group" "organization" "public")) }}
   {{- fail "Scope must be one of: user, group, organization, public" }}
 {{- end }}
 
 {{- $volume := trim .Volume }}
-{{- if not $volume }}
+{{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
   {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
-{{- end }}
-{{- if or (contains "\"" $volume) (contains "\\" $volume) (contains "\n" $volume) (contains "#" $volume) }}
-  {{- fail "Volume must not contain quotes, backslashes, or comments" }}
 {{- end }}
 
 {{- $chunk_size := int .ChunkSize }}
@@ -56,10 +59,17 @@
 
 {{- $mcp_memory := trim .McpMemory }}
 {{- $ingester_memory := trim .IngesterMemory }}
+{{- $arch := lower (trim .Arch) }}
+{{- if not (has $arch (list "amd64" "arm64")) }}
+  {{- fail "Arch must be one of: amd64, arm64" }}
+{{- end }}
 {{- $image := trim .Image }}
+{{- if eq $arch "arm64" }}
+  {{- $image = trim .ImageArm64 }}
+{{- end }}
 {{- range $v := list $mcp_memory $ingester_memory $image }}
   {{- if or (not $v) (contains "\"" $v) (contains "\\" $v) (contains "\n" $v) (contains "#" $v) }}
-    {{- fail "McpMemory, IngesterMemory, and Image must be non-empty and free of quotes, backslashes, and comments" }}
+    {{- fail "McpMemory, IngesterMemory, and the Image for the selected Arch must be non-empty and free of quotes, backslashes, and comments" }}
   {{- end }}
 {{- end }}
 {{- $image_secret := trim .ImageSecret }}
@@ -76,7 +86,7 @@
          rendered definition. */}}
   {{- $api_key = "${RAG_ENDPOINT_TOKEN}" }}
 {{- end }}
-{{- if and (not $api_key) $endpoint }}
+{{- if not $api_key }}
   {{- /* No credential given: each service mints its own endpoint access token
          at startup with the workflow's injected identity (the endpoint proxy
          rejects raw workflow tokens), falling back to a harmless placeholder
@@ -87,6 +97,13 @@
   {{- $mint = true }}
   {{- $api_key = "${RAG_ENDPOINT_TOKEN}" }}
 {{- end }}
+{{- /* The startup embeddings probe waking a scaled-to-zero model pool is the
+       ordinary case, so it retries for this window before giving up; the
+       readiness probe beside it must outlast the same window (its port opens
+       only once the probe passes), so both derive from this one value. */}}
+{{- $bootstrap_window := 900 }}
+{{- $probe_period := 10 }}
+{{- $readiness_failures := add (div $bootstrap_window $probe_period) 12 }}
 {{- $mcp_port := randInt 24001 28000 }}
 {{- $ingester_port := randInt 28001 32000 }}
 {{- $ingester_token := printf "rt-%d%d%d%d" (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) }}
@@ -94,13 +111,12 @@
 version: v4
 
 volumes:
+  {{- if eq (lower $volume) "ephemeral" }}
+  data: {}
+  {{- else }}
   data:
-    {{- if eq (lower $volume) "ephemeral" }}
-    use: ephemeral
-    {{- else }}
-    use: persistent
     name: "{{ $volume }}"
-    {{- end }}
+  {{- end }}
 
 files:
   haiku-config: |
@@ -112,7 +128,7 @@ files:
         provider: openai
         name: "{{ $embedding_model }}"
         vector_dim: {{ $embedding_dim }}
-        base_url: "{{ $endpoint }}"
+        base_url: "{{ $endpoint }}/v1"
         api_key: "{{ $api_key }}"
       batch_size: 64
     {{- /* Always pin qa to the openai provider: haiku.rag's built-in default
@@ -124,7 +140,7 @@ files:
       model:
         provider: openai
         name: "{{ $generation_model | default "generation-model-not-configured" }}"
-        base_url: "{{ $endpoint }}"
+        base_url: "{{ $endpoint }}/v1"
         api_key: "{{ $api_key }}"
     analysis:
       enabled: false
@@ -206,6 +222,162 @@ files:
     [ -n "${RAG_ENDPOINT_TOKEN}" ] || RAG_ENDPOINT_TOKEN="unused"
     export RAG_ENDPOINT_TOKEN
     {{- end }}
+    # A tcp readiness probe cannot see an unreachable endpoint, an expired token,
+    # a wrong embedding model, a wrong vector dimension, or a placeholder
+    # credential -- each leaves the port open and the probe green while every
+    # embedding call fails. Prove the endpoint actually embeds with the
+    # configured model AND returns EmbeddingDim-length vectors before the service
+    # execs, so a broken configuration (including a dimension that silently would
+    # not match the corpus) fails loudly at startup. A model pool that is still
+    # warming -- a scaled-to-zero vllm endpoint, the primary target -- is the
+    # ordinary case, so retry for a bootstrap window. Fast-fail is limited to what
+    # a warming pool never produces: a bad credential (401/403), an unprocessable
+    # request (422), or a 2xx answer that is not an embedding of the right size.
+    # A wrong model name, a wrong URL, or an unreachable endpoint are
+    # indistinguishable from a cold pool (400/404/connection error), so they are
+    # retried and only surface when the window expires.
+    RAG_API_KEY="{{ $api_key }}" python - <<'__CHECK__'
+    import os
+    import sys
+    import time
+
+    import httpx
+
+    base = "{{ $endpoint }}/v1"
+    key = os.environ.get("RAG_API_KEY") or ""
+    # Send exactly what haiku.rag sends at runtime: it always puts api_key in an
+    # Authorization: Bearer header (including the "unused" placeholder). Omitting
+    # it here would probe a request shape the service never makes -- post-caller-
+    # identity those take different paths at a gateway, so the gate could pass
+    # while the service cannot work.
+    headers = {"Authorization": "Bearer " + key} if key else {}
+    model = "{{ $embedding_model }}"
+    dim = {{ $embedding_dim }}
+    deadline = time.time() + {{ $bootstrap_window }}
+    last = "no attempt"
+    while True:
+        try:
+            r = httpx.post(
+                base + "/embeddings",
+                headers=headers,
+                json={"model": model, "input": "readiness"},
+                timeout=30,
+            )
+            r.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            code = exc.response.status_code
+            # A bad credential (401/403) or an unprocessable request (422) is
+            # definitive -- fail now, not after the window. 400/404/405/5xx are
+            # treated as transient because a registering model pool produces them
+            # and cannot be told apart from a real one: a LiteLLM gateway renders
+            # an empty model_list at zero replicas and answers with 400, and the
+            # endpoint proxy answers 404 until a replica is live. The cost is that
+            # a wrong model NAME (also 400/404) is retried to the deadline, not
+            # flagged fast. A model that IS served but cannot embed instead
+            # answers 2xx and is caught by the parse-guard below.
+            if code in (401, 403, 422):
+                print(
+                    "FATAL: endpoint %s rejected the embedding request for model %r (HTTP %d): %s"
+                    % (base, model, code, exc.response.text[:200]),
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            last = "HTTP %d" % code
+        except Exception as exc:
+            last = str(exc)
+        else:
+            # 2xx: the endpoint answered. A body we cannot read as an OpenAI
+            # embedding (e.g. a chat model that has no /embeddings schema) is a
+            # definitive misconfiguration, not a warming pool -- fail fast.
+            try:
+                vec = r.json()["data"][0]["embedding"]
+            except (ValueError, KeyError, IndexError, TypeError):
+                print(
+                    "FATAL: endpoint %s answered /embeddings for model %r but not with an "
+                    "OpenAI embeddings response (is it an embedding model?): %s"
+                    % (base, model, r.text[:200]),
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if len(vec) != dim:
+                print(
+                    "FATAL: %s embeds %d-dimensional vectors but EmbeddingDim=%d; "
+                    "set EmbeddingDim=%d" % (model, len(vec), dim, len(vec)),
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            break
+        if time.time() >= deadline:
+            print(
+                "FATAL: model endpoint %s not ready after {{ $bootstrap_window }}s (last error: %s)"
+                % (base, last),
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        time.sleep({{ $probe_period }})
+    __CHECK__
+
+jobs:
+  # Prints the connection details -- endpoint URL, MCP client config, and (for
+  # the ingester) the job-monitoring token and how to reach it -- once the
+  # service is up. Every other service entry in the catalog surfaces these; the
+  # generated ingester token is otherwise buried in the rendered definition.
+  # Reuses the service image (already pulled on the node) rather than a separate
+  # helper image, so the air-gap guarantee holds -- it only echoes text.
+  show-connection:
+    image:
+      uri: "{{ $image }}"
+      {{- if $image_secret }}
+      secret: "{{ $image_secret }}"
+      {{- end }}
+    depends-on:
+      - name: mcp
+        status: RUNNING
+        description: "Print connection details once retrieval is up"
+    script: |
+      #!/bin/sh
+      echo "Get the service endpoint URL with:"
+      echo "   fuzzball workflow endpoints list"
+      echo ""
+      echo "Retrieval is MCP over streamable HTTP at the 'mcp' endpoint, /mcp path."
+      echo "Configure an MCP-capable agent with:"
+      echo ""
+      echo '   {'
+      echo '     "url": "https://<mcp-endpoint-host>/mcp"{{ if ne $scope "public" }},{{ end }}'
+      {{- if ne $scope "public" }}
+      echo '     "headers": { "Authorization": "Bearer <fuzzball endpoint token>" }'
+      {{- end }}
+      echo '   }'
+      echo ""
+      {{- if ne $scope "public" }}
+      echo "Scope is {{ $scope }}, so requests need a Fuzzball credential. A browser"
+      echo "signed in to the web UI sends one as a cookie; for headers, mint a token:"
+      echo "   fuzzball workflow endpoints generate-token <endpoint id>"
+      echo ""
+      {{- end }}
+      {{- if $read_only }}
+      echo "Ingestion: drop files under /data/inbox on the volume -- they are ingested"
+      echo "automatically. Follow progress in the ingester log:"
+      echo "   fuzzball workflow log <workflow id> ingester"
+      echo ""
+      echo "The ingester's job-monitoring API (GET /jobs) is not published as an"
+      echo "endpoint. Reach it from inside the cluster by port-forwarding:"
+      echo "   fuzzball workflow port-forward <workflow id> ingester 8000:{{ $ingester_port }}"
+      echo "   curl -H 'Authorization: Bearer {{ $ingester_token }}' http://127.0.0.1:8000/jobs"
+      {{- else }}
+      echo "Ingestion: ReadOnly=false, so the MCP surface also exposes document"
+      echo "add/delete tools alongside retrieval."
+      {{- end }}
+      echo ""
+      echo "The service runs until the workflow is cancelled."
+    resource:
+      cpu:
+        cores: 1
+      memory:
+        size: 128MB
+    policy:
+      timeout:
+        execute: 10m
 
 services:
   {{- if $read_only }}
@@ -240,16 +412,16 @@ services:
       memory:
         size: {{ $ingester_memory }}
     network:
+      # The haiku ingester's job-monitoring API (GET /jobs) is intentionally not
+      # published as an endpoint: it is a read-only status surface that accepts
+      # no uploads (ingestion is the /data/inbox watch and the MCP write tools),
+      # and it is a third-party API with no caller-identity integration -- so
+      # publishing it would add an outward surface gated only by its static
+      # auth_token, for no gain. Reach it in-cluster via port-forward.
       ports:
         - name: ingest-api
           port: {{ $ingester_port }}
           protocol: tcp
-      endpoints:
-        - name: ingest
-          port-name: ingest-api
-          protocol: http
-          type: subdomain
-          scope: {{ $scope }}
     script: |
       #!/bin/sh
       set -e
@@ -261,9 +433,12 @@ services:
       tcp-socket:
         port: {{ $ingester_port }}
       initial-delay-seconds: 15
-      period-seconds: 10
+      period-seconds: {{ $probe_period }}
       timeout-seconds: 5
-      failure-threshold: 30
+      # Outlasts the startup embeddings probe: the port opens only after that
+      # probe passes, which may retry a warming model pool for the whole
+      # bootstrap window ({{ $bootstrap_window }}s), so this is derived from it.
+      failure-threshold: {{ $readiness_failures }}
       success-threshold: 1
   {{- end }}
 
@@ -321,7 +496,10 @@ services:
       tcp-socket:
         port: {{ $mcp_port }}
       initial-delay-seconds: 15
-      period-seconds: 10
+      period-seconds: {{ $probe_period }}
       timeout-seconds: 5
-      failure-threshold: 30
+      # Outlasts the startup embeddings probe: the port opens only after that
+      # probe passes, which may retry a warming model pool for the whole
+      # bootstrap window ({{ $bootstrap_window }}s), so this is derived from it.
+      failure-threshold: {{ $readiness_failures }}
       success-threshold: 1

@@ -62,19 +62,26 @@ must be retried by the client. Requests already dispatched to a draining
 replica are unaffected and run to completion within `DrainPeriod`.
 
 On endpoint scopes other than `public`, the Fuzzball endpoint proxy consumes
-the `Authorization` header (it carries your Fuzzball endpoint token), so pass
-the LiteLLM API key in the `x-litellm-api-key` header instead:
+the `Authorization` header (it carries your Fuzzball endpoint token) and signs
+the caller's identity for the proxy, which admits the request on that alone --
+no key is needed:
 
 ```sh
 curl -H "Authorization: Bearer ${FUZZBALL_ENDPOINT_TOKEN}" \
-     -H "x-litellm-api-key: ${API_KEY}" \
      -H "Content-Type: application/json" \
      "${ENDPOINT_URL%/}/v1/chat/completions" \
      -d '{"model": "openai/gpt-oss-20b", "messages": [{"role": "user", "content": "hello"}]}'
 ```
 
-On a `public` endpoint, pass the key as a standard OpenAI
-`Authorization: Bearer` header.
+A caller admitted by identity is an ordinary user of that proxy: management routes
+such as `/key/generate` and `/spend/logs` still need the master key.
+
+A key is needed in two cases. On a `public` endpoint, where nothing is signed,
+pass it as a standard OpenAI `Authorization: Bearer` header. On a cluster whose
+nodes do not sign caller identity, the proxy falls back to its own key check;
+pass the key in `x-litellm-api-key`, which the endpoint proxy leaves untouched. A
+key sent that way decides the request; the signed identity is used only when no
+key is sent.
 
 With `Proxy=false` no LiteLLM service is started. Instead the replica pool
 itself carries the endpoint: the pool URL stays stable for the life of the
@@ -85,6 +92,56 @@ discover and balance across the replicas directly. The endpoints carry the
 Gateway catalog entry (`litellm`) picks the pool up automatically. An authenticated request to the pool endpoint while the pool
 idles at zero starts the first replica and returns `503` with a `Retry-After`
 header.
+
+## Being discovered
+
+Which annotation the endpoint carries follows from which mode it is in, and
+decides who finds the pool without being given a URL.
+
+`Proxy=true` annotates the proxy endpoint `ciq.com/api: openai-gateway`, the
+same marker the `litellm` entry puts on its own endpoint. The `hermes-agent`
+entry attaches to it directly, so a single pool and one agent need no gateway
+workflow between them. A standalone `litellm` gateway does
+not nest one proxy behind another: it registers only endpoints that also carry
+`ciq.com/model`, and a proxy endpoint never does. Its `DiscoveryApiValue` knob
+is a weaker guard -- it is set to `openai` by default, but it is user-settable.
+
+`Proxy=false` annotates the per-replica endpoints `ciq.com/api: openai` plus
+`ciq.com/model`, which is what a `litellm` gateway registers. Agents do not
+attach to these; reach them through the gateway. A gateway another identity
+runs only sees them if `Scope` is widened to reach it -- at the `user` default
+a pool published for someone else's gateway is never registered, and nothing
+reports why.
+
+Discovery only considers endpoints the caller's identity can reach, and `Scope`
+defaults to `user` so a pool does not appear in a colleague's candidate set.
+Widen it deliberately. What an agent does with several visible gateways is the
+agent's choice, and `hermes-agent` refuses to guess -- so with several pools
+running at once, name the endpoint on the agent. Narrowing `Scope` does not
+help: `user` is already the narrowest, and two pools you started yourself
+collide inside it.
+
+At `Proxy=true`, `Scope=public` carries no `ciq.com/api` annotation, so a public
+proxied pool is not discovered. The listing surfaces a public endpoint to every
+member of the organization, and an agent that found one would then fail minting
+the token a public endpoint does not need. This does not extend to `Proxy=false`:
+the per-replica endpoints carry their annotations at every scope, so a public
+pool is still registered by any gateway in the organization -- and that gateway
+then cannot mint for it either. Do not publish a pool for a gateway at `public`.
+
+Discovery finds the URL, and on a cluster that signs caller identity that is all
+an agent needs: the proxy admits it on the identity the endpoint forwards, so
+nothing has to be paired between the two workflows. Where a key does apply -- a
+`public` endpoint, or a cluster without caller identity -- the clean way to pair
+the two is one Fuzzball secret named on both sides: set this entry's
+`ApiKeySecret` to it, and set the agent's own `ApiKeySecret` (`opencode` and
+`hermes-agent` each have a value by that name) to the same reference. Neither
+workflow definition then carries the key.
+
+Set plainly instead, or left to generate, the key is written into the rendered
+workflow definition -- so re-rendering produces a different key, and anyone who
+can read the workflow can read it. It is not a secret from them, only from
+something that discovered the endpoint alone.
 
 ## Expert parallelism and multi-node serving
 
@@ -156,15 +213,45 @@ Before choosing `Nodes` above 1:
   spaces.
 - `Proxy`: whether to front the pool with an in-workflow LiteLLM proxy.
 - `Scope`: authorization scope of the service endpoint (`user`, `group`,
-  `organization`, `public`). Note that a `public` pool endpoint is served
-  without authentication and therefore never wakes a pool idling at zero.
+  `organization`, `public`), defaulting to `user`. It also bounds who discovers
+  the pool, and at `Proxy=true` `public` opts the proxy endpoint out of
+  discovery. Note that a `public` pool endpoint is served without authentication
+  and therefore never wakes a pool idling at zero.
 - `MinReplicas` / `MaxReplicas`: replica pool bounds. `MinReplicas=0`
   enables scale-to-zero.
-- `ApiKey`: OpenAI API key enforced by the LiteLLM proxy. Must start with
-  `sk-`. Auto-generated when left empty — the generated key is visible in the
-  started workflow's rendered definition (`fuzzball workflow describe`). Set an
-  explicit strong key for `public` endpoints. Unused with `Proxy=false`, where
-  access is governed by the endpoint scope instead.
+- `ApiKeySecret`: a Fuzzball secret holding the key the LiteLLM proxy enforces,
+  as `secret://user/<name>`. Needed only on a `public` endpoint, or on a cluster
+  that does not sign caller identity; otherwise the endpoint identifies the
+  caller and the proxy asks for no key. The definition carries the reference, not
+  the key, and Fuzzball resolves it at run time. Preferred over `ApiKey`. Unused
+  with `Proxy=false`.
+- `ApiKey`: the same key in plain text. Must start with `sk-`. `ApiKeySecret`
+  wins if both are set; with neither, a key is generated at every workflow
+  start. A literal or generated key is stored in the started workflow's definition,
+  where anyone who can `fuzzball workflow get` the workflow can read it. Unused
+  with `Proxy=false`, where access is governed by the endpoint scope instead.
+
+Both are unset by default, so a pool started without either generates a key the
+proxy will also accept; on a cluster that signs caller identity the request
+example above does not need it. Read it
+back with `fuzzball workflow get <workflow>` and look for `LITELLM_MASTER_KEY` on
+the `litellm` service. It is fixed for the life of the workflow, and a different
+one is generated the next time the entry is started.
+
+On a `public` endpoint this key is the only thing standing in front of the
+model — set a strong one deliberately rather than relying on the generated
+default. To keep one key across workflow starts and out of the definition,
+create a user-scoped secret of type `value` and name it in `ApiKeySecret`:
+
+```sh
+printf 'sk-...' | fuzzball secret create secret://user/vllm-proxy-key --type value
+fuzzball workflow catalog start vLLM --values ApiKeySecret=secret://user/vllm-proxy-key
+```
+
+The secret's content must itself start with `sk-`; the proxy exits at start
+with a message naming `ApiKeySecret` if it does not. Naming a secret keeps the
+key out of the definition but not out of the running container — its owner can
+still read it there.
 
 Resource, image-version, scaling, and vLLM tuning knobs are available under
 the Resources, Versions, Scaling, and Model Configuration categories. Under

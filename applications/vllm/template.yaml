@@ -57,13 +57,8 @@
 {{- end }}
 
 {{- $volume := trim .Volume }}
-{{- if not $volume }}
+{{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
   {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
-{{- end }}
-{{- /* Only structural integrity: name validity is the server's job, but a quote
-       or backslash would corrupt the rendered YAML before the server sees it. */}}
-{{- if or (contains "\"" $volume) (contains "\\" $volume) }}
-  {{- fail "Volume must not contain quotes or backslashes" }}
 {{- end }}
 
 {{- $min_replicas := int .MinReplicas }}
@@ -122,13 +117,31 @@
 {{- end }}
 {{- $hf_token_secret := trim .HfTokenSecret }}
 
+{{- /* The proxy's master key reaches LiteLLM as LITELLM_MASTER_KEY and stays
+       out of the dynamic-config file, which is rendered by the orchestrator in
+       a sandboxed shell with an empty environment where a secret reference
+       could never be resolved. Only the container's own env is resolved by
+       Fuzzball at run time.
+       Named as a secret, the definition carries the reference alone. Given
+       literally or generated, the key itself lives in the definition, readable
+       by anyone who can get the workflow. */}}
+{{- $api_key_secret := trim .ApiKeySecret }}
 {{- $api_key := trim .ApiKey }}
+{{- /* Both are documented as unused without the proxy, so neither is validated
+       here without it. ApiKeySecret wins when both are set, as in the
+       hermes-agent and opencode entries. With neither, a key is generated at
+       every workflow start. */}}
 {{- if .Proxy }}
-  {{- if $api_key }}
-    {{- if not (regexMatch "^sk-[A-Za-z0-9_-]+$" $api_key) }}
-      {{- fail "ApiKey must start with sk- and contain only letters, digits, '-' and '_'" }}
-    {{- end }}
-  {{- else }}
+  {{- /* The platform accepts only user-scoped value secrets in env entries. */}}
+  {{- if and $api_key_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $api_key_secret)) }}
+    {{- fail "ApiKeySecret must be a user-scoped secret reference, e.g. secret://user/vllm-proxy-key" }}
+  {{- end }}
+  {{- if and $api_key (not (regexMatch "^sk-[A-Za-z0-9_-]+$" $api_key)) }}
+    {{- fail "ApiKey must start with sk- and contain only letters, digits, '-' and '_'" }}
+  {{- end }}
+  {{- if $api_key_secret }}
+    {{- $api_key = $api_key_secret }}
+  {{- else if not $api_key }}
     {{- $api_key = printf "sk-fb-%d%d%d%d" (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) (randInt 100000000 999999999) }}
   {{- end }}
 {{- end }}
@@ -142,10 +155,7 @@ version: v4
 
 volumes:
   data:
-    {{- if eq (lower $volume) "ephemeral" }}
-    use: ephemeral
-    {{- else }}
-    use: persistent
+    {{- if ne (lower $volume) "ephemeral" }}
     name: "{{ $volume }}"
     {{- end }}
     ingress:
@@ -419,6 +429,9 @@ services:
     persist: true
     image:
       uri: {{ .LitellmImage }}
+    env:
+      - LITELLM_MASTER_KEY={{ $api_key }}
+      - PYTHONPATH=/tmp/litellm
     resource:
       cpu:
         cores: 2
@@ -435,6 +448,14 @@ services:
           protocol: http
           type: subdomain
           scope: {{ $scope }}
+          {{- if ne $scope "public" }}
+          # One base URL over every replica, which is what an agent attaches to.
+          # Not at public scope: the listing surfaces a public endpoint to the
+          # whole organization, and an agent that discovered it would then fail
+          # minting a token no public endpoint needs.
+          annotations:
+            ciq.com/api: openai-gateway
+          {{- end }}
     dynamic-config:
       path: /etc/litellm/config.yaml
       services: [vllm]
@@ -457,17 +478,136 @@ services:
           done
         fi
         cat <<'EOF'
-        general_settings:
-          master_key: "{{ $api_key }}"
         litellm_settings:
           callbacks: ["prometheus"]
           num_retries: 2
           # The autoscaler's scraper sends no credentials; without this the
           # scrape gets 401 and no scale trigger can ever fire.
           require_auth_for_metrics_endpoint: false
+        general_settings:
+          custom_auth: fuzzball_auth.user_api_key_auth
+          custom_auth_settings:
+            mode: auto
+          # Without this, configuring custom_auth turns off LiteLLM's own route RBAC.
+          custom_auth_run_common_checks: true
         EOF
     script: |
       #!/bin/bash
+      # A key from ApiKeySecret is first visible here, once Fuzzball has
+      # resolved it; a literal or generated one always carries the prefix.
+      case "${LITELLM_MASTER_KEY}" in
+        sk-*) ;;
+        *) echo "FATAL: the master key must start with sk-; check the secret named in ApiKeySecret" >&2; exit 1 ;;
+      esac
+
+      # Agents on this cluster present the endpoint's signed caller identity
+      # instead of a key. mode auto runs the hook first and falls back to
+      # LiteLLM's own key check when it raises, which is what keeps the master
+      # key and x-litellm-api-key working.
+      # Under /tmp: the container runs as the workflow user, who cannot write /etc.
+      mkdir -p /tmp/litellm
+      cat > /tmp/litellm/fuzzball_auth.py <<'PYEOF'
+      # Authenticates a Fuzzball caller-identity assertion, which the proxy in front
+      # of a model receives from the endpoint instead of a key. Every failure raises
+      # a plain Exception so custom_auth_settings.mode auto falls back to LiteLLM's
+      # own key check; a ProxyException would be re-raised as a 401 instead.
+      import json
+      import os
+      import threading
+
+      import jwt
+      from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
+
+      HEADER = "x-fuzzball-caller-identity"
+      KEY_HEADER = "x-litellm-api-key"
+      KEYS_PATH = "/run/fuzzball-substrate/trusted-certs/signing-keys.json"
+
+      CACHE_LOCK = threading.Lock()
+      CACHE = dict(mtime=None, keys=None)
+
+
+      class CallerIdentityError(Exception):
+          pass
+
+
+      def forget_keys():
+          with CACHE_LOCK:
+              CACHE.update(mtime=None, keys=None)
+
+
+      def load_keys(path):
+          # Re-read only when the file changes: this runs on every request.
+          mtime = os.stat(path).st_mtime
+          with CACHE_LOCK:
+              if CACHE["keys"] is None or CACHE["mtime"] != mtime:
+                  with open(path) as handle:
+                      CACHE.update(mtime=mtime, keys=jwt.PyJWKSet.from_dict(json.load(handle)))
+              return CACHE["keys"]
+
+
+      def verify_assertion(raw, keys_path, audiences, verify_exp=True):
+          if not raw:
+              raise CallerIdentityError("no caller identity header")
+          if not audiences:
+              raise CallerIdentityError("no endpoint id to bind to")
+          try:
+              keys = load_keys(keys_path)
+          except FileNotFoundError:
+              raise CallerIdentityError("signing keys not present on this node") from None
+          kid = jwt.get_unverified_header(raw).get("kid")
+          key = next((k for k in keys.keys if k.key_id == kid), None)
+          if key is None:
+              raise CallerIdentityError(f"unknown kid {kid}")
+          try:
+              return jwt.decode(
+                  raw,
+                  key.key,
+                  algorithms=["ES256"],
+                  audience=audiences,
+                  options={"verify_exp": verify_exp, "require": ["exp", "sub", "aud"]},
+              )
+          except jwt.PyJWTError as err:
+              raise CallerIdentityError(str(err)) from None
+
+
+      def authenticate(raw, audiences):
+          try:
+              return verify_assertion(raw, KEYS_PATH, audiences)
+          except CallerIdentityError as err:
+              if not str(err).startswith("unknown kid"):
+                  raise
+          # An unknown kid can be a rotation the mtime check missed; re-read once.
+          forget_keys()
+          return verify_assertion(raw, KEYS_PATH, audiences)
+
+
+      async def user_api_key_auth(request, api_key):
+          # An explicit key wins: raise so LiteLLM's own key check decides it
+          # instead of the caller's identity, which is what virtual keys need.
+          if (api_key or "").strip() or (request.headers.get(KEY_HEADER) or "").strip():
+              raise Exception("api key supplied; LiteLLM's key check decides")
+          # The endpoint the assertion must be bound to. FB_ENDPOINT_ID names the
+          # first endpoint in definition order, which is not necessarily this one.
+          endpoint_id = os.environ.get("FB_ENDPOINT_ID_OPENAI", "")
+          audiences = [f"endpoint:{endpoint_id}"] if endpoint_id else []
+          try:
+              claims = authenticate(request.headers.get(HEADER), audiences)
+          except Exception as err:
+              raise Exception(f"caller identity not accepted: {err}") from None
+          # An ordinary user, never an admin. custom_auth_run_common_checks in
+          # the config is what makes LiteLLM enforce that on management routes.
+          return UserAPIKeyAuth(
+              user_id=claims["sub"],
+              user_email=claims.get("email"),
+              api_key="caller-identity",
+              user_role=LitellmUserRoles.INTERNAL_USER,
+          )
+      PYEOF
+      if [ ! -s /tmp/litellm/fuzzball_auth.py ]; then
+        echo "FATAL: could not write the caller-identity hook to /tmp/litellm" >&2
+        exit 1
+      fi
+
       # LiteLLM reads its config only at startup, while Fuzzball re-renders the
       # dynamic-config file in place as the pool scales; watch the file and
       # restart LiteLLM whenever the backend list changes.

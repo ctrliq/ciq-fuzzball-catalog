@@ -24,9 +24,12 @@
   {{- fail "Model must name the model as the gateway serves it, e.g. openai/gpt-oss-20b" }}
 {{- end }}
 
+{{- /* Hermes refuses to start a session below its own MINIMUM_CONTEXT_LENGTH,
+       so a value the agent would reject is caught here rather than at the
+       first prompt, where the dashboard is already up and attach has passed. */}}
 {{- $context_size := int .MaxContextSize }}
-{{- if lt $context_size 1024 }}
-  {{- fail "MaxContextSize must be at least 1024" }}
+{{- if lt $context_size 64000 }}
+  {{- fail "MaxContextSize must be at least 64000: Hermes rejects any model whose context window is smaller, and the agent fails on its first message rather than at startup" }}
 {{- end }}
 
 {{- $auth := lower (trim .EndpointAuth) }}
@@ -103,19 +106,44 @@
 {{- end }}
 
 {{- $mint := eq $auth "fuzzball-token" }}
-{{- /* A LiteLLM gateway always enforces a key, and its own is the only thing
-       this workflow cannot work out for itself. Caught here rather than as a
-       401 several minutes into startup. */}}
-{{- if and $mint (not (or $api_key_secret $api_key)) }}
-  {{- fail "A gateway key is required: set ApiKeySecret (preferred) or ApiKey" }}
+
+{{- $dashboard_username := trim .DashboardUsername }}
+{{- if not (regexMatch "^[A-Za-z0-9._@-]+$" $dashboard_username) }}
+  {{- fail "DashboardUsername may contain only letters, digits, '.', '_', '@' and '-'" }}
 {{- end }}
 
-{{- /* Both credentials are generated at submit time and live in the rendered
-       definition; the show-agent job prints them. slim-sprig has no
-       randAlphaNum, so they are built as hex from 63-bit randInt draws. */}}
-{{- $dashboard_password := printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
-{{- $dashboard_secret := printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
-{{- $api_server_key := printf "sk-%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+{{- /* Each credential is taken from a Fuzzball secret when one is named --
+       the container receives the reference and Fuzzball resolves it at run
+       time -- and is otherwise generated at submit time and lives in the
+       rendered definition, where the show-agent job prints it. User scope
+       only, as for ApiKeySecret. slim-sprig has no randAlphaNum, so
+       generated credentials are built as hex from 63-bit randInt draws. */}}
+{{- $dashboard_password_secret := trim .DashboardPasswordSecret }}
+{{- if and $dashboard_password_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $dashboard_password_secret)) }}
+  {{- fail "DashboardPasswordSecret must be a user-scoped secret reference, e.g. secret://user/hermes-dashboard-password" }}
+{{- end }}
+{{- $dashboard_password := $dashboard_password_secret }}
+{{- if not $dashboard_password }}
+  {{- $dashboard_password = printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+{{- end }}
+
+{{- $dashboard_session_secret := trim .DashboardSessionSecret }}
+{{- if and $dashboard_session_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $dashboard_session_secret)) }}
+  {{- fail "DashboardSessionSecret must be a user-scoped secret reference, e.g. secret://user/hermes-dashboard-session" }}
+{{- end }}
+{{- $dashboard_session_key := $dashboard_session_secret }}
+{{- if not $dashboard_session_key }}
+  {{- $dashboard_session_key = printf "%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+{{- end }}
+
+{{- $api_server_key_secret := trim .ApiServerKeySecret }}
+{{- if and $api_server_key_secret (not (regexMatch "^secret://user/[A-Za-z0-9._-]+$" $api_server_key_secret)) }}
+  {{- fail "ApiServerKeySecret must be a user-scoped secret reference, e.g. secret://user/hermes-api-key" }}
+{{- end }}
+{{- $api_server_key := $api_server_key_secret }}
+{{- if not $api_server_key }}
+  {{- $api_server_key = printf "sk-%016x%016x" (randInt 0 9223372036854775807) (randInt 0 9223372036854775807) }}
+{{- end }}
 
 {{- $dashboard_port := randInt 24001 28000 }}
 {{- $api_port := randInt 28001 32000 }}
@@ -133,13 +161,12 @@
 version: v4
 
 volumes:
+  {{- if eq (lower $volume) "ephemeral" }}
+  data: {}
+  {{- else }}
   data:
-    {{- if eq (lower $volume) "ephemeral" }}
-    use: ephemeral
-    {{- else }}
-    use: persistent
     name: "{{ $volume }}"
-    {{- end }}
+  {{- end }}
 
 jobs:
   show-agent:
@@ -154,21 +181,32 @@ jobs:
       echo "Get the dashboard URL with:"
       echo "   fuzzball workflow endpoints list"
       echo ""
+{{- if $dashboard_password_secret }}
+      echo "Dashboard sign-in:"
+      echo "   username: {{ $dashboard_username }}"
+      echo "   password: the value of {{ $dashboard_password_secret }}"
+{{- else }}
       echo "Dashboard sign-in (also in the definition: fuzzball workflow get <workflow id>):"
-      echo "   username: hermes"
+      echo "   username: {{ $dashboard_username }}"
       echo "   password: {{ $dashboard_password }}"
+{{- end }}
       echo ""
-      echo "A browser cannot use that URL -- the proxy wants an Authorization header"
-      echo "it cannot send. Forward the port instead:"
+      echo "Open that URL in a browser already signed in to the Fuzzball web UI --"
+      echo "the session it holds satisfies the endpoint scope. Without one, or to"
+      echo "keep that session cookie away from the page, forward the port instead:"
       echo "   fuzzball workflow port-forward <workflow id> hermes 19119:{{ $dashboard_port }}"
       echo "   then open http://127.0.0.1:19119"
       echo ""
+{{- if $api_server_key_secret }}
+      echo "API key for the agent's own OpenAI-compatible API: the value of {{ $api_server_key_secret }}"
+{{- else }}
       echo "API key for the agent's own OpenAI-compatible API:"
       echo "   {{ $api_server_key }}"
+{{- end }}
       echo ""
       {{- if eq $api_access "node" }}
       echo "ApiServerAccess=node, so that API is listening on this node's port"
-      echo "{{ $api_port }} with the key above as its only protection. It is not"
+      echo "{{ $api_port }} with that key as its only protection. It is not"
       echo "published as an endpoint: it authenticates with an Authorization"
       echo "bearer, and the endpoint proxy consumes that header."
       {{- else }}
@@ -180,7 +218,8 @@ jobs:
       {{- end }}
       echo ""
       echo "The endpoint scope is {{ $scope }}, so requests through the dashboard URL"
-      echo "also need a Fuzzball credential in the Authorization header:"
+      echo "need a Fuzzball credential. A signed-in browser sends one as a cookie;"
+      echo "anything that sets headers uses a token in Authorization:"
       echo "   fuzzball workflow endpoints generate-token <endpoint id>"
       echo ""
       echo "Watch the agent attach to its gateway with:"
@@ -224,10 +263,12 @@ services:
       # A non-loopback bind fails closed without one of these providers, and the
       # endpoint scope cannot stand in for it: the service also listens on its
       # node's port, with no proxy in front of it.
-      - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=hermes
+      - HERMES_DASHBOARD_BASIC_AUTH_USERNAME={{ $dashboard_username }}
       - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD={{ $dashboard_password }}
-      # Without a fixed signing key every restart invalidates dashboard sessions.
-      - HERMES_DASHBOARD_BASIC_AUTH_SECRET={{ $dashboard_secret }}
+      # Without a fixed signing key every restart invalidates dashboard
+      # sessions. A generated key is fixed only for the life of this workflow;
+      # one from DashboardSessionSecret outlives a resubmit.
+      - HERMES_DASHBOARD_BASIC_AUTH_SECRET={{ $dashboard_session_key }}
       # The dashboard and Hermes' own scheduled work both call this API over
       # loopback, so it is always enabled. ApiServerAccess decides only how far
       # it is reachable: bound to loopback it cannot be dialled from outside the
@@ -262,6 +303,53 @@ services:
     script: |
       #!/bin/bash
       set -e
+
+      # A credential named by a *Secret value is first visible here, once
+      # Fuzzball has resolved it, and the template cannot inspect what a
+      # secret holds. Hermes enforces each of these itself but reports only
+      # in its own log, or not at all: the dashboard plugin declines to
+      # register on an empty password or a short signing key, after which a
+      # non-loopback bind refuses every request, and the API server refuses
+      # to start on a short key, which takes the dashboard with it. Hermes
+      # strips whitespace before looking at any of them, so this does too.
+      # It measures the signing key in bytes and the API key in characters,
+      # which differ for a non-ASCII value, so each is measured its own way.
+      strip_ws() {
+        local s="$1"
+        s="${s#"${s%%[![:space:]]*}"}"
+        printf '%s' "${s%"${s##*[![:space:]]}"}"
+      }
+      byte_length() {
+        local LC_ALL=C
+        local s
+        s="$(strip_ws "$1")"
+        echo "${#s}"
+      }
+      char_length() {
+        local LC_ALL=C.UTF-8
+        local s
+        s="$(strip_ws "$1")"
+        echo "${#s}"
+      }
+      if [ -z "$(strip_ws "${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD}")" ]; then
+        echo "FATAL: the dashboard password is empty; check the secret named in DashboardPasswordSecret" >&2
+        exit 1
+      fi
+      # Hermes tries base64 and hex first but keeps a decoding only when it
+      # is already 16 bytes or more; anything shorter falls through to the
+      # raw text. A decoding is never longer than its input, so the raw
+      # length alone decides: a 16-character hex value is used as its 16 raw
+      # bytes and accepted, and a 15-byte value is rejected however encoded.
+      if [ "$(byte_length "${HERMES_DASHBOARD_BASIC_AUTH_SECRET}")" -lt 16 ]; then
+        echo "FATAL: the dashboard session secret must be at least 16 bytes; check the secret named in DashboardSessionSecret" >&2
+        exit 1
+      fi
+      # Hermes also rejects a few placeholder strings such as "changeme";
+      # that list is not mirrored here, so this check is not exhaustive.
+      if [ "$(char_length "${API_SERVER_KEY}")" -lt 16 ]; then
+        echo "FATAL: the API server key must be at least 16 characters; check the secret named in ApiServerKeySecret" >&2
+        exit 1
+      fi
 
       # Tight only around the credential directory; the attach pass sets its own
       # umask for the files it writes. Left at 077 it would also apply to every

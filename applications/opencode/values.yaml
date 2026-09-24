@@ -2,8 +2,19 @@ values:
   - name: Endpoint
     display_name: >-
       Base URL of the OpenAI-compatible endpoint to code against, e.g. the endpoint URL of a
-      vllm or litellm workflow. Required; a trailing /v1 is accepted and trimmed.
+      vllm or litellm workflow. Leave empty -- the default -- to find the gateways
+      automatically: this workflow lists the Fuzzball endpoints its own identity can reach
+      and registers every one annotated as a gateway as its own model provider. Set this to
+      pin one particular endpoint and ignore the others, or to reach an OpenAI-compatible
+      API outside Fuzzball. A trailing /v1 is accepted and trimmed.
     string_value: ""
+    display_category: Model
+  - name: GatewayApiValue
+    display_name: >-
+      Value of the ciq.com/api endpoint annotation that marks a gateway during automatic
+      discovery. It must match what the litellm entry annotates its own endpoint with.
+      Ignored when Endpoint is set.
+    string_value: openai-gateway
     display_category: Model
   - name: Model
     display_name: >-
@@ -40,15 +51,18 @@ values:
   - name: ApiKeySecret
     display_name: >-
       User-scoped Fuzzball secret (secret://user/<name>) holding the model API key, e.g. the
-      LiteLLM key of a vllm or litellm workflow. Injected at runtime and never stored in the
-      rendered definition. Preferred over ApiKey.
+      LiteLLM key of a vllm or litellm workflow. Needed only with EndpointAuth=api-key, or on
+      a cluster that does not sign caller identity; otherwise the endpoint identifies this
+      workflow to the proxy and no key is involved. Injected at runtime and never stored in
+      the rendered definition. Preferred over ApiKey.
     secret_value:
       reference: ""
     display_category: Model
   - name: ApiKey
     display_name: >-
       Model API key in plain text, stored in the rendered definition (prefer ApiKeySecret).
-      Required with EndpointAuth=api-key.
+      Needed only with EndpointAuth=api-key, or on a cluster that does not sign caller
+      identity.
     string_value: ""
     display_category: Model
   - name: TokenLifetime
@@ -95,7 +109,9 @@ values:
       third-party images should point this at its own build.
     string_value: docker://ghcr.io/anomalyco/opencode:1.18.23
     display_category: Versions
-  - name: CurlImage
-    display_name: Image used by the short-lived job that prints how to reach the server.
-    string_value: docker://curlimages/curl:8.17.0
+  - name: HelperImage
+    display_name: >-
+      Image for the short-lived jobs that resolve the endpoint and print how to reach the
+      server. It needs a JSON parser, which the OpenCode image does not carry.
+    string_value: docker://python:3.12-alpine
     display_category: Versions

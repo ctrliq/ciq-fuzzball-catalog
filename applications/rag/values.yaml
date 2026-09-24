@@ -2,20 +2,26 @@ values:
   - name: Endpoint
     display_name: >-
       Base URL of an OpenAI-compatible endpoint serving the embedding model (and the
-      generation model, if set) -- e.g. the vllm catalog entry's endpoint URL. When
-      empty the services start but ingestion and search fail with a provider error;
-      start a new workflow with endpoint set for real use.
+      generation model, if set) -- e.g. the vllm catalog entry's endpoint URL. Required;
+      a trailing /v1 or / is accepted and normalized. At startup each service verifies
+      the endpoint actually embeds before serving (a bad credential or wrong dimension
+      fails fast; a still-warming pool is retried for up to ~15 min).
     string_value: ""
     display_category: Models
   - name: EmbeddingModel
     display_name: >-
-      Embedding model name served by the endpoint. The corpus is permanently bound to
-      this model: changing it against an existing corpus fails at startup (rebuild
-      with 'haiku-rag rebuild --set-embedder' to migrate).
-    string_value: nomic-embed-text
+      Embedding model name, exactly as the endpoint serves it. Required, with no working
+      default: no catalog entry serves embeddings yet, so set this to a model your Endpoint
+      lists. The corpus is permanently bound to this model: changing it against an existing
+      corpus fails at startup (rebuild with 'haiku-rag rebuild --set-embedder' to migrate).
+    string_value: ""
     display_category: Models
   - name: EmbeddingDim
-    display_name: Vector dimension of the embedding model.
+    display_name: >-
+      Vector dimension of the embedding model. Must match the model exactly (the
+      default is only a common placeholder); the startup check embeds a probe and
+      fails fast, naming the correct value, if the endpoint's vectors are a
+      different length.
     uint_value: 768
     display_category: Models
   - name: GenerationModel
@@ -26,22 +32,22 @@ values:
     display_category: Models
   - name: EndpointTokenSecret
     display_name: >-
-      Fuzzball secret (secret://user/<name>) holding the bearer token for the model
-      endpoint; injected at runtime and never stored in the rendered definition.
-      Preferred over EndpointToken for real credentials. Usually unnecessary for a
-      Fuzzball endpoint: with no token configured, the services mint their own
-      endpoint access token at startup.
+      Fuzzball secret (secret://user/<name>) holding the model endpoint's API key,
+      injected at runtime and never stored in the rendered definition. Preferred over
+      EndpointToken. Needed only for a 'public' endpoint, a third-party/external API, or
+      a cluster that does not sign caller identity; otherwise a Fuzzball endpoint in your
+      scope identifies this workflow to the proxy and no key is used (the services mint
+      their own endpoint access token at startup).
     secret_value:
       reference: ""
     display_category: Models
   - name: EndpointToken
     display_name: >-
-      Bearer token for the model endpoint, stored in plain text in the rendered
-      definition (prefer EndpointTokenSecret). Requires Endpoint. Usually
-      unnecessary for a Fuzzball endpoint: when both token values are empty, the
-      services mint their own endpoint access token at startup (valid up to 7
-      days; restart to renew), falling back to a harmless placeholder for
-      endpoints that take no token.
+      Model endpoint API key in plain text, stored in the rendered definition (prefer
+      EndpointTokenSecret). Same purpose and precedence as EndpointTokenSecret: a key
+      that is sent decides the request, and the signed caller identity is used only when
+      no key is sent. Needed only for a 'public' endpoint, an external API, or a cluster
+      that does not sign caller identity.
     string_value: ""
     display_category: Models
 
@@ -55,10 +61,13 @@ values:
     display_category: Access
   - name: Scope
     display_name: >-
-      Authorization scope of the service endpoints. The ingest jobs API is
-      reachable through its endpoint URL only at 'public' (the proxy consumes
-      auth headers at other scopes), where the generated token in the rendered
-      definition is its only gate.
+      Authorization scope of the mcp (retrieval) endpoint -- the access control on it,
+      the same as any Fuzzball endpoint: at non-public scopes a caller in scope reaches
+      it with a Fuzzball credential, at 'public' anyone with the URL does, so use public
+      only for a non-sensitive corpus. Note the endpoint cannot tell one in-scope caller
+      from another, so with ReadOnly=false the document add/delete tools are open to
+      everyone in scope. The ingester's job API is not published at any scope (reach it
+      in-cluster via port-forward).
     string_value: group
     options_input:
       options: [user, group, organization, public]
@@ -97,12 +106,27 @@ values:
     string_value: 8GiB
     display_category: Resources
 
+  - name: Arch
+    display_name: >-
+      CPU architecture of the compute nodes: amd64 or arm64 (for example DGX Spark).
+      Selects Image or ImageArm64.
+    string_value: amd64
+    options_input:
+      options: ["amd64", "arm64"]
+    display_category: Versions
   - name: Image
     display_name: >-
-      haiku.rag container image, built from this entry's definition_files/haiku-rag.def
-      by the catalog's container CI; must bundle the full package, the ingester extra,
-      and pre-downloaded parsing models for air-gapped operation.
-    string_value: oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/rag-haiku-rag:0.78.0-0-amd64
+      haiku.rag container image for amd64 nodes, built from this entry's
+      definition_files/haiku-rag.def by the catalog's container CI; must bundle the full
+      package, the ingester extra, and pre-downloaded parsing models for air-gapped
+      operation.
+    string_value: oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/rag-haiku-rag:0.78.0-1-amd64
+    display_category: Versions
+  - name: ImageArm64
+    display_name: >-
+      haiku.rag container image for arm64 nodes, the same build as Image for that
+      architecture. Used when Arch is arm64.
+    string_value: oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/rag-haiku-rag:0.78.0-1-arm64
     display_category: Versions
   - name: ImageSecret
     display_name: >-
