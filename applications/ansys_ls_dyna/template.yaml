@@ -1,6 +1,10 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $ver := .AnsysVersion }}
 {{- $ansys_version_number := printf "v%s%s" (substr 2 4 $ver) (substr 5 6 $ver) }}
+{{- $fluent_version := printf "fluent%s.%s.0" (substr 2 4 $ver) (substr 5 6 $ver) }}
+{{- $ansys_root := printf "%s/%s" .AnsysInstallDir $ansys_version_number }}
+{{- /* The MPI runtime that LS-DYNA links against is bundled inside the Fluent tree in the image. */}}
+{{- $mpi_root := printf "%s/SystemCoupling/runTime/linx64/cnlauncher/fluent/%s/multiport/mpi/lnamd64/%s" $ansys_root $fluent_version .IntelMpiDir }}
 {{- $datamount := "/data" }}
 version: v4
 
@@ -27,14 +31,16 @@ jobs:
       - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
       - LS_DYNA_PRECISION={{.LsDynaPrecision}}
       - LSTC_LICENSE=ansys
-      - LD_LIBRARY_PATH=/.singularity.d/libs:/usr/lib64/mpich/lib
+      - LD_LIBRARY_PATH=/.singularity.d/libs:{{$mpi_root}}/lib:{{$mpi_root}}/lib/release:{{$mpi_root}}/opt/mpi/libfabric/lib
+      - I_MPI_FABRICS=shm
+      - FI_PROVIDER=tcp
     cwd: {{ $datamount }}
     script: |
       #!/bin/sh
       set -e
 
       # Environment setup
-      export PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/ansys/bin/linx64:$PATH
+      export PATH={{$ansys_root}}/ansys/bin/linx64:$PATH
 
       # Data staging
       WORKDIR="{{ $datamount }}/ansys-ls-dyna-3d-internal-flow-$FB_WORKFLOW_ID"
