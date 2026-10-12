@@ -98,9 +98,10 @@ values:
 
   - name: MaxContextSize
     display_name: >-
-      Maximum context size. This will impact GPU memory usage. 262144 is what
-      the model's recipe serves.
-    uint_value: 262144
+      Maximum context size. This will impact GPU memory usage. The default fits
+      one 24GB GPU; 131072 fits a 48GB GPU, and 262144, what the model's recipe
+      serves, needs an 80GB GPU.
+    uint_value: 12288
     display_category: Model Configuration
   - name: GpuMemoryUtilization
     display_name: >-
@@ -151,11 +152,11 @@ values:
     display_category: Resources
   - name: CoresPerNode
     display_name: CPU cores on each node of a replica.
-    uint_value: 8
+    uint_value: 4
     display_category: Resources
   - name: MemoryPerNode
     display_name: Memory on each node of a replica.
-    string_value: 32GiB
+    string_value: 28GiB
     display_category: Resources
 
   - name: VllmImage

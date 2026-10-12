@@ -22,7 +22,7 @@ entry preconfigured with the deployment its
 - **Checkpoint**: `openai/gpt-oss-20b`
 - **License**: apache-2.0
 - **Context preset**: 131072 tokens
-- **GPU fit**: one 16GB+ GPU per replica; at 16GB, lower MaxContextSize so the KV cache fits beside the ~13GB weights
+- **GPU fit**: one 24GB GPU per replica, NVIDIA Ampere or newer; vLLM cannot load the MXFP4 weights on T4 or V100, and on a 16GB GPU the ~14GB loaded weights leave no room for the KV cache
 
 The checkpoint is downloaded from the HuggingFace Hub once, at workflow start,
 into the workflow's volume (data ingress). Note that gpt-oss also loads the

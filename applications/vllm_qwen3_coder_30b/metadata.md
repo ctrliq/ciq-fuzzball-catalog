@@ -21,7 +21,7 @@ entry preconfigured from the model card; the model has no upstream vLLM recipe y
 - **Checkpoint**: `Qwen/Qwen3-Coder-30B-A3B-Instruct`
 - **License**: apache-2.0
 - **Context preset**: 262144 tokens
-- **GPU fit**: two 80GB GPUs per replica (one 80GB GPU works with a reduced MaxContextSize)
+- **GPU fit**: two 80GB GPUs per replica (one 80GB GPU works with GpusPerNode=1,MaxContextSize=98304)
 
 The checkpoint is downloaded from the HuggingFace Hub once, at workflow start,
 into the workflow's volume (data ingress); replicas serve fully offline from
