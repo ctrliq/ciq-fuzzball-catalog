@@ -30,6 +30,11 @@ local copy — no Hub access or token is needed at serve time. For gated or
 private models, set `HfTokenSecret` to a Fuzzball secret holding your
 HuggingFace token; it is used only during ingress.
 
+The default model, `hf://openai/gpt-oss-20b` at the default 131072-token
+context, needs one 24GB GPU, NVIDIA Ampere or newer. For another model, size
+`MaxContextSize` to the GPU: vLLM refuses to start when one request of that
+length does not fit in the GPU memory left beside the weights.
+
 ## Front end
 
 By default (`Proxy=true`) a [LiteLLM](https://docs.litellm.ai/) proxy holds the

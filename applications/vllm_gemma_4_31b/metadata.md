@@ -16,13 +16,14 @@ tags:
 ---
 Serves Google's Gemma 4 31B instruction-tuned model, natively multimodal from an autoscaled pool of
 [vLLM](https://docs.vllm.ai/en/stable) replicas. This is the `vllm` catalog
-entry preconfigured with the deployment its
-[vLLM recipe](https://recipes.vllm.ai/Google/gemma-4-31B-it) validated.
+entry preconfigured with the serving flags its
+[vLLM recipe](https://recipes.vllm.ai/Google/gemma-4-31B-it) validated,
+with the context sized to fit one 80GB GPU.
 
 - **Checkpoint**: `google/gemma-4-31B-it`
 - **License**: apache-2.0
-- **Context preset**: 262144 tokens
-- **GPU fit**: one 80GB GPU per replica; lower MaxContextSize if the KV cache does not fit beside the ~62GB weights
+- **Context preset**: 8192 tokens (the model supports 262144)
+- **GPU fit**: one 80GB GPU per replica at the default context (BF16 weights are ~62GB); the recipe's 262144 needs GpusPerNode=2 or a 141GB H200
 
 The checkpoint is downloaded from the HuggingFace Hub once, at workflow start,
 into the workflow's volume (data ingress); replicas serve fully offline from
@@ -32,6 +33,7 @@ workflow restarts.
 ```
 fuzzball workflow catalog start "Gemma 4 31B"
 fuzzball workflow catalog start "Gemma 4 31B" --values Volume=my-models,MaxReplicas=8
+fuzzball workflow catalog start "Gemma 4 31B" --values GpusPerNode=2,MaxContextSize=262144
 fuzzball workflow catalog start "Gemma 4 31B" --values Nodes=2
 ```
 
