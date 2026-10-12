@@ -16,13 +16,14 @@ tags:
 ---
 Serves Ministral 3 8B Reasoning (dense, 8B parameters), the compact Apache-2.0 Mistral from an autoscaled pool of
 [vLLM](https://docs.vllm.ai/en/stable) replicas. This is the `vllm` catalog
-entry preconfigured with the deployment its
-[vLLM recipe](https://recipes.vllm.ai/mistralai/Ministral-3-8B-Reasoning-2512) validated.
+entry preconfigured with the serving flags its
+[vLLM recipe](https://recipes.vllm.ai/mistralai/Ministral-3-8B-Reasoning-2512) validated,
+with the context sized to fit one 24GB GPU.
 
 - **Checkpoint**: `mistralai/Ministral-3-8B-Reasoning-2512`
 - **License**: apache-2.0
-- **Context preset**: 262144 tokens
-- **GPU fit**: one 24GB+ GPU per replica; at 24GB, lower MaxContextSize so the KV cache fits beside the ~16GB weights
+- **Context preset**: 12288 tokens (the model supports 262144)
+- **GPU fit**: one 24GB GPU per replica at the default context (BF16 weights are ~17GB); set MaxContextSize=131072 on a 48GB GPU, or the recipe's 262144 on an 80GB GPU
 
 The checkpoint is downloaded from the HuggingFace Hub once, at workflow start,
 into the workflow's volume (data ingress); replicas serve fully offline from
@@ -32,6 +33,7 @@ workflow restarts.
 ```
 fuzzball workflow catalog start "Ministral 3 8B"
 fuzzball workflow catalog start "Ministral 3 8B" --values Volume=my-models,MaxReplicas=8
+fuzzball workflow catalog start "Ministral 3 8B" --values MaxContextSize=131072
 fuzzball workflow catalog start "Ministral 3 8B" --values Nodes=2
 ```
 
