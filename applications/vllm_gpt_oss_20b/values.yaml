@@ -153,11 +153,11 @@ values:
     display_category: Resources
   - name: CoresPerNode
     display_name: CPU cores on each node of a replica.
-    uint_value: 8
+    uint_value: 4
     display_category: Resources
   - name: MemoryPerNode
     display_name: Memory on each node of a replica.
-    string_value: 32GiB
+    string_value: 28GiB
     display_category: Resources
 
   - name: VllmImage

@@ -98,9 +98,10 @@ values:
 
   - name: MaxContextSize
     display_name: >-
-      Maximum context size. This will impact GPU memory usage. 262144 is what
-      the model's recipe serves.
-    uint_value: 262144
+      Maximum context size. This will impact GPU memory usage. The default fits
+      one 80GB GPU beside the ~62GB weights; 262144, what the model's recipe
+      serves, needs GpusPerNode=2 or a 141GB GPU.
+    uint_value: 8192
     display_category: Model Configuration
   - name: GpuMemoryUtilization
     display_name: >-
