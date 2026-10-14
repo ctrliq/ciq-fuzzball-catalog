@@ -37,10 +37,27 @@ organization.
 ## Container Versions
 
 The workflow allows you to specify container versions for both Ollama and Open WebUI:
-- **OllamaVersion** (default: 0.15.0) - Ollama container version for LLM inference
-- **OpenWebUIVersion** (default: v0.7.2) - Open WebUI interface version
+- **OllamaVersion** (default: 0.24.0) - Ollama container version for LLM inference
+- **OpenWebUIVersion** (default: v0.9.5) - Open WebUI interface version
 
 You can override these to use newer versions or pin to specific releases for reproducibility.
+
+## Storage
+
+- **DataVolume** holds the Ollama models, mounted at `/data`. Name a
+  persistent volume to keep downloaded models between runs; leave it blank for
+  an ephemeral volume.
+- Open WebUI data (chats, uploads, knowledge bases) is kept inside the
+  container by default and is lost when the workflow ends.
+- To keep Open WebUI data between runs, set **OpenWebuiVolume** to the name of
+  a persistent volume. Only a named volume persists.
+- **OpenWebuiVolumeProvisioner** chooses where the Open WebUI volume lives. With
+  OpenWebuiVolume, it selects the provisioner holding that persistent volume.
+  On its own, it creates a temporary volume on that provisioner, such as
+  node-local storage. Chats and uploads on a temporary volume are lost when the
+  workflow ends, just as they are with no volume.
+- The Open WebUI volume must not be NFS-backed: Open WebUI stores its data in
+  SQLite, which stalls on NFS locking until requests time out.
 
 ## Stack Verification
 
@@ -55,7 +72,7 @@ When enabled, the verify-stack job tests API connectivity, model availability, a
 
 - **Document Upload**: Support for PDFs, DOCX, TXT, MD, CSV, and more
 - **RAG (Retrieval-Augmented Generation)**: Chat with your documents using semantic search
-- **Persistent Storage**: Models and conversation history persist across sessions
+- **Persistent Storage**: Models, and optionally Open WebUI data, persist across sessions on named persistent volumes
 - **Web Interface**: Access via browser with automatic endpoint configuration
 - **Model Caching**: Models stay loaded in GPU for 24 hours for fast inference
 - **Embedding Models**: Automatic download of nomic-embed-text for RAG

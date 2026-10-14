@@ -4,22 +4,51 @@
 {{- if (and $ollamaDir (not (hasPrefix (printf "%s/" $datamount) $ollamaDir))) }}
 {{- fail (printf "OllamaModelsDir must be an absolute path under the data mount (%s/), got: %s" $datamount $ollamaDir) }}
 {{- end }}
-{{- $webuiDir := trim .OpenWebuiDir }}
-{{- if (and $webuiDir (not (hasPrefix (printf "%s/" $datamount) $webuiDir))) }}
-{{- fail (printf "OpenWebuiDir must be an absolute path under the data mount (%s/), got: %s" $datamount $webuiDir) }}
+{{- $volume := trim .DataVolume }}
+{{- if hasPrefix "volume://" $volume }}
+  {{- fail "DataVolume no longer takes a volume:// URI -- use the name of a persistent volume, or leave it blank for an ephemeral volume" }}
 {{- end }}
+{{- if (and $volume (not (regexMatch "^[A-Za-z0-9._-]+$" $volume))) }}
+  {{- fail "DataVolume must be blank or the name of a persistent volume" }}
+{{- end }}
+{{- $webuiVolume := trim .OpenWebuiVolume }}
+{{- if (and $webuiVolume (not (regexMatch "^[A-Za-z0-9._-]+$" $webuiVolume))) }}
+  {{- fail "OpenWebuiVolume must be blank or the name of a persistent volume" }}
+{{- end }}
+{{- $webuiProvisioner := trim .OpenWebuiVolumeProvisioner }}
+{{- if (and $webuiProvisioner (not (regexMatch "^[A-Za-z0-9._-]+$" $webuiProvisioner))) }}
+  {{- fail "OpenWebuiVolumeProvisioner must be blank or the name of a storage provisioner" }}
+{{- end }}
+{{- $webuiVol := or $webuiVolume $webuiProvisioner }}
+{{- $llmModel := trim .LLMModel }}
 version: v4
 
 volumes:
-  # Persistent storage for Ollama models and Open WebUI data
-  # Structure: ollama/ (models, 50-150GiB) and open-webui/ (vector DB, documents, configs)
+  # Ollama models (50-150GiB for large models)
   data:
-    reference: {{ .DataVolume }}
+    {{- if $volume }}
+    name: "{{ $volume }}"
+    {{- else }}
+    use: ephemeral
+    {{- end }}
+
+{{- if $webuiVol }}
+
+  # Open WebUI data (SQLite, vector DB, uploads). Must not be NFS-backed:
+  # SQLite locking over NFS stalls requests past the ingress timeout.
+  webui-data:
+    {{- if $webuiVolume }}
+    name: "{{ $webuiVolume }}"
+    {{- end }}
+    {{- if $webuiProvisioner }}
+    use: "{{ $webuiProvisioner }}"
+    {{- end }}
+{{- end }}
 
   # Ephemeral volume for document ingestion (optional)
 {{ if .DocumentSource }}
   docs-to-ingest:
-    reference: volume://user/ephemeral
+    use: ephemeral
     ingress:
       - destination:
           uri: file://{{ .DocumentSource | base }}
@@ -129,9 +158,10 @@ services:
     env:
       - WEBUI_AUTH=False
       - ENABLE_PERSISTENT_CONFIG=False
-      - DATA_DIR={{ $webuiDir }}
+      - DATA_DIR={{ if $webuiVol }}/webui-data{{ else }}/app/backend/data{{ end }}
 
       - OLLAMA_BASE_URL=http://ollama.svc:11434
+      - DEFAULT_MODELS={{ $llmModel }}
 
       - RAG_EMBEDDING_ENGINE=ollama
       - RAG_EMBEDDING_MODEL=nomic-embed-text:latest
@@ -145,9 +175,12 @@ services:
       - ENABLE_OLLAMA_API=true
       - ENABLE_OPENAI_API=false
 
+{{- if $webuiVol }}
+
     mounts:
-      /data:
-        volume: data
+      /webui-data:
+        volume: webui-data
+{{- end }}
 
     network:
       host: true
@@ -165,7 +198,7 @@ services:
     script: |
       #!/bin/sh
       set -e
-      mkdir -p "{{ $webuiDir }}"
+      mkdir -p "$DATA_DIR"
       export WEBUI_URL=${FB_ENDPOINT_URL_WEB}
       exec /bin/bash start.sh
 
@@ -231,7 +264,7 @@ jobs:
       done
 
       # Pull language model from template variable
-      LLM_MODEL="{{ .LLMModel }}"
+      LLM_MODEL="{{ $llmModel }}"
       echo ""
       echo "Pulling language model: ${LLM_MODEL}"
       echo "This may take 5-15 minutes on first run..."
@@ -493,10 +526,10 @@ jobs:
 
     depends-on:
       - name: open-webui
-        status: RUNNING
+        status: running
         description: "Wait for Open WebUI API"
       - name: ollama
-        status: RUNNING
+        status: running
         description: "Wait for embedding model"
 
     resource:
@@ -554,7 +587,7 @@ jobs:
       curl --fail-with-body ${OLLAMA_URL}/api/generate \
         -H "Content-Type: application/json" \
         -d '{
-          "model": {{ toJson .LLMModel }},
+          "model": {{ toJson $llmModel }},
           "prompt": {{ toJson .TestPrompt }}
           }'
 
@@ -597,7 +630,7 @@ jobs:
         description: "Wait for Open WebUI to be ready"
 {{ if .DocumentSource }}
       - name: ingest-documents
-        status: FINISHED
+        status: finished
         description: "Wait for document ingestion to complete"
 {{ end }}
     resource:
