@@ -41,14 +41,6 @@ values:
     string_value: ""
     display_category: "Storage"
 
-  - name: "OpenWebuiVolumeProvisioner"
-    display_name: >-
-      Optional storage provisioner for the Open WebUI data volume. With OpenWebuiVolume, it selects the provisioner holding
-      that persistent volume. On its own, it creates a temporary volume on that provisioner (e.g. node-local storage) whose
-      data is lost when the workflow ends; set OpenWebuiVolume to keep Open WebUI data.
-    string_value: ""
-    display_category: "Storage"
-
   - name: "ServiceScope"
     display_name: |
       Who can access the Open WebUI service endpoint. Defaults to 'user'.

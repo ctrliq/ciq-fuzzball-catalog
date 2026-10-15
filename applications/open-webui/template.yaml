@@ -15,11 +15,6 @@
 {{- if (and $webuiVolume (not (regexMatch "^[A-Za-z0-9._-]+$" $webuiVolume))) }}
   {{- fail "OpenWebuiVolume must be blank or the name of a persistent volume" }}
 {{- end }}
-{{- $webuiProvisioner := trim .OpenWebuiVolumeProvisioner }}
-{{- if (and $webuiProvisioner (not (regexMatch "^[A-Za-z0-9._-]+$" $webuiProvisioner))) }}
-  {{- fail "OpenWebuiVolumeProvisioner must be blank or the name of a storage provisioner" }}
-{{- end }}
-{{- $webuiVol := or $webuiVolume $webuiProvisioner }}
 {{- $llmModel := trim .LLMModel }}
 version: v4
 
@@ -32,17 +27,12 @@ volumes:
     use: ephemeral
     {{- end }}
 
-{{- if $webuiVol }}
+{{- if $webuiVolume }}
 
   # Open WebUI data (SQLite, vector DB, uploads). Must not be NFS-backed:
   # SQLite locking over NFS stalls requests past the ingress timeout.
   webui-data:
-    {{- if $webuiVolume }}
     name: "{{ $webuiVolume }}"
-    {{- end }}
-    {{- if $webuiProvisioner }}
-    use: "{{ $webuiProvisioner }}"
-    {{- end }}
 {{- end }}
 
   # Ephemeral volume for document ingestion (optional)
@@ -158,7 +148,7 @@ services:
     env:
       - WEBUI_AUTH=False
       - ENABLE_PERSISTENT_CONFIG=False
-      - DATA_DIR={{ if $webuiVol }}/webui-data{{ else }}/app/backend/data{{ end }}
+      - DATA_DIR={{ if $webuiVolume }}/webui-data{{ else }}/app/backend/data{{ end }}
 
       - OLLAMA_BASE_URL=http://ollama.svc:11434
       - DEFAULT_MODELS={{ $llmModel }}
@@ -175,7 +165,7 @@ services:
       - ENABLE_OLLAMA_API=true
       - ENABLE_OPENAI_API=false
 
-{{- if $webuiVol }}
+{{- if $webuiVolume }}
 
     mounts:
       /webui-data:

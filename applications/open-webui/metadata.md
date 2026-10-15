@@ -58,14 +58,8 @@ upgrading from an older Ollama.
 - Open WebUI data (chats, uploads, knowledge bases) is kept inside the
   container by default and is lost when the workflow ends.
 - To keep Open WebUI data between runs, set **OpenWebuiVolume** to the name of
-  a persistent volume. Only a named volume persists.
-- **OpenWebuiVolumeProvisioner** chooses where the Open WebUI volume lives. With
-  OpenWebuiVolume, it selects the provisioner holding that persistent volume.
-  On its own, it creates a temporary volume on that provisioner, such as
-  node-local storage. Chats and uploads on a temporary volume are lost when the
-  workflow ends, just as they are with no volume.
-- The Open WebUI volume must not be NFS-backed: Open WebUI stores its data in
-  SQLite, which stalls on NFS locking until requests time out.
+  a persistent volume. That volume must not be NFS-backed: Open WebUI stores
+  its data in SQLite, which stalls on NFS locking until requests time out.
 - Earlier versions of this entry kept Open WebUI data on the data volume, in
   `OpenWebuiDir` (default `/data/open_webui`). That data is no longer used, so
   a new run with the same DataVolume starts with no chats or knowledge bases.
