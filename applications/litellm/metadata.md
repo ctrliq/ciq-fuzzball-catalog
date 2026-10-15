@@ -124,8 +124,14 @@ To confirm a model was picked up, watch `fuzzball workflow log <workflow> gatewa
 ## Things to know before you start it
 
 - **The database is pinned to the LiteLLM version.** A different LiteLLM release reading
-  another release's schema accepts writes and then never routes the model. Changing
-  `LiteLLMVersion` means starting with a fresh database.
+  another release's schema accepts writes and then never routes the model. Moving
+  `GatewayImage` to another release means starting with a fresh database.
+- **All three images can come from a mirror.** `GatewayImage`, `DatabaseImage` and
+  `CurlImage` each take a full image reference with an explicit tag or digest, so a
+  site without access to public registries can point them at its own copies. For a mirror
+  that requires credentials, set `ImageSecret` to a Fuzzball image secret. Its credentials
+  go with every image pull, so the entry then requires all three images on one registry,
+  which must be among the secret's trusted domains.
 - **The default volume is ephemeral**, so virtual keys, budgets and spend history are lost
   when the workflow stops. Set `Volume` to the name of a persistent volume for anything you
   rely on. A persistent volume brings its own constraints -- see below.
@@ -168,10 +174,10 @@ None of these apply while `Volume` is `ephemeral`.
   another user or imported with `fuzzball volume provisioner scan` leaves the data
   directory unwritable. That surfaces as `FATAL: postgres exited before the password was
   reset`, which mentions neither permissions nor the volume.
-- **The PostgreSQL major version comes from the data directory, not `PostgresVersion`.** A
-  reused volume carries the cluster `initdb` wrote, so raising `PostgresVersion` across a
+- **The PostgreSQL major version comes from the data directory, not `DatabaseImage`.** A
+  reused volume carries the cluster `initdb` wrote, so moving `DatabaseImage` across a
   major boundary makes the image refuse the directory and produce that same FATAL. Dump and
-  restore, or point `Volume` at a new volume. The same goes for a `LiteLLMVersion` change:
+  restore, or point `Volume` at a new volume. The same goes for a LiteLLM release change:
   starting with a fresh database is automatic only while the volume is ephemeral.
 - **`POSTGRES_INITDB_ARGS` applies only to an empty volume.** A data directory initialized
   anywhere else brings its own `pg_hba.conf`, and with `network: host: true` `initdb`'s
