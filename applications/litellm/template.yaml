@@ -19,8 +19,8 @@
 {{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
   {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
 {{- end }}
-{{- /* The tag group is optional but cannot be empty: a reference ending in
-       ':' renders a uri YAML reads as a mapping. */}}
+{{- /* A tag or digest is required, and a tag cannot be empty: a reference
+       ending in ':' renders a uri YAML reads as a mapping. */}}
 {{- $gatewayImage := trim .GatewayImage }}
 {{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $gatewayImage) }}
   {{- fail "GatewayImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/berriai/litellm-database:v1.97.0" }}
