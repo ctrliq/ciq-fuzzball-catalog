@@ -21,9 +21,9 @@ values:
 
   - name: "DataVolume"
     display_name: >-
-      Storage for Ollama models (can be 50-150GB for large models) and Open WebUI data (vector DB, documents, configs). Mounted
-      at /data. Use a persistent volume to preserve downloaded models between runs.
-    string_value: "volume://user/ephemeral"
+      Optional name of a persistent volume for Ollama models (can be 50-150GB for large models), mounted at /data. Use a
+      persistent volume to preserve downloaded models between runs. Leave blank for an ephemeral volume.
+    string_value: ""
     display_category: "Storage"
 
   - name: "OllamaModelsDir"
@@ -33,11 +33,12 @@ values:
     string_value: "/data/.ollama/models"
     display_category: "Storage"
 
-  - name: "OpenWebuiDir"
+  - name: "OpenWebuiVolume"
     display_name: >-
-      Absolute path to the directory on the data volume to OpenWebUI data. For a persistent volume this would usually be something like
-      /data/<datadir>/openwebui.
-    string_value: "/data/open_webui"
+      Optional name of a persistent volume for Open WebUI data (chats, uploads, vector DB). This is the only way to keep
+      that data between runs. It must not be NFS-backed: Open WebUI's SQLite databases stall on NFS locking and requests
+      time out. Leave blank to keep the data in the container, where it is lost when the workflow ends.
+    string_value: ""
     display_category: "Storage"
 
   - name: "ServiceScope"
@@ -50,10 +51,10 @@ values:
 
   - name: "OllamaVersion"
     display_name: "Ollama Container Version"
-    string_value: "0.24.0"
+    string_value: "0.40.4"
     display_category: "Container Versions"
 
   - name: "OpenWebUIVersion"
     display_name: "Open WebUI Container Version"
-    string_value: "v0.9.5"
+    string_value: "v0.12.2"
     display_category: "Container Versions"

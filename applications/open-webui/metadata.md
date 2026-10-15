@@ -37,10 +37,35 @@ organization.
 ## Container Versions
 
 The workflow allows you to specify container versions for both Ollama and Open WebUI:
-- **OllamaVersion** (default: 0.15.0) - Ollama container version for LLM inference
-- **OpenWebUIVersion** (default: v0.7.2) - Open WebUI interface version
+- **OllamaVersion** (default: 0.40.4) - Ollama container version for LLM inference
+- **OpenWebUIVersion** (default: v0.12.2) - Open WebUI interface version
 
 You can override these to use newer versions or pin to specific releases for reproducibility.
+
+Upgrades are one-way for data on persistent volumes. Open WebUI migrates its
+database at startup, so an older version may not read it afterwards. Models
+used with Ollama 0.40 or later must be pulled again to go back to an older
+Ollama. Ollama
+0.30 and later also produce different `nomic-embed-text` embeddings, so
+reindex existing knowledge bases (Admin Settings > Documents > Reindex) after
+upgrading from an older Ollama.
+
+## Storage
+
+- **DataVolume** holds the Ollama models, mounted at `/data`. Name a
+  persistent volume to keep downloaded models between runs; leave it blank for
+  an ephemeral volume.
+- Open WebUI data (chats, uploads, knowledge bases) is kept inside the
+  container by default and is lost when the workflow ends.
+- To keep Open WebUI data between runs, set **OpenWebuiVolume** to the name of
+  a persistent volume. That volume must not be NFS-backed: Open WebUI stores
+  its data in SQLite, which stalls on NFS locking until requests time out.
+- Earlier versions of this entry kept Open WebUI data on the data volume, in
+  `OpenWebuiDir` (default `/data/open_webui`). That data is no longer used, so
+  a new run with the same DataVolume starts with no chats or knowledge bases.
+  To keep it, copy the contents of that directory to the top level of a
+  persistent volume that is not NFS-backed, and set **OpenWebuiVolume** to
+  that volume.
 
 ## Stack Verification
 
@@ -55,7 +80,7 @@ When enabled, the verify-stack job tests API connectivity, model availability, a
 
 - **Document Upload**: Support for PDFs, DOCX, TXT, MD, CSV, and more
 - **RAG (Retrieval-Augmented Generation)**: Chat with your documents using semantic search
-- **Persistent Storage**: Models and conversation history persist across sessions
+- **Persistent Storage**: Models, and optionally Open WebUI data, persist across sessions on named persistent volumes
 - **Web Interface**: Access via browser with automatic endpoint configuration
 - **Model Caching**: Models stay loaded in GPU for 24 hours for fast inference
 - **Embedding Models**: Automatic download of nomic-embed-text for RAG
