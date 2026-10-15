@@ -47,8 +47,14 @@
   {{- fail "Gpu must be one of: nvidia, amd" }}
 {{- end }}
 {{- $gpu_device := "nvidia.com/gpu" }}
+{{- $vllm_image := .VllmImage }}
 {{- if eq $gpu "amd" }}
   {{- $gpu_device = "amd.com/gpu" }}
+  {{- $amd_family := lower (trim .AmdGpuFamily) }}
+  {{- if not (has $amd_family (list "cdna" "rdna")) }}
+    {{- fail "AmdGpuFamily must be one of: cdna, rdna" }}
+  {{- end }}
+  {{- $vllm_image = replace "{family}" $amd_family (trim .VllmRocmImage) }}
 {{- end }}
 
 {{- $scope := lower (trim .Scope) }}
@@ -174,7 +180,7 @@ services:
   vllm:
     persist: true
     image:
-      uri: {{ if eq $gpu "amd" }}{{ .VllmRocmImage }}{{ else }}{{ .VllmImage }}{{ end }}
+      uri: {{ $vllm_image }}
     mounts:
       {{ $data_mount }}:
         volume: data

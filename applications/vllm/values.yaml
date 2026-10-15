@@ -14,6 +14,15 @@ values:
     options_input:
       options: ["nvidia", "amd"]
     display_category: Model
+  - name: AmdGpuFamily
+    display_name: >-
+      AMD GPU architecture family, used only when Gpu is amd: cdna for
+      MI-series datacenter GPUs, rdna for Radeon GPUs. Selects the matching
+      vLLM ROCm build.
+    string_value: cdna
+    options_input:
+      options: ["cdna", "rdna"]
+    display_category: Model
   - name: HfTokenSecret
     display_name: >-
       Fuzzball secret holding a HuggingFace token (secret://user/<name>), used only
@@ -166,9 +175,10 @@ values:
     display_category: Versions
   - name: VllmRocmImage
     display_name: >-
-      vLLM container image used on the amd platform. Pick a build matching the GPU family
-      (this default is an RDNA build; MI-series CDNA GPUs need a CDNA build).
-    string_value: docker://rocm/vllm:rocm7.14.0_rdna_ubuntu24.04_py3.14_pytorch_2.11.0_vllm_0.23.0
+      vLLM container image used on the amd platform. {family} is replaced with
+      AmdGpuFamily, selecting the matching ROCm build; an image without
+      {family} is used as given and must be a build for the installed GPUs.
+    string_value: docker://rocm/vllm:rocm7.14.0_{family}_ubuntu24.04_py3.14_pytorch_2.11.0_vllm_0.23.0
     display_category: Versions
   - name: LitellmImage
     display_name: LiteLLM container image used when proxy is enabled.
