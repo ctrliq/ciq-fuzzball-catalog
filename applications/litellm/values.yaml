@@ -80,15 +80,34 @@ values:
     string_value: 1GiB
     display_category: "Resources"
 
-  - name: "LiteLLMVersion"
+  - name: "GatewayImage"
     display_name: >-
-      LiteLLM container image tag. v1.97.0 or later is required: earlier releases ignore the
-      x-litellm-api-key header the gateway endpoint depends on. Changing this requires a
-      fresh database.
-    string_value: "v1.97.0"
+      LiteLLM container image, with an explicit tag or digest. It must be a litellm-database
+      build of v1.97.0 or later: earlier releases ignore the x-litellm-api-key header the
+      gateway endpoint depends on. Moving to a different LiteLLM release requires a fresh
+      database.
+    string_value: "docker://ghcr.io/berriai/litellm-database:v1.97.0"
     display_category: "Container Versions"
 
-  - name: "PostgresVersion"
-    display_name: "PostgreSQL container image tag."
-    string_value: "16.15"
+  - name: "DatabaseImage"
+    display_name: >-
+      PostgreSQL container image, with an explicit tag or digest. It must be the official
+      postgres image or a mirror of it: the database service relies on its
+      docker-entrypoint.sh and POSTGRES_* initialization.
+    string_value: "docker://postgres:16.15"
+    display_category: "Container Versions"
+
+  - name: "CurlImage"
+    display_name: "Image used by the short-lived job that prints how to reach the gateway."
+    string_value: "docker://curlimages/curl:8.17.0"
+    display_category: "Container Versions"
+
+  - name: "ImageSecret"
+    display_name: >-
+      Fuzzball image secret (secret://<scope>/<name>, type image with username/password and
+      trusted-domains) for pulling from a private registry. It is sent with all three images,
+      so when it is set they must all come from one registry, and that registry must be one of
+      the secret's trusted domains. Leave empty for registries that allow anonymous pulls.
+    secret_value:
+      reference: ""
     display_category: "Container Versions"

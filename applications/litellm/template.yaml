@@ -19,6 +19,44 @@
 {{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
   {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
 {{- end }}
+{{- /* The tag group is optional but cannot be empty: a reference ending in
+       ':' renders a uri YAML reads as a mapping. */}}
+{{- $gatewayImage := trim .GatewayImage }}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $gatewayImage) }}
+  {{- fail "GatewayImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/berriai/litellm-database:v1.97.0" }}
+{{- end }}
+{{- $databaseImage := trim .DatabaseImage }}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $databaseImage) }}
+  {{- fail "DatabaseImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/library/postgres:16.15" }}
+{{- end }}
+{{- $curlImage := trim .CurlImage }}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $curlImage) }}
+  {{- fail "CurlImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/curlimages/curl:8.17.0" }}
+{{- end }}
+{{- $imageSecret := trim .ImageSecret }}
+{{- if and $imageSecret (not (regexMatch "^secret://(user|group|account|organization|cluster)/[A-Za-z0-9._-]+$" $imageSecret)) }}
+  {{- fail "ImageSecret must be a secret reference, e.g. secret://organization/registry-mirror" }}
+{{- end }}
+{{- /* Fuzzball checks an image secret's trusted domains only on the first
+       image that uses it, yet sends its credentials with every pull. One
+       registry for all three images makes that one check cover them all. A
+       first path segment names a registry only when it holds a dot or a port
+       or is localhost; otherwise the image is on Docker Hub. */}}
+{{- if $imageSecret }}
+  {{- $registries := list }}
+  {{- range $ref := list $gatewayImage $databaseImage $curlImage }}
+    {{- $path := regexReplaceAll "^[a-z]+://" $ref "" }}
+    {{- $first := regexReplaceAll "/.*$" $path "" }}
+    {{- $registry := "docker.io" }}
+    {{- if and (contains "/" $path) (or (contains "." $first) (contains ":" $first) (eq $first "localhost")) }}
+      {{- $registry = $first }}
+    {{- end }}
+    {{- $registries = append $registries $registry }}
+  {{- end }}
+  {{- if gt (len (uniq $registries)) 1 }}
+    {{- fail (printf "ImageSecret is sent with all three images, so GatewayImage, DatabaseImage and CurlImage must come from one registry (got %s)" (join ", " (uniq $registries))) }}
+  {{- end }}
+{{- end }}
 {{- $dbPort := randInt 10000 17000 }}
 {{- $llmPort := randInt 17000 24000 }}
 {{- $dbUser := "litellm" }}
@@ -44,7 +82,10 @@ services:
   # versions: a mismatched release accepts writes and then never routes the model.
   database:
     image:
-      uri: docker://postgres:{{ .PostgresVersion }}
+      uri: {{ $databaseImage }}
+      {{- if $imageSecret }}
+      secret: {{ $imageSecret }}
+      {{- end }}
     script: |
       #!/bin/bash
       set -e
@@ -107,7 +148,10 @@ services:
 
   gateway:
     image:
-      uri: docker://ghcr.io/berriai/litellm-database:{{ .LiteLLMVersion }}
+      uri: {{ $gatewayImage }}
+      {{- if $imageSecret }}
+      secret: {{ $imageSecret }}
+      {{- end }}
     env:
       - STORE_MODEL_IN_DB=True
       - DATABASE_URL=postgresql://{{ $dbUser }}:{{ $dbPassword }}@database.svc:{{ $dbPort }}/{{ $dbName }}
@@ -531,7 +575,10 @@ services:
 jobs:
   show-gateway:
     image:
-      uri: docker://curlimages/curl:8.17.0
+      uri: {{ $curlImage }}
+      {{- if $imageSecret }}
+      secret: {{ $imageSecret }}
+      {{- end }}
     env:
       - GATEWAY=http://gateway.svc:{{ $llmPort }}
       - MASTER_KEY={{ $masterKey }}
