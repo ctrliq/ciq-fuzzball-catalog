@@ -66,6 +66,12 @@ upgrading from an older Ollama.
   workflow ends, just as they are with no volume.
 - The Open WebUI volume must not be NFS-backed: Open WebUI stores its data in
   SQLite, which stalls on NFS locking until requests time out.
+- Earlier versions of this entry kept Open WebUI data on the data volume, in
+  `OpenWebuiDir` (default `/data/open_webui`). That data is no longer used, so
+  a new run with the same DataVolume starts with no chats or knowledge bases.
+  To keep it, copy the contents of that directory to the top level of a
+  persistent volume that is not NFS-backed, and set **OpenWebuiVolume** to
+  that volume.
 
 ## Stack Verification
 
