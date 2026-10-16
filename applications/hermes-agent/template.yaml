@@ -61,8 +61,8 @@
 {{- end }}
 
 {{- $token_lifetime := int .TokenLifetime }}
-{{- if lt $token_lifetime 300 }}
-  {{- fail "TokenLifetime must be at least 300 seconds" }}
+{{- if or (lt $token_lifetime 300) (gt $token_lifetime 604800) }}
+  {{- fail "TokenLifetime must be between 300 and 604800 seconds" }}
 {{- end }}
 {{- $cores := int .Cores }}
 {{- if lt $cores 1 }}

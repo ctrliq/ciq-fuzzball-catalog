@@ -50,6 +50,15 @@ values:
       that does not sign caller identity.
     string_value: ""
     display_category: Models
+  - name: TokenLifetime
+    display_name: >-
+      Seconds each minted endpoint access token is requested for, when neither
+      EndpointTokenSecret nor EndpointToken is set. The grant is clamped to what is left of
+      this workflow's own API token; each service renews that token in the background and
+      re-mints at half the granted lifetime, so this does not put a ceiling on how long the
+      services keep working.
+    uint_value: 14400
+    display_category: Models
 
   - name: ReadOnly
     display_name: >-

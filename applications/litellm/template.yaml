@@ -57,6 +57,10 @@
     {{- fail (printf "ImageSecret is sent with all three images, so GatewayImage, DatabaseImage and CurlImage must come from one registry (got %s)" (join ", " (uniq $registries))) }}
   {{- end }}
 {{- end }}
+{{- $tokenLifetime := int .TokenLifetime }}
+{{- if or (lt $tokenLifetime 300) (gt $tokenLifetime 604800) }}
+  {{- fail "TokenLifetime must be between 300 and 604800 seconds" }}
+{{- end }}
 {{- $dbPort := randInt 10000 17000 }}
 {{- $llmPort := randInt 17000 24000 }}
 {{- $dbUser := "litellm" }}
@@ -161,7 +165,7 @@ services:
       - LLM_PORT={{ $llmPort }}
       - DISCOVERY_VALUE={{ .DiscoveryApiValue }}
       - REFRESH_INTERVAL={{ .RefreshInterval }}
-      - TOKEN_TTL={{ .TokenLifetime }}
+      - TOKEN_TTL={{ $tokenLifetime }}
       - COLD_START_RETRIES={{ .ColdStartRetries }}
       - FB_CA_BUNDLE={{ $caBundle }}
       - PYTHONPATH=/tmp/litellm
@@ -342,7 +346,7 @@ services:
       # this workflow's identity can reach. LiteLLM itself is the state of record
       # (read back through /model/info each pass), so a restart of this loop
       # cannot lose track of what is registered.
-      import datetime, json, os, ssl, threading, time
+      import base64, datetime, json, os, ssl, threading, time
       import urllib.error, urllib.parse, urllib.request
 
       API = os.environ["FB_OPENAPI_URL"].rstrip("/")
@@ -371,20 +375,31 @@ services:
               raw = response.read()
           return json.loads(raw) if raw else None
 
+      def renewal_deadline(token):
+          # Anchored to the token's own exp claim, not to when this loop started:
+          # the loop can start well after the token was issued.
+          try:
+              claims = token.split(".")[1]
+              claims += "=" * (-len(claims) % 4)
+              expiry = float(json.loads(base64.urlsafe_b64decode(claims))["exp"])
+          except Exception:
+              return time.time() + 4 * 24 * 3600
+          # Three days of slack, but never in the past for a short-lived token.
+          return max(expiry - 3 * 24 * 3600, time.time() + 300)
+
       def refresh_token():
-          # Service tokens last seven days. Renew well inside that; after a
-          # failure retry hourly -- the old token stays valid until its
-          # original expiry, but another four-day sleep would overshoot it.
-          delay = 4 * 24 * 3600
+          # After a failure retry hourly: the old token stays valid until its
+          # original expiry, but waiting for the next deadline would overshoot it.
+          deadline = renewal_deadline(TOKEN[0])
           while True:
-              time.sleep(delay)
-              delay = 3600
+              time.sleep(max(deadline - time.time(), 0))
+              deadline = time.time() + 3600
               try:
                   fresh = call(API + "/v4/workflows:refreshToken", TOKEN[0],
                                method="POST", body=dict(), ctx=CTX)
                   if fresh and fresh.get("token"):
                       TOKEN[0] = fresh["token"]
-                      delay = 4 * 24 * 3600
+                      deadline = renewal_deadline(TOKEN[0])
                       print("TOKEN-REFRESHED", flush=True)
                   else:
                       print("TOKEN-REFRESH-FAILED unexpected response", flush=True)
@@ -478,7 +493,10 @@ services:
               stamp = (minted.get("expiresAt") or "").replace("Z", "+00:00")
               return datetime.datetime.fromisoformat(stamp).timestamp()
           except ValueError:
-              return time.time() + TTL
+              # TTL is a ceiling, not a default: guessing it would leave a dead
+              # token in place long after it lapsed.
+              print("MINT-EXPIRY-UNREADABLE assuming an hour", flush=True)
+              return time.time() + min(TTL, 3600)
 
       def deregister(model_id):
           call(LLM + "/model/delete", MASTER, method="POST", body=dict(id=model_id))
@@ -522,10 +540,12 @@ services:
                       print("REMOVE-FAILED stale route kept", base, repr(err), flush=True)
               if removed_all:
                   # Halfway to the granted expiry, so a short grant rotates
-                  # early instead of serving a dead token. A failed removal
-                  # leaves rotate_at in the past and the next pass retries the
-                  # whole rotation, stale routes included.
-                  rotate_at[base] = time.time() + (granted - time.time()) / 2
+                  # early instead of serving a dead token, and never sooner than
+                  # a minute, so clock skew cannot rotate on every pass. A failed
+                  # removal leaves rotate_at in the past and the next pass
+                  # retries the whole rotation, stale routes included.
+                  now = time.time()
+                  rotate_at[base] = max(now + (granted - now) / 2, now + 60)
                   print("ROTATED" if expiring else "REGISTERED", spec["model"], base, flush=True)
 
           for base, model_ids in current.items():

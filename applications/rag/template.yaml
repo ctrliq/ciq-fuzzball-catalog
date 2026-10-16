@@ -42,6 +42,10 @@
 {{- if and $endpoint_token (not (regexMatch "^[A-Za-z0-9._~+/=-]+$" $endpoint_token)) }}
   {{- fail "EndpointToken may contain only letters, digits and . _ ~ + / = -" }}
 {{- end }}
+{{- $token_lifetime := int .TokenLifetime }}
+{{- if or (lt $token_lifetime 300) (gt $token_lifetime 604800) }}
+  {{- fail "TokenLifetime must be between 300 and 604800 seconds" }}
+{{- end }}
 {{- $scope := lower (trim .Scope) }}
 {{- if not (has $scope (list "user" "group" "organization" "public")) }}
   {{- fail "Scope must be one of: user, group, organization, public" }}
@@ -88,12 +92,12 @@
 {{- end }}
 {{- if not $api_key }}
   {{- /* No credential given: each service mints its own endpoint access token
-         at startup with the workflow's injected identity (the endpoint proxy
-         rejects raw workflow tokens), falling back to a harmless placeholder
-         for endpoints that are not Fuzzball endpoints or take no token. The
-         script exports RAG_ENDPOINT_TOKEN either way; never default the
-         workflow's FB_TOKEN itself — a real credential must not be sent to an
-         arbitrary user-configured endpoint. */}}
+         with the workflow's injected identity (the endpoint proxy rejects raw
+         workflow tokens) and keeps it fresh through a local proxy, falling back
+         to a harmless placeholder for endpoints that are not Fuzzball endpoints
+         or take no token. The script exports RAG_ENDPOINT_TOKEN either way;
+         never default the workflow's FB_TOKEN itself — a real credential must
+         not be sent to an arbitrary user-configured endpoint. */}}
   {{- $mint = true }}
   {{- $api_key = "${RAG_ENDPOINT_TOKEN}" }}
 {{- end }}
@@ -128,7 +132,7 @@ files:
         provider: openai
         name: "{{ $embedding_model }}"
         vector_dim: {{ $embedding_dim }}
-        base_url: "{{ $endpoint }}/v1"
+        base_url: "${RAG_ENDPOINT_BASE}/v1"
         api_key: "{{ $api_key }}"
       batch_size: 64
     {{- /* Always pin qa to the openai provider: haiku.rag's built-in default
@@ -140,7 +144,7 @@ files:
       model:
         provider: openai
         name: "{{ $generation_model | default "generation-model-not-configured" }}"
-        base_url: "{{ $endpoint }}/v1"
+        base_url: "${RAG_ENDPOINT_BASE}/v1"
         api_key: "{{ $api_key }}"
     analysis:
       enabled: false
@@ -180,48 +184,292 @@ files:
       done
       export SSL_CERT_FILE=/tmp/ca-bundle.pem
     fi
+    RAG_ENDPOINT_BASE="{{ $endpoint }}"
     {{- if $mint }}
-    # Mint an endpoint access token for the configured endpoint using this
-    # workflow's identity (valid up to 7 days; restart the workflow to renew).
-    # Non-Fuzzball hostnames and endpoints that take no token (public scope)
-    # fall back to a placeholder key; any other mint failure stops the service
-    # here rather than surfacing later as a provider error mid-ingest.
-    RAG_ENDPOINT_TOKEN=$(python - <<'__MINT__'
+    # haiku.rag reads its key once, at startup, so a token minted for it would
+    # lapse under a running service. Instead a local proxy holds the token,
+    # re-mints it at half its granted lifetime, renews this workflow's own token
+    # in the background, and sets the current one on every request, and haiku.rag
+    # is pointed at the proxy. Non-Fuzzball hostnames and endpoints that take no
+    # token (public scope) get no proxy and a placeholder key; any other mint
+    # failure stops the service here rather than surfacing later as a provider
+    # error mid-ingest.
+    # Private to this service: nothing guarantees /tmp is not shared with the
+    # other service, and the port and tokens here are this process tree's alone.
+    RAG_AUTH_DIR=$(mktemp -d /tmp/rag-auth.XXXXXX)
+    export RAG_AUTH_DIR
+    cat > "${RAG_AUTH_DIR}/auth.py" <<'__AUTH__'
+    import base64
+    import datetime
+    import json
     import os
     import sys
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     import httpx
 
-    host = "{{ $endpoint }}".split("://", 1)[-1].split("/", 1)[0]
-    endpoint_id = host.split(".", 1)[0]
-    api = os.environ.get("FB_OPENAPI_URL")
-    token = os.environ.get("FB_TOKEN")
-    if not (endpoint_id.startswith("endpoint-") and api and token):
-        sys.exit(0)
-    try:
-        r = httpx.post(
-            api.rstrip("/") + "/v4/endpoints/" + endpoint_id + "/token",
-            json={"expirationSeconds": 604800},
-            headers={"Authorization": "Bearer " + token},
-            timeout=30,
-        )
+    UPSTREAM = "{{ $endpoint }}"
+    TTL = {{ $token_lifetime }}
+    STATE = os.environ["RAG_AUTH_DIR"]
+    ENDPOINT_TOKEN = os.path.join(STATE, "endpoint-token.json")
+    WORKFLOW_TOKEN = os.path.join(STATE, "workflow-token.json")
+    PORT_FILE = os.path.join(STATE, "port")
+    INTERVAL = 60
+    RENEW_AFTER = 4 * 24 * 3600
+    NO_TOKEN = 10
+    # Hop-by-hop headers belong to one connection; Authorization is replaced and
+    # Host and Content-Length are recomputed for the upstream request.
+    DROPPED = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+               "te", "trailer", "transfer-encoding", "upgrade", "authorization", "host",
+               "content-length", "accept-encoding", "content-encoding", "server", "date"}
+
+    os.umask(0o077)
+    API = (os.environ.get("FB_OPENAPI_URL") or "").rstrip("/")
+    host = UPSTREAM.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    ENDPOINT_ID = host.split(".", 1)[0]
+    # Redirects are not followed: one would carry the token to another host.
+    CLIENT = httpx.Client(timeout=300, follow_redirects=False)
+
+
+    class Refused(RuntimeError):
+        pass
+
+
+    def write_json(path, body):
+        tmp = path + ".new"
+        with open(tmp, "w") as handle:
+            json.dump(body, handle)
+        os.replace(tmp, path)
+
+
+    def read_json(path):
+        try:
+            with open(path) as handle:
+                return json.load(handle)
+        except (OSError, ValueError):
+            return None
+
+
+    def renewal_deadline(token):
+        # Anchored to the token's own exp claim, so a restart cannot walk the
+        # deadline forward past the real expiry.
+        try:
+            claims = token.split(".")[1]
+            claims += "=" * (-len(claims) % 4)
+            expiry = float(json.loads(base64.urlsafe_b64decode(claims))["exp"])
+        except Exception:
+            return time.time() + RENEW_AFTER
+        # Three days of slack, but never in the past for a short-lived token.
+        return max(expiry - 3 * 24 * 3600, time.time() + 300)
+
+
+    def workflow_token():
+        # A renewed token has to outlive a restart of this process: the injected
+        # one in the environment is the one it replaced.
+        saved = read_json(WORKFLOW_TOKEN)
+        if saved and saved.get("token"):
+            return saved
+        token = os.environ.get("FB_TOKEN", "")
+        saved = dict(token=token, renew_at=renewal_deadline(token))
+        write_json(WORKFLOW_TOKEN, saved)
+        return saved
+
+
+    def post(path, token, body):
+        r = CLIENT.post(API + path, json=body, headers={"Authorization": "Bearer " + token},
+                        timeout=30)
+        if r.status_code in (400, 412):
+            raise Refused("HTTP %d: %s" % (r.status_code, r.text[:200]))
         r.raise_for_status()
-        print(r.json()["token"], end="")
-    except httpx.HTTPStatusError as exc:
-        code = exc.response.status_code
-        if code in (400, 412):
-            print(f"endpoint takes no token (HTTP {code}); continuing without", file=sys.stderr)
-            sys.exit(0)
-        print(f"FATAL: endpoint token mint failed (HTTP {code}): {exc.response.text[:200]}", file=sys.stderr)
-        sys.exit(1)
-    except Exception as exc:
-        print(f"FATAL: endpoint token mint failed ({exc})", file=sys.stderr)
-        sys.exit(1)
-    __MINT__
-    )
-    [ -n "${RAG_ENDPOINT_TOKEN}" ] || RAG_ENDPOINT_TOKEN="unused"
+        return r.json()
+
+
+    def mint():
+        minted = post("/v4/endpoints/" + ENDPOINT_ID + "/token", workflow_token()["token"],
+                      {"expirationSeconds": TTL})
+        token = minted.get("token")
+        if not token:
+            raise RuntimeError("no token in the mint response")
+        expires_at = None
+        stamp = minted.get("expiresAt")
+        if isinstance(stamp, str):
+            try:
+                expires_at = datetime.datetime.fromisoformat(
+                    stamp.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                pass
+        if expires_at is None:
+            # TTL is a ceiling, not a default: guessing it would keep a dead
+            # token in use long after it lapsed.
+            print("MINT-EXPIRY-UNREADABLE assuming an hour", repr(stamp), file=sys.stderr, flush=True)
+            expires_at = time.time() + min(TTL, 3600)
+        now = time.time()
+        # Halfway to the granted expiry, and never sooner than a minute, so a
+        # short grant or clock skew cannot mint on every pass.
+        write_json(ENDPOINT_TOKEN, dict(token=token, expires_at=expires_at,
+                                        remint_at=max(now + (expires_at - now) / 2, now + 60)))
+
+
+    def first_mint():
+        if not (ENDPOINT_ID.startswith("endpoint-") and API and os.environ.get("FB_TOKEN")):
+            return NO_TOKEN
+        try:
+            mint()
+        except Refused as exc:
+            # A public endpoint takes no token; one whose workflow has ended is
+            # refused the same way and fails the startup check below instead.
+            print(f"endpoint token refused ({exc}); continuing without", file=sys.stderr)
+            return NO_TOKEN
+        except httpx.HTTPStatusError as exc:
+            print(f"FATAL: endpoint token mint failed (HTTP {exc.response.status_code}): "
+                  f"{exc.response.text[:200]}", file=sys.stderr)
+            return 1
+        except Exception as exc:
+            print(f"FATAL: endpoint token mint failed ({exc})", file=sys.stderr)
+            return 1
+        return 0
+
+
+    def renew_forever():
+        refused = False
+        while True:
+            time.sleep(INTERVAL)
+            saved = workflow_token()
+            if time.time() >= saved["renew_at"]:
+                try:
+                    fresh = post("/v4/workflows:refreshToken", saved["token"], {})
+                    if not fresh.get("token"):
+                        raise RuntimeError("no token in the refreshToken response")
+                    write_json(WORKFLOW_TOKEN, dict(token=fresh["token"],
+                                                    renew_at=renewal_deadline(fresh["token"])))
+                    print("TOKEN-RENEWED", file=sys.stderr, flush=True)
+                except Exception as exc:
+                    # The old token stays valid until its original expiry; this is
+                    # days ahead of the need, so hourly is enough.
+                    saved["renew_at"] = time.time() + 3600
+                    write_json(WORKFLOW_TOKEN, saved)
+                    print("TOKEN-RENEWAL-FAILED", repr(exc), file=sys.stderr, flush=True)
+            current = read_json(ENDPOINT_TOKEN) or {}
+            if not refused and time.time() >= current.get("remint_at", 0):
+                try:
+                    mint()
+                    print("MINTED", ENDPOINT_ID, file=sys.stderr, flush=True)
+                except Refused as exc:
+                    # Refused for good: the endpoint's workflow has ended (or the
+                    # endpoint went public). Asking again every pass changes
+                    # nothing, so say it once.
+                    refused = True
+                    print("MINT-REFUSED", ENDPOINT_ID, repr(exc), file=sys.stderr, flush=True)
+                except Exception as exc:
+                    # The token in hand stays in use until it actually lapses.
+                    print("MINT-FAILED", ENDPOINT_ID, repr(exc), file=sys.stderr, flush=True)
+
+
+    class Proxy(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *args):
+            pass
+
+        def forward(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(length) if length else None
+            headers = {k: v for k, v in self.headers.items() if k.lower() not in DROPPED}
+            headers["Accept-Encoding"] = "identity"
+            current = read_json(ENDPOINT_TOKEN) or {}
+            headers["Authorization"] = "Bearer " + current.get("token", "unused")
+            try:
+                r = CLIENT.request(self.command, UPSTREAM + self.path, headers=headers,
+                                   content=body)
+            except Exception as exc:
+                payload = json.dumps({"error": {"message": "endpoint unreachable: %s" % exc}}).encode()
+                self.send_response(502)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            payload = r.content
+            self.send_response(r.status_code)
+            for k, v in r.headers.items():
+                if k.lower() not in DROPPED:
+                    self.send_header(k, v)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        do_GET = do_POST = do_PUT = do_DELETE = do_PATCH = forward
+
+
+    def serve():
+        # The port is chosen once and reused across restarts: haiku.rag was
+        # pointed at it when it started and cannot be told about another.
+        port = 0
+        try:
+            with open(PORT_FILE) as handle:
+                port = int(handle.read())
+        except (OSError, ValueError):
+            pass
+        ThreadingHTTPServer.allow_reuse_address = True
+        server = ThreadingHTTPServer(("127.0.0.1", port), Proxy)
+        if not port:
+            with open(PORT_FILE + ".new", "w") as handle:
+                handle.write(str(server.server_address[1]))
+            os.replace(PORT_FILE + ".new", PORT_FILE)
+        threading.Thread(target=renew_forever, daemon=True).start()
+        server.serve_forever()
+
+
+    if __name__ == "__main__":
+        if sys.argv[1] == "mint":
+            sys.exit(first_mint())
+        serve()
+    __AUTH__
+    auth_status=0
+    python "${RAG_AUTH_DIR}/auth.py" mint || auth_status=$?
+    case "${auth_status}" in
+      0)
+        # Restarts itself, with a delay that grows on repeated failure and resets
+        # once a run has stayed up; it outlives the exec below as haiku.rag's
+        # child. `|| true` keeps a failing run out of errexit's reach.
+        (
+          delay=5
+          while true; do
+            started=$(date +%s)
+            python "${RAG_AUTH_DIR}/auth.py" serve || true
+            ran=$(( $(date +%s) - started ))
+            if [ "${ran}" -ge 60 ]; then
+              delay=5
+            fi
+            echo "AUTH-PROXY-EXITED after ${ran}s; restarting in ${delay}s" >&2
+            sleep "${delay}"
+            if [ "${delay}" -lt 160 ]; then
+              delay=$((delay * 2))
+            fi
+          done
+        ) &
+        waited=0
+        while [ ! -s "${RAG_AUTH_DIR}/port" ]; do
+          if [ "${waited}" -ge 30 ]; then
+            echo "FATAL: the endpoint token proxy did not start" >&2
+            exit 1
+          fi
+          sleep 1
+          waited=$((waited + 1))
+        done
+        RAG_ENDPOINT_BASE="http://127.0.0.1:$(cat "${RAG_AUTH_DIR}/port")"
+        ;;
+      10) ;;
+      *) exit 1 ;;
+    esac
+    # The proxy replaces whatever key haiku.rag sends; with no proxy this is the
+    # placeholder an endpoint that takes no token ignores.
+    RAG_ENDPOINT_TOKEN="unused"
     export RAG_ENDPOINT_TOKEN
     {{- end }}
+    export RAG_ENDPOINT_BASE
     # A tcp readiness probe cannot see an unreachable endpoint, an expired token,
     # a wrong embedding model, a wrong vector dimension, or a placeholder
     # credential -- each leaves the port open and the probe green while every
@@ -243,7 +491,10 @@ files:
 
     import httpx
 
-    base = "{{ $endpoint }}/v1"
+    # The same base haiku.rag is given, so a minted token is proven through the
+    # proxy that will carry it.
+    base = os.environ["RAG_ENDPOINT_BASE"] + "/v1"
+    shown = "{{ $endpoint }}/v1"
     key = os.environ.get("RAG_API_KEY") or ""
     # Send exactly what haiku.rag sends at runtime: it always puts api_key in an
     # Authorization: Bearer header (including the "unused" placeholder). Omitting
@@ -278,11 +529,13 @@ files:
             if code in (401, 403, 422):
                 print(
                     "FATAL: endpoint %s rejected the embedding request for model %r (HTTP %d): %s"
-                    % (base, model, code, exc.response.text[:200]),
+                    % (shown, model, code, exc.response.text[:200]),
                     file=sys.stderr,
                 )
                 sys.exit(1)
-            last = "HTTP %d" % code
+            # With the body: through the local proxy an unreachable endpoint
+            # is a 502 whose message is the only record of the real cause.
+            last = "HTTP %d: %s" % (code, exc.response.text[:200])
         except Exception as exc:
             last = str(exc)
         else:
@@ -295,7 +548,7 @@ files:
                 print(
                     "FATAL: endpoint %s answered /embeddings for model %r but not with an "
                     "OpenAI embeddings response (is it an embedding model?): %s"
-                    % (base, model, r.text[:200]),
+                    % (shown, model, r.text[:200]),
                     file=sys.stderr,
                 )
                 sys.exit(1)
@@ -310,7 +563,7 @@ files:
         if time.time() >= deadline:
             print(
                 "FATAL: model endpoint %s not ready after {{ $bootstrap_window }}s (last error: %s)"
-                % (base, last),
+                % (shown, last),
                 file=sys.stderr,
             )
             sys.exit(1)
