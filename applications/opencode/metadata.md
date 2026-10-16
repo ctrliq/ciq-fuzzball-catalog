@@ -69,10 +69,11 @@ To see the models:
 ## Attaching to the model
 
 With the default `EndpointAuth=fuzzball-token`, the workflow authenticates to the
-model endpoint itself: at startup the server mints an endpoint access token using
-this workflow's own injected identity, so no user credential is stored anywhere in
-the definition. The endpoint signs the caller's identity for the LiteLLM in front
-of the model, which admits the request on that alone, so no key is needed either.
+model endpoint itself: a `token-renewer` service mints an endpoint access token
+using this workflow's own injected identity, so no user credential is stored
+anywhere in the definition. The endpoint signs the caller's identity for the
+LiteLLM in front of the model, which admits the request on that alone, so no key
+is needed either.
 A key set anyway (`ApiKey` or `ApiKeySecret`) is still sent, in the
 `x-litellm-api-key` header, which LiteLLM v1.97.0 and later honour and the
 endpoint proxy leaves untouched -- and a key sent that way decides the request,
@@ -84,16 +85,21 @@ where the key is sent as the bearer token and nothing is minted. A public
 endpoint needs no token and the server refuses to mint one for it. Under
 `fuzzball-token` such an endpoint is logged as a warning and skipped rather than
 stopping the workflow, so if it was the only one the service stops with `none of
-the discovered endpoints could be reached` and the reason is in the log above it.
+the discovered endpoints could be reached`; the `token-renewer` log carries the
+reason as a `MINT-REFUSED` or `MINT-FAILED` line.
 
-The token is minted by the service itself rather than a preparatory job, because
-the server grants an endpoint token no more lifetime than the calling workflow
-token has left: a job's token lives only as long as the job, while a service
-without a walltime holds one for seven days. It is minted once and never renewed,
-so `TokenLifetime` clamped to that seven days bounds how long the agent can reach
-the model. When it lapses the agent starts failing against the model while the
-server itself stays healthy -- the readiness probe never touches the endpoint --
-so restart the workflow to mint a fresh one.
+Credentials renew on their own. A small `token-renewer` service mints each
+endpoint token for `TokenLifetime` seconds (default four hours), re-mints it at
+half the granted lifetime, and renews its own workflow token in the background,
+so the agent keeps reaching the model without a restart. It is a service rather
+than part of the server so that the agent never holds the workflow token: the
+agent runs arbitrary shell, and that token mints access tokens for every
+endpoint its owner can see. The copy Fuzzball injects into the server's
+container is unset before OpenCode starts; only the renewer keeps and renews
+one. The renewer writes only endpoint tokens to the volume, and a plugin the
+entry installs in OpenCode's config directory sends the current one with every
+model request. `MINTED` in the renewer's log marks each rotation and
+`MINT-FAILED` a pass that kept the previous token.
 
 ## Reaching the server
 

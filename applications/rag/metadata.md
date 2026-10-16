@@ -51,10 +51,14 @@ For a Fuzzball endpoint in your scope, **no key is needed**: each service mints
 an endpoint access token at startup with this workflow's own identity, the
 endpoint proxy consumes it and signs the caller's identity for the model
 gateway, and access is simply the endpoint's scope — the same control as any
-Fuzzball endpoint. No credential is stored anywhere. (The minted token is valid
-up to 7 days; because the startup check runs only at startup, a token that
-lapses mid-life leaves the service looking healthy while embedding calls fail —
-restart to mint afresh.)
+Fuzzball endpoint. No credential needs to be configured or stored in the
+definition. Credentials renew on their own: haiku.rag reads its key only at
+startup, so each service runs a small local proxy that holds the token,
+requests it for `TokenLifetime` seconds (default four hours), re-mints it at
+half the granted lifetime, renews the workflow's own token in the background,
+and sets the current one on every request. `MINTED` in a service's log marks
+each rotation, `MINT-FAILED` a pass that kept the previous token, and
+`MINT-REFUSED` an endpoint whose workflow has ended.
 
 A key is needed only for a **public** endpoint (nothing is signed there, so the
 key is the barrier), a **third-party/external** OpenAI-compatible API, or a
