@@ -18,6 +18,7 @@ replica churn.
 ```
 fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-20b
 fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-120b,Gpu=amd
+fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-120b,Gpu=amd,AmdGpuFamily=rdna
 fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-120b,MinReplicas=1,MaxReplicas=10
 fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-120b,GpusPerNode=4
 fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-20b,GpusPerNode=2,ExpertParallelism=true
@@ -210,6 +211,10 @@ Before choosing `Nodes` above 1:
   `hf://openai/gpt-oss-120b` is roughly three times larger downloaded whole
   than with `?exclude=original/**&exclude=metal/**`.
 - `Gpu`: GPU platform, `nvidia` or `amd`.
+- `AmdGpuFamily`: AMD GPU architecture family, used only with `Gpu=amd`:
+  `cdna` (default) for MI-series datacenter GPUs, `rdna` for Radeon GPUs. It
+  selects the matching vLLM ROCm build by filling `{family}` in
+  `VllmRocmImage`; an image without `{family}` is used as given.
 - `ExpertParallelism`: `auto` (default), `true`, or `false`; see above.
 - `Nodes`: nodes per replica, default 1. Above 1 needs at least one GPU per
   node; the layout follows `ExpertParallelism`.
