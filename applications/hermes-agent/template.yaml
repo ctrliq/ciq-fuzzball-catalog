@@ -430,6 +430,8 @@ services:
       # would go stale the moment HERMES_HOME moved, and nothing would say so.
       CONFIG = os.path.join(os.environ["HERMES_HOME"], "config.yaml")
       CREDENTIAL = os.path.join(RUNTIME, "credential.json")
+      # Beside the credential rather than in it: Hermes reads that file itself.
+      SCHEDULE = os.path.join(RUNTIME, "remint.json")
       WORKFLOW_TOKEN = os.path.join(RUNTIME, "workflow-token.json")
       CA = os.environ.get("SSL_CERT_FILE") or None
       API_ANNOTATION = "ciq.com/api"
@@ -784,7 +786,16 @@ services:
               expiry = datetime.datetime.fromisoformat(
                   saved["expiry"].replace("Z", "+00:00")).timestamp()
               state["token"] = saved["access_token"]
-              state["remint_at"] = time.time() + (expiry - time.time()) / 2
+              # The deadline set at the mint, not half of whatever is left now:
+              # recomputing on every restart walks it forward past the expiry.
+              # Without a record, half the requested lifetime before expiry: the
+              # grant never exceeds TTL, so that is never later than the original
+              # halfway point, only possibly earlier.
+              try:
+                  with open(SCHEDULE) as handle:
+                      state["remint_at"] = min(float(json.load(handle)["remint_at"]), expiry)
+              except (OSError, ValueError, KeyError, TypeError):
+                  state["remint_at"] = expiry - TTL / 2
           except (OSError, ValueError, KeyError, TypeError, AttributeError):
               # No usable credential on disk, so whatever the config says the
               # base is, it has to be minted for again before it can be used.
@@ -817,6 +828,12 @@ services:
               # put the next mint in the past and mint on every pass.
               state["remint_at"] = max(time.time() + (expires_at - time.time()) / 2,
                                        time.time() + 60)
+              try:
+                  write_json(SCHEDULE, dict(remint_at=state["remint_at"]))
+              except OSError as err:
+                  # The deadline holds in memory; losing the record only costs
+                  # a later remint after a restart.
+                  print("SCHEDULE-WRITE-FAILED", repr(err), flush=True)
               # Recorded on the mint, not at the end of the pass: a failure
               # further down must not read as a moved gateway next time and
               # mint all over again.

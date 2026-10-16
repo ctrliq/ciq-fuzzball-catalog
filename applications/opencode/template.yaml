@@ -322,7 +322,6 @@ services:
       /data:
         volume: data
     env:
-      - ENDPOINT_FILE={{ $endpoint_file }}
       - TOKEN_DIR={{ $token_dir }}
       - TOKEN_LIFETIME={{ $token_lifetime }}
     script: |
@@ -351,17 +350,23 @@ services:
       # nothing guarantees /tmp is not shared with another container.
       STATE_DIR=$(mktemp -d /tmp/renewer.XXXXXX)
       export STATE_DIR
+      # The agent can write the volume, so what to mint for, and when, is never
+      # read back from it: the discovered endpoints are copied here now, before
+      # the server that runs the agent is allowed to start.
+      cp {{ $endpoint_file }} "${STATE_DIR}/endpoints.tsv"
 
       cat > "${STATE_DIR}/renew.py" <<'PYEOF'
       import base64, datetime, json, os, re, sys, time
       import urllib.error, urllib.request
 
       API = os.environ["FB_OPENAPI_URL"].rstrip("/")
-      ENDPOINTS = os.environ["ENDPOINT_FILE"]
+      STATE = os.environ["STATE_DIR"]
+      ENDPOINTS = os.path.join(STATE, "endpoints.tsv")
+      SCHEDULE = os.path.join(STATE, "remint.json")
       TOKENS = os.environ["TOKEN_DIR"]
       TTL = int(os.environ["TOKEN_LIFETIME"])
       READY = os.path.join(TOKENS, ".ready")
-      WORKFLOW_TOKEN = os.path.join(os.environ["STATE_DIR"], "workflow-token.json")
+      WORKFLOW_TOKEN = os.path.join(STATE, "workflow-token.json")
       INTERVAL = 60
       RENEW_AFTER = 4 * 24 * 3600
 
@@ -399,8 +404,17 @@ services:
 
 
       def write_json(path, body):
+          # The token directory is on the agent's volume, where a planted symlink
+          # at the temporary name would aim this write at any file this
+          # container can reach. Whatever sits there is removed, and the file is
+          # created fresh rather than opened.
           tmp = path + ".new"
-          with open(tmp, "w") as handle:
+          try:
+              os.unlink(tmp)
+          except FileNotFoundError:
+              pass
+          fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+          with os.fdopen(fd, "w") as handle:
               json.dump(body, handle)
           os.replace(tmp, path)
 
@@ -480,22 +494,23 @@ services:
           return ids
 
 
-      def load_remint_at(endpoint_id):
-          # Picks up where a crashed loop left off rather than minting everything
-          # again; a missing or unreadable file is simply due now.
+      def load_schedule():
+          # The deadlines set at each mint, so a restarted loop keeps them rather
+          # than recomputing half of whatever is left, which walks each one
+          # forward past the token's expiry. Anything unreadable is due now.
           try:
-              with open(os.path.join(TOKENS, endpoint_id + ".json")) as handle:
-                  expires_at = float(json.load(handle)["expires_at"])
-          except (OSError, ValueError, KeyError, TypeError):
-              return 0
-          return time.time() + (expires_at - time.time()) / 2
+              with open(SCHEDULE) as handle:
+                  return {k: float(v) for k, v in json.load(handle).items()}
+          except (OSError, ValueError, AttributeError, TypeError):
+              return {}
 
 
       def main():
           token, renew_at = load_workflow_token()
           state = dict(token=token, renew_at=renew_at)
           ids = endpoint_ids()
-          remint_at = {endpoint_id: load_remint_at(endpoint_id) for endpoint_id in ids}
+          saved = load_schedule()
+          remint_at = {endpoint_id: saved.get(endpoint_id, 0) for endpoint_id in ids}
           refused = set()
           while True:
               if time.time() >= state["renew_at"]:
@@ -530,12 +545,23 @@ services:
                   # so a short grant or clock skew cannot mint on every pass.
                   now = time.time()
                   remint_at[endpoint_id] = max(now + (expires_at - now) / 2, now + 60)
+                  try:
+                      write_json(SCHEDULE, remint_at)
+                  except OSError as err:
+                      # The deadline still holds in memory; losing the record
+                      # only costs an early remint after a restart.
+                      print("SCHEDULE-WRITE-FAILED", repr(err), flush=True)
                   print("MINTED", endpoint_id, flush=True)
 
               # After the first full pass, whatever it achieved: the server
               # decides which endpoints are usable and says so in its own log.
+              # The token directory is on the agent's volume, so a failure here
+              # must not take the loop down with it.
               if not os.path.exists(READY):
-                  write_json(READY, {})
+                  try:
+                      write_json(READY, {})
+                  except OSError as err:
+                      print("READY-WRITE-FAILED", repr(err), flush=True)
               time.sleep(INTERVAL)
 
 
