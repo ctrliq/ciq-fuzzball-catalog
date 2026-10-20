@@ -121,6 +121,10 @@ skipped: the gateway only serves other workflows' endpoints.
 To confirm a model was picked up, watch `fuzzball workflow log <workflow> gateway` for a
 `REGISTERED` line on the next discovery pass, or list `/v1/models`.
 
+Credentials renew on their own. Each endpoint token is requested for `TokenLifetime`
+seconds (default four hours) and re-minted at half the granted lifetime, and the gateway
+renews its own workflow token in the background, so it keeps serving without a restart.
+
 ## Things to know before you start it
 
 - **The database is pinned to the LiteLLM version.** A different LiteLLM release reading

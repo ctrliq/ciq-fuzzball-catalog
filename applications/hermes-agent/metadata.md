@@ -70,9 +70,10 @@ credential durable. The server grants an endpoint token no more lifetime than
 the calling workflow token has left, so a token minted once at startup would
 put a ceiling on how long the agent works. Instead the agent renews its own
 workflow token in the background and re-mints the endpoint token at half its
-granted lifetime. Credentials are the half that refreshes live: the provider
-reads its key through `key_cmd`, so Hermes picks up each new token on its own
-without restarting. A gateway that moves to a new URL is written into
+granted lifetime, requested as `TokenLifetime` (default four hours).
+Credentials are the half that refreshes live: the provider reads its key
+through `key_cmd`, so Hermes picks up each new token on its own without
+restarting. A gateway that moves to a new URL is written into
 `config.yaml` by the same pass, but reaches only sessions started after it: a
 conversation already in flight keeps the provider it was created with.
 

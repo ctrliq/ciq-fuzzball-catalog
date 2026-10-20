@@ -67,12 +67,12 @@ values:
     display_category: Model
   - name: TokenLifetime
     display_name: >-
-      Seconds the minted endpoint access token is requested for, when
+      Seconds each minted endpoint access token is requested for, when
       EndpointAuth=fuzzball-token. The grant is clamped to what is left of this workflow's own
-      API token, which for a service with no walltime is 7 days from workflow start. The token
-      is minted once at startup and not renewed, so it bounds how long the agent can reach the
-      model; restart the workflow for a fresh one.
-    uint_value: 604800
+      API token; a renewer service renews that token in the background and re-mints at half
+      the granted lifetime, so this does not put a ceiling on how long the agent keeps
+      working.
+    uint_value: 14400
     display_category: Model
 
   - name: ServiceScope
@@ -111,7 +111,8 @@ values:
     display_category: Versions
   - name: HelperImage
     display_name: >-
-      Image for the short-lived jobs that resolve the endpoint and print how to reach the
-      server. It needs a JSON parser, which the OpenCode image does not carry.
+      Image for the jobs that resolve the endpoint and print how to reach the server, and,
+      with EndpointAuth=fuzzball-token, for the token-renewer service that runs for the
+      whole workflow. It needs Python, which the OpenCode image does not carry.
     string_value: docker://python:3.12-alpine
     display_category: Versions
