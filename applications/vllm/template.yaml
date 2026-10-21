@@ -188,6 +188,20 @@ services:
       # The model is already local (ingressed); serve fully offline.
       - HF_HUB_OFFLINE=1
       - HF_HOME={{ $data_mount }}/.cache/huggingface
+      # Keep scratch, caches and Python bytecode on the data volume. The
+      # container's writable rootfs can be as small as 64 MiB on some
+      # substrates -- far too little for vLLM/torch/triton startup, which
+      # otherwise dies with ENOSPC (FUZZ-9108). HOME is left alone so the
+      # multinode rsh helper keeps its own view.
+      - TMPDIR={{ $data_mount }}/tmp
+      - XDG_CACHE_HOME={{ $data_mount }}/.cache
+      - PYTHONPYCACHEPREFIX={{ $data_mount }}/pycache
+      - TRITON_CACHE_DIR={{ $data_mount }}/.cache/triton
+      - VLLM_CACHE_ROOT={{ $data_mount }}/.cache/vllm
+      # NVIDIA PTX JIT cache; defaults to $HOME/.nv/ComputeCache on the rootfs.
+      # The GB10/Blackwell build may JIT-compile at startup, so keep it on the
+      # volume as well. Unused (harmless) on AMD.
+      - CUDA_CACHE_PATH={{ $data_mount }}/.nv/ComputeCache
       {{- if eq $gpu "amd" }}
       - PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
       {{- end }}
@@ -197,6 +211,11 @@ services:
     script: |
       #!/bin/sh
       set -u
+      # Create the data-volume scratch/cache dirs named in the env block up
+      # front; vLLM, torch and triton write heavily here at startup and must
+      # not land on the container's small writable rootfs (FUZZ-9108). This
+      # runs on rank 0 / single node; remote ranks mkdir in their own exec.
+      mkdir -p "$TMPDIR" "$XDG_CACHE_HOME" "$PYTHONPYCACHEPREFIX" "$TRITON_CACHE_DIR" "$VLLM_CACHE_ROOT" "$CUDA_CACHE_PATH"
       # The parallelism layout is decided at runtime: whether the model is
       # MoE is a property of the downloaded snapshot's config.json, which
       # exists only after ingress, never at render time.
@@ -261,7 +280,7 @@ services:
         # all-gather when a rank steps a larger batch (an 8k-token prompt kills
         # it). It comes last so it wins over any value in ExtraArgs.
         ep_extra="$parallel_extra --max-num-batched-tokens 512"
-        exec_rankN 'exec vllm serve "$1" \
+        exec_rankN 'mkdir -p "$TMPDIR" "$XDG_CACHE_HOME" "$PYTHONPYCACHEPREFIX" "$TRITON_CACHE_DIR" "$VLLM_CACHE_ROOT" "$CUDA_CACHE_PATH" && exec vllm serve "$1" \
           --served-model-name "$2" \
           --headless \
           --data-parallel-size "$3" \
@@ -299,7 +318,7 @@ services:
       else
         # Tensor parallelism across the group: peers join the head's torch
         # process group with their node rank and serve no API of their own.
-        exec_rankN 'exec vllm serve "$1" \
+        exec_rankN 'mkdir -p "$TMPDIR" "$XDG_CACHE_HOME" "$PYTHONPYCACHEPREFIX" "$TRITON_CACHE_DIR" "$VLLM_CACHE_ROOT" "$CUDA_CACHE_PATH" && exec vllm serve "$1" \
           --served-model-name "$2" \
           --headless \
           --tensor-parallel-size "$3" \
