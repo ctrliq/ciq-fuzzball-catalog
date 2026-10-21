@@ -117,8 +117,8 @@ values:
       memory on device ... is less than desired GPU memory utilization": on
       small or shared vGPU slices, or on unified-memory systems such as the
       NVIDIA DGX Spark, where GPU memory is shared with the host so 0.9 is
-      rarely free enough -- try 0.7, or set an absolute size via ExtraArgs
-      with --kv-cache-memory-bytes.
+      rarely free enough -- lower it (e.g. 0.7) to leave headroom for the
+      host and OS.
     string_value: "0.9"
     display_category: Model Configuration
   - name: Nodes
