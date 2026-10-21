@@ -269,7 +269,12 @@ Storage, set `Volume` to the name of a persistent volume (e.g.
 `Volume=my-models`) to keep the downloaded model across workflow restarts.
 On small or shared vGPU slices, lower `GpuMemoryUtilization` (e.g. to 0.8):
 vLLM requires that fraction of *total* VRAM to be free at start, and driver
-overhead on a small slice can make the 0.9 default unsatisfiable.
+overhead on a small slice can make the 0.9 default unsatisfiable. On
+unified-memory systems such as the NVIDIA DGX Spark (GB10), the GPU shares
+one pool with the host, so 0.9 of total is rarely free enough and vLLM aborts
+with `Free memory on device ... is less than desired GPU memory utilization`;
+set `GpuMemoryUtilization=0.7`, or pass an absolute KV-cache size through
+`ExtraArgs` with `--kv-cache-memory-bytes`.
 
 The workflow runs until it is cancelled. The rendered workflow also serves as a
 working example of fronting an autoscaled service pool with an in-workflow

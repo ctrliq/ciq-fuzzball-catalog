@@ -113,9 +113,14 @@ values:
     display_category: Model Configuration
   - name: GpuMemoryUtilization
     display_name: >-
-      Fraction of GPU memory vLLM may use. Lower it (e.g. 0.8) if vLLM aborts at
-      start with "Free memory on device ... is less than desired GPU memory
-      utilization", which happens on small or shared vGPU slices.
+      Fraction of total GPU memory vLLM may use (weights + activations + KV
+      cache); the remainder after the weights becomes KV cache, so higher means
+      more context and concurrency. Lower it if vLLM aborts at start with "Free
+      memory on device ... is less than desired GPU memory utilization": on
+      small or shared vGPU slices, or on unified-memory systems such as the
+      NVIDIA DGX Spark, where GPU memory is shared with the host so 0.9 is
+      rarely free enough -- try 0.7, or set an absolute size via ExtraArgs
+      with --kv-cache-memory-bytes.
     string_value: "0.9"
     display_category: Model Configuration
   - name: Nodes
