@@ -649,6 +649,17 @@ services:
               expires_at, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
           write_json(CREDENTIAL, dict(access_token=token, expiry=stamp))
 
+      def clear_credential(state):
+          # On disk as well as in memory: load_state reads both files straight
+          # back on the next start.
+          state["token"] = None
+          state["remint_at"] = 0.0
+          for path in (CREDENTIAL, SCHEDULE):
+              try:
+                  os.remove(path)
+              except FileNotFoundError:
+                  pass
+
       def gateway_models(base, token, public):
           # Never fall back from one credential to the other. Against a non-public
           # Fuzzball endpoint the proxy consumes the bearer, so sending the
@@ -884,6 +895,12 @@ services:
 
           if write_config(base, model, public) or moved:
               print("ATTACHED", base, model, flush=True)
+          if public and state["token"]:
+              # A token minted for an earlier gateway is bound to that one. Kept,
+              # it would be presented here the moment this gateway stops being
+              # public: the base has not moved, so the mint above would wait
+              # for the old deadline.
+              clear_credential(state)
           state["base"] = base
           state["model"] = model
           return state
