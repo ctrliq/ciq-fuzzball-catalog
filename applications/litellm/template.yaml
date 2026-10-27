@@ -19,6 +19,10 @@
 {{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
   {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
 {{- end }}
+{{- $scope := lower (trim .ServiceScope) }}
+{{- if not (has $scope (list "user" "group" "organization")) }}
+  {{- fail "ServiceScope must be one of: user, group, organization" }}
+{{- end }}
 {{- $dbPort := randInt 10000 17000 }}
 {{- $llmPort := randInt 17000 24000 }}
 {{- $dbUser := "litellm" }}
@@ -136,7 +140,7 @@ services:
           port-name: llm
           protocol: http
           type: subdomain
-          scope: {{ .ServiceScope }}
+          scope: {{ $scope }}
           annotations:
             # A different value from the one the gateway discovers models on
             # (DiscoveryApiValue, "openai"). That one means "a model is served
@@ -564,9 +568,8 @@ jobs:
 
       echo "An agent running on this cluster needs no key at all: the endpoint"
       echo "signs the caller's Fuzzball identity and the gateway accepts it, so"
-      echo "access is governed by the endpoint scope. A key is needed only for"
-      echo "external clients, a public endpoint, or a cluster without caller"
-      echo "identity."
+      echo "access is governed by the endpoint scope. A key is needed only on a"
+      echo "cluster without caller identity."
       echo ""
       echo "Where a key applies, the call carries two credentials: a Fuzzball"
       echo "credential in Authorization, and a LiteLLM key in x-litellm-api-key."

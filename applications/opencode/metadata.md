@@ -20,7 +20,7 @@ the `vllm` or `litellm` entries.
 ```
 fuzzball workflow catalog start OpenCode
 fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>
-fuzzball workflow catalog start OpenCode --values Endpoint=https://<gateway-endpoint-url>,EndpointAuth=api-key,ApiKeySecret=secret://user/litellm-key,ServiceScope=public
+fuzzball workflow catalog start OpenCode --values Endpoint=https://<public-endpoint-url>,EndpointAuth=api-key,ApiKeySecret=secret://user/vllm-proxy-key,ServiceScope=public
 fuzzball workflow catalog start OpenCode --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b,ApiKey=sk-...
 ```
 
