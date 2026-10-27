@@ -80,13 +80,19 @@ endpoint proxy leaves untouched -- and a key sent that way decides the request,
 with the signed identity used only when no key is sent. That is what a cluster
 whose nodes do not sign caller identity falls back to.
 
-Set `EndpointAuth=api-key` for a public Fuzzball endpoint or a third-party API,
-where the key is sent as the bearer token and nothing is minted. A public
-endpoint needs no token and the server refuses to mint one for it. Under
-`fuzzball-token` such an endpoint is logged as a warning and skipped rather than
-stopping the workflow, so if it was the only one the service stops with `none of
-the discovered endpoints could be reached`; the `token-renewer` log carries the
-reason as a `MINT-REFUSED` or `MINT-FAILED` line.
+A public endpoint needs no token and the server refuses to mint one for it, so
+under `fuzzball-token` nothing is minted for it and the key is sent as the bearer
+token instead. A public endpoint forwards no caller identity either, so one in
+front of a LiteLLM proxy needs `ApiKey` or `ApiKeySecret` set to the key that
+proxy enforces. Set `EndpointAuth=api-key` for a third-party API, where the key
+is likewise sent as the bearer token and nothing is minted.
+
+An endpoint that cannot be used -- one whose token is refused because its
+workflow has ended, or one that rejects the credential -- is logged as a warning
+and skipped rather than stopping the workflow, so if it was the only one the
+service stops with `none of the discovered endpoints could be reached`; the
+`token-renewer` log carries a refused or failed mint as a `MINT-REFUSED` or
+`MINT-FAILED` line.
 
 Credentials renew on their own. A small `token-renewer` service mints each
 endpoint token for `TokenLifetime` seconds (default four hours), re-mints it at

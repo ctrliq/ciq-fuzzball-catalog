@@ -127,13 +127,12 @@ running at once, name the endpoint on the agent. Narrowing `Scope` does not
 help: `user` is already the narrowest, and two pools you started yourself
 collide inside it.
 
-At `Proxy=true`, `Scope=public` carries no `ciq.com/api` annotation, so a public
-proxied pool is not discovered. The listing surfaces a public endpoint to every
-member of the organization, and an agent that found one would then fail minting
-the token a public endpoint does not need. This does not extend to `Proxy=false`:
-the per-replica endpoints carry their annotations at every scope, so a public
-pool is still registered by any gateway in the organization -- and that gateway
-then cannot mint for it either. Do not publish a pool for a gateway at `public`.
+A `public` pool is discovered like an `organization` one: the listing shows a
+public endpoint to every member of the organization. Gateways and agents send it
+no Fuzzball token, since a public endpoint needs none and the server refuses to
+mint one. At `Proxy=false` a gateway registers it as it is. At `Proxy=true` the
+endpoint forwards no caller identity, so the proxy admits only callers holding
+its key: an agent that discovers a public pool needs that key, paired as below.
 
 Discovery finds the URL, and on a cluster that signs caller identity that is all
 an agent needs: the proxy admits it on the identity the endpoint forwards, so
@@ -224,9 +223,10 @@ Before choosing `Nodes` above 1:
 - `Proxy`: whether to front the pool with an in-workflow LiteLLM proxy.
 - `Scope`: authorization scope of the service endpoint (`user`, `group`,
   `organization`, `public`), defaulting to `user`. It also bounds who discovers
-  the pool, and at `Proxy=true` `public` opts the proxy endpoint out of
-  discovery. Note that a `public` pool endpoint is served without authentication
-  and therefore never wakes a pool idling at zero.
+  the pool; a `public` pool is discovered across the organization, and at
+  `Proxy=true` its callers need the proxy's key. Note that a `public` pool
+  endpoint is served without authentication and therefore never wakes a pool
+  idling at zero.
 - `MinReplicas` / `MaxReplicas`: replica pool bounds. `MinReplicas=0`
   enables scale-to-zero.
 - `ApiKeySecret`: a Fuzzball secret holding the key the LiteLLM proxy enforces,

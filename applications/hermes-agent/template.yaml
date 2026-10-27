@@ -559,16 +559,21 @@ services:
                   "the endpoint at " + (row.get("url") or "?") + " has no id to mint against")
           return found
 
+      def is_public(row):
+          # A public endpoint takes no token and the server refuses to mint one;
+          # it leaves the Authorization header alone, so the key travels there.
+          return row.get("scope") == "public"
+
       def find_gateway():
-          # Returns (base url, endpoint id). The id is None only for an endpoint
-          # this cluster does not own, where nothing is minted.
+          # Returns (base url, endpoint id, public). The id is None only for an
+          # endpoint this cluster does not own, where nothing is minted.
           if FIXED and not MINT:
-              return FIXED, None
+              return FIXED, None, False
           rows = list_endpoints()
           if FIXED:
               for row in rows:
                   if (row.get("url") or "").rstrip("/") == FIXED:
-                      return FIXED, endpoint_id_of(row)
+                      return FIXED, endpoint_id_of(row), is_public(row)
               raise LookupError(
                   "Endpoint " + FIXED + " is not an endpoint this workflow can reach; "
                   "set EndpointAuth=api-key to treat it as an external API")
@@ -589,7 +594,8 @@ services:
               urls = ", ".join(sorted((row.get("url") or "") for row in found))
               raise LookupError(
                   "several gateways are visible (" + urls + "); set Endpoint to choose one")
-          return (found[0].get("url") or "").rstrip("/"), endpoint_id_of(found[0])
+          return ((found[0].get("url") or "").rstrip("/"), endpoint_id_of(found[0]),
+                  is_public(found[0]))
 
       def mint(endpoint_id):
           # Returns (token, expiry epoch). The server grants at most what is left
@@ -599,12 +605,12 @@ services:
                             method="POST", body=dict(expirationSeconds=TTL))
           except HttpError as err:
               if err.code in (400, 412):
-                  # The server refuses to mint for a public endpoint, which needs no
-                  # token at all. Say which value fixes it rather than reporting the
-                  # bare HTTP error every pass until the window closes.
+                  # Public endpoints are never minted for, so a refusal here means
+                  # the endpoint's workflow has ended, or the endpoint went public
+                  # after it was listed. Say so rather than the bare HTTP error.
                   raise RuntimeError(
-                      "this endpoint is public and takes no token; start with "
-                      "EndpointAuth=api-key and an ApiKey/ApiKeySecret instead") from None
+                      "the server refused a token for this endpoint: its workflow "
+                      "has ended, or it was made public since it was listed") from None
               raise
           token = minted.get("token")
           if not token:
@@ -643,12 +649,13 @@ services:
               expires_at, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
           write_json(CREDENTIAL, dict(access_token=token, expiry=stamp))
 
-      def gateway_models(base, token):
-          # Never fall back from one credential to the other. Against a Fuzzball
-          # endpoint the proxy consumes the bearer, so sending the gateway's key
-          # there hands it to the proxy instead of to LiteLLM and fails opaquely.
+      def gateway_models(base, token, public):
+          # Never fall back from one credential to the other. Against a non-public
+          # Fuzzball endpoint the proxy consumes the bearer, so sending the
+          # gateway's key there hands it to the proxy instead of to LiteLLM and
+          # fails opaquely.
           headers = dict()
-          if MINT:
+          if MINT and not public:
               if not token:
                   raise RuntimeError("no minted credential to list models with")
               if LLM_KEY:
@@ -656,20 +663,29 @@ services:
               bearer = token
           else:
               bearer = LLM_KEY
-          listing = call(base + "/v1/models", bearer, headers=headers)
+          try:
+              listing = call(base + "/v1/models", bearer, headers=headers)
+          except HttpError as err:
+              if public and not LLM_KEY and err.code in (401, 403):
+                  raise RuntimeError(
+                      "the gateway at " + base + " is public, so it forwards no caller "
+                      "identity; set ApiKeySecret or ApiKey to the key it enforces") from None
+              raise
           return [row.get("id") for row in (listing.get("data") or []) if row.get("id")]
 
-      def provider_entry(base):
+      def provider_entry(base, public):
           entry = dict(api=base + "/v1", transport="chat_completions",
                        context_length=CONTEXT, discover_models=True)
-          if MINT:
+          if MINT and not public:
               entry["key_cmd"] = "cat " + CREDENTIAL
               if LLM_KEY:
                   # The endpoint proxy eats the Authorization header, so the
                   # gateway's own key has to travel beside it, not in it.
                   entry["extra_headers"] = {"x-litellm-api-key": LLM_KEY}
           else:
-              entry["api_key"] = LLM_KEY
+              # A placeholder only for a public endpoint started without a key,
+              # which the probe has already shown takes none.
+              entry["api_key"] = LLM_KEY or "unused"
           if CA:
               entry["ssl_ca_cert"] = CA
           return entry
@@ -702,7 +718,7 @@ services:
               return current
           return sorted(served)[0]
 
-      def write_config(base, model):
+      def write_config(base, model, public):
           config = load_config()
           if config is None:
               return False
@@ -721,7 +737,7 @@ services:
               selected = {}
 
           first_attach = PROVIDER not in providers
-          entry = provider_entry(base)
+          entry = provider_entry(base, public)
           if model:
               entry["default_model"] = model
           before = (providers.get(PROVIDER), dict(selected))
@@ -799,9 +815,10 @@ services:
           except (OSError, ValueError, KeyError, TypeError, AttributeError):
               # No usable credential on disk, so whatever the config says the
               # base is, it has to be minted for again before it can be used.
-              # Only when minting: an api-key provider has no credential file to
-              # find, and forgetting the base there just logs a spurious move.
-              if MINT:
+              # Only for a minted provider: an api-key provider, or one for a
+              # public gateway, has no credential file to find, and forgetting
+              # the base there just logs a spurious move.
+              if MINT and isinstance(entry, dict) and "key_cmd" in entry:
                   state["base"] = None
           return state
 
@@ -817,9 +834,9 @@ services:
                   state["renew_at"] = time.time() + 3600
                   print("TOKEN-RENEWAL-FAILED", repr(err), flush=True)
 
-          base, endpoint_id = find_gateway()
+          base, endpoint_id, public = find_gateway()
           moved = base != state["base"]
-          if MINT and endpoint_id and (moved or time.time() >= state["remint_at"]):
+          if MINT and endpoint_id and not public and (moved or time.time() >= state["remint_at"]):
               token, expires_at = mint(endpoint_id)
               write_credential(token, expires_at)
               state["token"] = token
@@ -851,7 +868,7 @@ services:
           # propagates so the startup retry window is used rather than skipped.
           served = []
           try:
-              served = gateway_models(base, state["token"])
+              served = gateway_models(base, state["token"], public)
           except HttpError as err:
               if err.code not in (400, 404, 405):
                   raise
@@ -865,7 +882,7 @@ services:
                       "workflow it can discover, or set Model explicitly")
               model = pick_model(served, state["model"])
 
-          if write_config(base, model) or moved:
+          if write_config(base, model, public) or moved:
               print("ATTACHED", base, model, flush=True)
           state["base"] = base
           state["model"] = model

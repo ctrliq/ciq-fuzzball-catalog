@@ -105,9 +105,12 @@ annotations:
 ```
 
 `ciq.com/model` is the name callers ask for, and it must match the name the server serves
-under (for vLLM, `--served-model-name`). The endpoint must not be `public`: the gateway
-authenticates to models with minted endpoint tokens, and tokens cannot be minted for
-public endpoints. Set `per-replica: true` (which requires `type: subdomain` and an
+under (for vLLM, `--served-model-name`). The gateway authenticates to models with minted
+endpoint tokens. A `public` endpoint takes none and the server refuses to mint one, so it
+is registered with a placeholder key instead and must not demand a key of its own. Nor
+does a request through the gateway wake a public pool idling at zero: Fuzzball lets no
+unauthenticated request start replicas, so keep such a pool's minimum above zero. Set
+`per-replica: true` (which requires `type: subdomain` and an
 autoscaler on the service) to let the gateway balance across replicas itself, and an
 `autoscaler.scale-down.drain-period` comfortably above the gateway's refresh interval
 (`RefreshInterval`, default 25s) so a retiring replica leaves the rotation before it

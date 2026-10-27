@@ -34,10 +34,11 @@ values:
 
   - name: EndpointAuth
     display_name: >-
-      How to authenticate to the gateway. 'fuzzball-token' suits a Fuzzball endpoint whose
-      scope is not public: the agent mints endpoint access tokens with its own injected
-      identity and re-mints them before they expire, and any ApiKey rides the
-      x-litellm-api-key header, which the Fuzzball endpoint proxy leaves alone. 'api-key'
+      How to authenticate to the gateway. 'fuzzball-token' suits a Fuzzball endpoint: the
+      agent mints endpoint access tokens with its own injected identity and re-mints them
+      before they expire, and any ApiKey rides the x-litellm-api-key header, which the
+      Fuzzball endpoint proxy leaves alone. A public endpoint takes no token, so there
+      ApiKey is sent as the bearer token instead. 'api-key'
       suits a public Fuzzball endpoint or a third-party API, where ApiKey is sent as the
       bearer token and nothing is minted.
     string_value: fuzzball-token
@@ -47,7 +48,8 @@ values:
   - name: ApiKeySecret
     display_name: >-
       Fuzzball secret (secret://user/<name>) holding the gateway's LiteLLM key. Needed only
-      with EndpointAuth=api-key, or on a cluster that does not sign caller identity;
+      with EndpointAuth=api-key, for a public gateway, or on a cluster that does not sign
+      caller identity;
       otherwise the endpoint identifies this workflow to the gateway and no key is involved.
       Mint a virtual key from the gateway rather than handing this workflow the master key.
       Injected at runtime and never stored in the rendered definition. Preferred over ApiKey.
@@ -57,8 +59,8 @@ values:
   - name: ApiKey
     display_name: >-
       Gateway LiteLLM key in plain text, stored in the rendered definition (prefer
-      ApiKeySecret). Needed only with EndpointAuth=api-key, or on a cluster that does not
-      sign caller identity.
+      ApiKeySecret). Needed only with EndpointAuth=api-key, for a public gateway, or on a
+      cluster that does not sign caller identity.
     string_value: ""
     display_category: Model
   - name: TokenLifetime

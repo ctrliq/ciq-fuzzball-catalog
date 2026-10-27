@@ -36,7 +36,11 @@ values:
     bool_value: true
     display_category: Access
   - name: Scope
-    display_name: "Authorization scope of the service endpoint: user, group, organization, or public."
+    display_name: >-
+      Authorization scope of the service endpoint: user, group, organization, or
+      public. A public pool is open to anyone with its URL and is still discovered
+      across the organization; at Proxy=true its callers, discovering agents
+      included, need the proxy's key (ApiKeySecret).
     string_value: user
     options_input:
       options: ["user", "group", "organization", "public"]
