@@ -59,10 +59,8 @@ so a second gateway does not mistake this one for a model server.
 
 ### Where a key is still needed
 
-Two cases. A `public` endpoint authenticates nothing and forwards no identity, so the
-key is the only barrier and travels as a standard `Authorization: Bearer`. And on a
-cluster whose nodes do not sign caller identity, the gateway falls back to its own key
-check; the call then carries two credentials, a Fuzzball token in `Authorization` and a
+On a cluster whose nodes do not sign caller identity, the gateway falls back to its own
+key check; the call then carries two credentials, a Fuzzball token in `Authorization` and a
 LiteLLM key in `x-litellm-api-key`, which the endpoint proxy leaves untouched. A key sent
 that way decides the request; the signed identity is used only when no key is sent, so a
 management call such as `/key/generate` is authenticated by the key it carries.
