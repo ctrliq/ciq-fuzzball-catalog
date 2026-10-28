@@ -87,7 +87,7 @@ values:
       gateway endpoint depends on. Moving to a different LiteLLM release requires a fresh
       database.
     string_value: "docker://ghcr.io/berriai/litellm-database:v1.97.0"
-    display_category: "Container Versions"
+    display_category: "Versions"
 
   - name: "DatabaseImage"
     display_name: >-
@@ -95,12 +95,12 @@ values:
       postgres image or a mirror of it: the database service relies on its
       docker-entrypoint.sh and POSTGRES_* initialization.
     string_value: "docker://postgres:16.15"
-    display_category: "Container Versions"
+    display_category: "Versions"
 
   - name: "CurlImage"
     display_name: "Image used by the short-lived job that prints how to reach the gateway."
     string_value: "docker://curlimages/curl:8.17.0"
-    display_category: "Container Versions"
+    display_category: "Versions"
 
   - name: "ImageSecret"
     display_name: >-
@@ -110,4 +110,4 @@ values:
       the secret's trusted domains. Leave empty for registries that allow anonymous pulls.
     secret_value:
       reference: ""
-    display_category: "Container Versions"
+    display_category: "Versions"

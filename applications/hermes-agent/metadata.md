@@ -1,7 +1,7 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 ---
 id: "ciq/ml_and_ai/hermes-agent"
-name: "hermes-agent"
+name: "Hermes"
 category: "ML_AND_AI"
 tags:
 - agent
@@ -19,10 +19,10 @@ provider into the agent's configuration. Nothing has to be copied between
 workflows.
 
 ```
-fuzzball workflow catalog start hermes-agent
-fuzzball workflow catalog start hermes-agent --values Volume=my-hermes
-fuzzball workflow catalog start hermes-agent --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b
-fuzzball workflow catalog start hermes-agent --values DashboardPasswordSecret=secret://user/hermes-dashboard-password,DashboardSessionSecret=secret://user/hermes-dashboard-session
+fuzzball workflow catalog start Hermes
+fuzzball workflow catalog start Hermes --values Volume=my-hermes
+fuzzball workflow catalog start Hermes --values Endpoint=https://<endpoint-url>,Model=openai/gpt-oss-20b
+fuzzball workflow catalog start Hermes --values DashboardPasswordSecret=secret://user/hermes-dashboard-password,DashboardSessionSecret=secret://user/hermes-dashboard-session
 ```
 
 You supply nothing for the model. The agent reaches the gateway as you: the
@@ -229,7 +229,7 @@ left empty keeps the generated behaviour. The username is not a secret, so
 printf '%s' 'a password you choose' | fuzzball secret create secret://user/hermes-dashboard-password --type value
 openssl rand -hex 32 | fuzzball secret create secret://user/hermes-dashboard-session --type value
 openssl rand -hex 32 | fuzzball secret create secret://user/hermes-api-key --type value
-fuzzball workflow catalog start hermes-agent --values \
+fuzzball workflow catalog start Hermes --values \
   ApiKeySecret=secret://user/litellm-key,DashboardPasswordSecret=secret://user/hermes-dashboard-password,DashboardSessionSecret=secret://user/hermes-dashboard-session,ApiServerKeySecret=secret://user/hermes-api-key
 ```
 

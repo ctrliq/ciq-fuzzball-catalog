@@ -107,7 +107,7 @@ values:
   - name: IngressTimeout
     display_name: Timeout for the model download at workflow start.
     string_value: 2h
-    display_category: Storage
+    display_category: Model
 
   - name: MaxContextSize
     display_name: Maximum context size. This will impact GPU memory usage.
