@@ -61,6 +61,10 @@
 {{- if not (has $scope (list "user" "group" "organization" "public")) }}
   {{- fail "Scope must be one of: user, group, organization, public" }}
 {{- end }}
+{{- /* Agents and gateways reach a model with a Fuzzball credential, which a
+       public endpoint does not take. A public pool therefore adds an
+       organization-scope endpoint, openai-internal, on the same port, and the
+       discovery annotations go on it: they follow the last endpoint listed. */}}
 
 {{- $volume := trim .Volume }}
 {{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
@@ -405,6 +409,14 @@ services:
           type: subdomain
           scope: {{ $scope }}
           per-replica: true
+          {{- if eq $scope "public" }}
+        - name: openai-internal
+          port-name: openai-api
+          protocol: http
+          type: subdomain
+          scope: organization
+          per-replica: true
+          {{- end }}
           # Discovery contract shared with the litellm gateway entry: it
           # registers endpoints carrying these two annotations.
           annotations:
@@ -473,14 +485,16 @@ services:
           protocol: http
           type: subdomain
           scope: {{ $scope }}
-          {{- if ne $scope "public" }}
+          {{- if eq $scope "public" }}
+        - name: openai-internal
+          port-name: openai-api
+          protocol: http
+          type: subdomain
+          scope: organization
+          {{- end }}
           # One base URL over every replica, which is what an agent attaches to.
-          # Not at public scope: the listing surfaces a public endpoint to the
-          # whole organization, and an agent that discovered it would then fail
-          # minting a token no public endpoint needs.
           annotations:
             ciq.com/api: openai-gateway
-          {{- end }}
     dynamic-config:
       path: /etc/litellm/config.yaml
       services: [vllm]
@@ -611,10 +625,12 @@ services:
           # instead of the caller's identity, which is what virtual keys need.
           if (api_key or "").strip() or (request.headers.get(KEY_HEADER) or "").strip():
               raise Exception("api key supplied; LiteLLM's key check decides")
-          # The endpoint the assertion must be bound to. FB_ENDPOINT_ID names the
-          # first endpoint in definition order, which is not necessarily this one.
-          endpoint_id = os.environ.get("FB_ENDPOINT_ID_OPENAI", "")
-          audiences = [f"endpoint:{endpoint_id}"] if endpoint_id else []
+          # The assertion must be bound to one of this service's endpoints:
+          # openai, or openai-internal beside a public openai, which forwards no
+          # identity. FB_ENDPOINT_ID names only the first in definition order.
+          audiences = [f"endpoint:{os.environ[name]}"
+                       for name in ("FB_ENDPOINT_ID_OPENAI", "FB_ENDPOINT_ID_OPENAI_INTERNAL")
+                       if os.environ.get(name)]
           try:
               claims = authenticate(request.headers.get(HEADER), audiences)
           except Exception as err:
