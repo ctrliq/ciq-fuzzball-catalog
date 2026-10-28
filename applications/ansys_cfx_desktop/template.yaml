@@ -1,38 +1,98 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $ver := .AnsysVersion }}
 {{- $ansys_version_number := printf "v%s%s" (substr 2 4 $ver) (substr 5 6 $ver) }}
+{{- $ansys_root := printf "%s/%s" .AnsysInstallDir $ansys_version_number }}
 {{- $datamount := "/data" }}
+{{- /* noVNC web port this image's start-vncserver.sh serves on. Fixed for this image. */}}
+{{- $novnc_port := 6080 }}
+
 version: v4
 
 volumes:
   data:
     reference: {{.Volume}}
 
-defaults:
-  job:
-    mounts:
-      {{ $datamount }}: data
-
-jobs:
+services:
   xfce4:
+    persist: true
     image:
       uri: {{.AnsysCfxDesktopContainerURI}}
       secret: {{.AnsysCfxDesktopContainerOciSecret}}
+    network:
+      ports:
+        - name: novnc
+          protocol: tcp
+          port: {{ $novnc_port }}
+      endpoints:
+        - name: vnc
+          port-name: novnc
+          protocol: http
+          type: subdomain
+          scope: {{.EndpointScope}}
+    readiness-probe:
+      http-get:
+        path: /
+        port: {{ $novnc_port }}
+        scheme: HTTP
+      initial-delay-seconds: 15
     env:
-      - HOME=/tmp/home
       - ANSYSLMD_LICENSE_FILE={{.AnsyslmdLicenseFile}}
+      # ANSYS prepends its own bundled libstdc++/libgcc_s, which are older than
+      # the ones Mesa's swrast_dri.so was built against, so GLX initialization
+      # fails and cfx5 dumps core. Forcing the system copies in first satisfies
+      # both: ANSYS tolerates the newer libstdc++, Mesa can't use the older one.
+      - LD_PRELOAD=/usr/lib64/libstdc++.so.6:/usr/lib64/libgcc_s.so.1
+    mounts:
+      {{ $datamount }}: data
+    files:
+      /usr/share/applications/CFX5.desktop: |
+        [Desktop Entry]
+        Version=1.0
+        Type=Application
+        Name=ANSYS CFX
+        Comment=ANSYS CFX Launcher
+        Exec={{$ansys_root}}/CFX/bin/cfx5
+        Icon={{$ansys_root}}/commonfiles/CFX/etc/icons/CFX.ico
+        Terminal=false
+        Categories=Science;
     script: |
       #!/bin/sh
-      export PATH={{.AnsysInstallDir}}/{{$ansys_version_number}}/Framework/bin/Linux64:$PATH
+      set -e
+      umask 077
+      d="$(mktemp -d)"
+      t="$(mktemp -d)"
+      export TMPDIR="$t"
+      export HOME="$d"
+      mkdir -p "${HOME}/.vnc" "${HOME}/Desktop"
 
-      echo
-      echo "Accessing the virtual desktop requires port-forwarding via the CLI:"
-      echo
-      echo "# fuzzball workflow port-forward ${FB_WORKFLOW_ID} xfce4 6080:6080"
-      echo
-      echo Then navigate to http://localhost:6080
-      echo
-      /usr/local/bin/start-vncserver.sh
+      export USER=$(whoami)
+
+      cd "${HOME}/Desktop"
+      ln -s {{$ansys_root}}/CFX/examples
+      cat > CFX.desktop <<'__EOF__'
+      [Desktop Entry]
+      Version=1.0
+      Type=Application
+      Name=ANSYS CFX
+      Comment=ANSYS CFX Launcher
+      Exec={{$ansys_root}}/CFX/bin/cfx5
+      Icon={{$ansys_root}}/commonfiles/CFX/etc/icons/CFX.ico
+      Terminal=false
+      __EOF__
+      f="${HOME}/Desktop/CFX.desktop"
+      chmod +x "$f"
+      sum="$(sha256sum "$f" | cut -d' ' -f1)"
+      dbus-run-session -- gio set -t string "$f" metadata::xfce-exe-checksum "$sum"
+
+
+      export PATH={{$ansys_root}}/CFX/bin:{{$ansys_root}}/Framework/bin/Linux64:$PATH
+      echo "Starting CFX virtual desktop (noVNC on :{{ $novnc_port }})..."
+
+      /bin/bash -x /usr/local/bin/start-vncserver.sh || echo "start-vncserver.sh exited $?"
+      echo "=== X session log ==="
+      cat "${HOME}/.vnc/"*.log 2>/dev/null || echo "(no session log written)"
+
+      rm -rf "$d" "$t"
     resource:
       cpu:
         cores: {{.CfxDesktopCores}}
