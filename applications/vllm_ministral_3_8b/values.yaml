@@ -27,7 +27,11 @@ values:
     bool_value: true
     display_category: Access
   - name: Scope
-    display_name: "Authorization scope of the service endpoint: user, group, organization, or public."
+    display_name: >-
+      Authorization scope of the service endpoint: user, group, organization, or
+      public. Public adds an organization-scope endpoint that agents and gateways
+      discover and use without a key; outside callers use the public URL, with the
+      proxy's key at Proxy=true.
     string_value: user
     options_input:
       options: ["user", "group", "organization", "public"]
