@@ -7,7 +7,7 @@ values:
       the endpoint actually embeds before serving (a bad credential or wrong dimension
       fails fast; a still-warming pool is retried for up to ~15 min).
     string_value: ""
-    display_category: Models
+    display_category: Model
   - name: EmbeddingModel
     display_name: >-
       Embedding model name, exactly as the endpoint serves it. Required, with no working
@@ -15,7 +15,7 @@ values:
       lists. The corpus is permanently bound to this model: changing it against an existing
       corpus fails at startup (rebuild with 'haiku-rag rebuild --set-embedder' to migrate).
     string_value: ""
-    display_category: Models
+    display_category: Model
   - name: EmbeddingDim
     display_name: >-
       Vector dimension of the embedding model. Must match the model exactly (the
@@ -23,13 +23,13 @@ values:
       fails fast, naming the correct value, if the endpoint's vectors are a
       different length.
     uint_value: 768
-    display_category: Models
+    display_category: Model
   - name: GenerationModel
     display_name: >-
       Generation model name for the ask_question tool. Optional; when empty,
       ask_question is not usable and retrieval tools are unaffected.
     string_value: ""
-    display_category: Models
+    display_category: Model
   - name: EndpointTokenSecret
     display_name: >-
       Fuzzball secret (secret://user/<name>) holding the model endpoint's API key,
@@ -40,7 +40,7 @@ values:
       their own endpoint access token at startup).
     secret_value:
       reference: ""
-    display_category: Models
+    display_category: Model
   - name: EndpointToken
     display_name: >-
       Model endpoint API key in plain text, stored in the rendered definition (prefer
@@ -49,7 +49,7 @@ values:
       no key is sent. Needed only for a 'public' endpoint, an external API, or a cluster
       that does not sign caller identity.
     string_value: ""
-    display_category: Models
+    display_category: Model
   - name: TokenLifetime
     display_name: >-
       Seconds each minted endpoint access token is requested for, when neither
@@ -58,7 +58,7 @@ values:
       re-mints at half the granted lifetime, so this does not put a ceiling on how long the
       services keep working.
     uint_value: 14400
-    display_category: Models
+    display_category: Model
 
   - name: ReadOnly
     display_name: >-
