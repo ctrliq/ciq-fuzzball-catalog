@@ -94,7 +94,8 @@ itself carries the endpoint: the pool URL stays stable for the life of the
 workflow and each request is forwarded to a ready replica. The endpoint also
 publishes one address per replica (`per-replica`), so an external gateway can
 discover and balance across the replicas directly. The endpoints carry the
-`ciq.com/api: openai` and `ciq.com/model` annotations, so the LiteLLM Model
+`ciq.com/api: openai` and `ciq.com/model` annotations (at `Scope=public`, only
+`openai-internal` does; see below), so the LiteLLM Model
 Gateway catalog entry (`litellm`) picks the pool up automatically. An authenticated request to the pool endpoint while the pool
 idles at zero starts the first replica and returns `503` with a `Retry-After`
 header.
@@ -127,18 +128,21 @@ running at once, name the endpoint on the agent. Narrowing `Scope` does not
 help: `user` is already the narrowest, and two pools you started yourself
 collide inside it.
 
-A `public` pool is discovered like an `organization` one: the listing shows a
-public endpoint to every member of the organization. Gateways and agents send it
-no Fuzzball token, since a public endpoint needs none and the server refuses to
-mint one. At `Proxy=false` a gateway registers it as it is. At `Proxy=true` the
-endpoint forwards no caller identity, so the proxy admits only callers holding
-its key: an agent that discovers a public pool needs that key, paired as below.
+A `public` pool has two endpoints on the same port. `openai` is the public one,
+for callers outside Fuzzball: it carries no annotation, so nothing discovers it,
+and at `Proxy=true` its callers need the proxy's key. `openai-internal` is at
+`organization` scope and carries the annotations instead, so agents and gateways
+in the organization find the pool through it and use it as they would an
+`organization` pool, on their own Fuzzball identity and with no key. At
+`Proxy=false` only a request through `openai-internal` wakes a pool idling at
+zero: requests to the public URL are unauthenticated, and Fuzzball starts no
+replica for those.
 
 Discovery finds the URL, and on a cluster that signs caller identity that is all
 an agent needs: the proxy admits it on the identity the endpoint forwards, so
-nothing has to be paired between the two workflows. Where a key does apply -- a
-`public` endpoint, or a cluster without caller identity -- the clean way to pair
-the two is one Fuzzball secret named on both sides: set this entry's
+nothing has to be paired between the two workflows. Where a key does apply -- an
+agent given a `public` URL, or a cluster without caller identity -- the clean way
+to pair the two is one Fuzzball secret named on both sides: set this entry's
 `ApiKeySecret` to it, and set the agent's own `ApiKeySecret` (`opencode` and
 `hermes-agent` each have a value by that name) to the same reference. Neither
 workflow definition then carries the key.
@@ -223,14 +227,12 @@ Before choosing `Nodes` above 1:
 - `Proxy`: whether to front the pool with an in-workflow LiteLLM proxy.
 - `Scope`: authorization scope of the service endpoint (`user`, `group`,
   `organization`, `public`), defaulting to `user`. It also bounds who discovers
-  the pool; a `public` pool is discovered across the organization, and at
-  `Proxy=true` its callers need the proxy's key. Note that a `public` pool
-  endpoint is served without authentication and therefore never wakes a pool
-  idling at zero.
+  the pool. `public` adds an `organization`-scope endpoint, `openai-internal`,
+  which is the one agents and gateways discover; see "Being discovered".
 - `MinReplicas` / `MaxReplicas`: replica pool bounds. `MinReplicas=0`
   enables scale-to-zero.
 - `ApiKeySecret`: a Fuzzball secret holding the key the LiteLLM proxy enforces,
-  as `secret://user/<name>`. Needed only on a `public` endpoint, or on a cluster
+  as `secret://user/<name>`. Needed only on a `public` URL, or on a cluster
   that does not sign caller identity; otherwise the endpoint identifies the
   caller and the proxy asks for no key. The definition carries the reference, not
   the key, and Fuzzball resolves it at run time. Preferred over `ApiKey`. Unused

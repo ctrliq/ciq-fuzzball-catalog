@@ -179,13 +179,6 @@ jobs:
           fail("endpoint listing did not terminate after 100 pages")
 
 
-      def mint_id(row):
-          # A public endpoint takes no token and the server refuses to mint one,
-          # so it is written without an id: the renewer passes over it and the
-          # server sends the API key, which the proxy leaves in place, instead.
-          return "" if row.get("scope") == "public" else row["id"]
-
-
       def resolve():
           # Every visible gateway, not one: several models running at once is the
           # normal case, and each becomes a provider the client can switch between.
@@ -205,7 +198,7 @@ jobs:
                   if (row.get("url") or "").rstrip("/") == FIXED:
                       if not row.get("id"):
                           fail("the endpoint at " + FIXED + " has no id to mint against")
-                      return [(FIXED, mint_id(row))]
+                      return [(FIXED, row["id"])]
               fail(FIXED + " is not an endpoint this workflow can reach; set "
                    "EndpointAuth=api-key to treat it as an external API")
           found = [row for row in rows
@@ -220,8 +213,7 @@ jobs:
               if NEED_ID and not row.get("id"):
                   fail("the endpoint at " + (row.get("url") or "?") +
                        " has no id to mint against")
-              endpoint_id = mint_id(row) if NEED_ID else row.get("id") or ""
-              resolved.append(((row.get("url") or "").rstrip("/"), endpoint_id))
+              resolved.append(((row.get("url") or "").rstrip("/"), row.get("id") or ""))
           # Sorted so the provider order a client sees does not depend on the
           # order the API happened to return.
           return sorted(set(resolved))
@@ -295,17 +287,12 @@ jobs:
       echo "later needs a restart of this workflow. What the first discovered"
       echo "endpoint serves right now:"
       {{- if $mint }}
-      if [ -n "${first_id}" ]; then
-        echo "   fuzzball workflow endpoints generate-token ${first_id}"
-        echo "   curl -H \"Authorization: Bearer <that token>\" \\"
-        {{- if or $api_key_secret $api_key }}
-        echo "        -H \"x-litellm-api-key: <your model API key>\" \\"
-        {{- end }}
-        echo "        ${first_url}/v1/models"
-      else
-        # A public endpoint, written without an id: it takes the key directly.
-        echo "   curl -H \"Authorization: Bearer <your model API key>\" ${first_url}/v1/models"
-      fi
+      echo "   fuzzball workflow endpoints generate-token ${first_id}"
+      echo "   curl -H \"Authorization: Bearer <that token>\" \\"
+      {{- if or $api_key_secret $api_key }}
+      echo "        -H \"x-litellm-api-key: <your model API key>\" \\"
+      {{- end }}
+      echo "        ${first_url}/v1/models"
       {{- else }}
       echo "   curl -H \"Authorization: Bearer <your model API key>\" ${first_url}/v1/models"
       {{- end }}
@@ -543,10 +530,9 @@ services:
                       expires_at = mint(state, endpoint_id)
                   except HttpError as err:
                       if err.code in (400, 412):
-                          # Refused for good: the endpoint's workflow has ended,
-                          # or it went public after discovery (public endpoints
-                          # are never minted for). Asking again every pass
-                          # changes nothing either way.
+                          # Refused for good: the endpoint is public and takes no
+                          # token, or its workflow has ended. Asking again every
+                          # pass changes nothing either way.
                           refused.add(endpoint_id)
                           print("MINT-REFUSED", endpoint_id, repr(err), flush=True)
                           continue
@@ -689,25 +675,22 @@ services:
         {{- if $mint }}
 
         if [ -z "${endpoint_id}" ]; then
-          # Discovery writes a public endpoint without an id: it takes no token,
-          # and the proxy leaves the Authorization header to carry the API key.
-          token_file="-"
-          credential="${MODEL_API_KEY:-unused}"
-        else
-          case "${endpoint_id}" in
-            .*|*[!A-Za-z0-9._-]*)
-              echo "WARNING: ${endpoint_url} has an endpoint id with unexpected characters; skipping it" >&2
-              continue
-              ;;
-          esac
-          # Read here only to probe the endpoint; requests read the file afresh
-          # through the plugin, so the renewer's rotations reach them.
-          token_file="{{ $token_dir }}/${endpoint_id}.json"
-          credential=$(tr -d ' \n' 2> /dev/null < "${token_file}" | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || true)
-          if [ -z "${credential}" ]; then
-            echo "WARNING: no access token was minted for ${endpoint_id}; skipping it (the token-renewer log says why)" >&2
+          echo "WARNING: ${endpoint_url} has no endpoint id to mint against; skipping it" >&2
+          continue
+        fi
+        case "${endpoint_id}" in
+          .*|*[!A-Za-z0-9._-]*)
+            echo "WARNING: ${endpoint_url} has an endpoint id with unexpected characters; skipping it" >&2
             continue
-          fi
+            ;;
+        esac
+        # Read here only to probe the endpoint; requests read the file afresh
+        # through the plugin, so the renewer's rotations reach them.
+        token_file="{{ $token_dir }}/${endpoint_id}.json"
+        credential=$(tr -d ' \n' 2> /dev/null < "${token_file}" | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || true)
+        if [ -z "${credential}" ]; then
+          echo "WARNING: no access token was minted for ${endpoint_id}; skipping it (the token-renewer log says why)" >&2
+          continue
         fi
         {{- else }}
 
@@ -742,9 +725,6 @@ services:
           fi
         elif grep -q "40[13]" /tmp/probe.err; then
           echo "WARNING: ${endpoint_url} rejected these credentials; skipping it" >&2
-          if [ "${token_file}" = "-" ] && [ -z "${MODEL_API_KEY}" ]; then
-            echo "It is public, so it forwards no caller identity; set ApiKeySecret or ApiKey to the key it enforces" >&2
-          fi
           cat /tmp/probe.err >&2
           continue
         else
@@ -840,12 +820,9 @@ services:
       {{- if $mint }}
         # The plugin replaces this on every request with the current token. A
         # placeholder rather than the startup token, so a plugin that failed to
-        # load fails the first prompt instead of a few hours in. A public
-        # endpoint has no token file and keeps the API key.
-        if [ "${token_file}" != "-" ]; then
-          credential="replaced-per-request"
-          token_map="${token_map}${token_map:+, }\"${provider}\": \"${token_file}\""
-        fi
+        # load fails the first prompt instead of a few hours in.
+        credential="replaced-per-request"
+        token_map="${token_map}${token_map:+, }\"${provider}\": \"${token_file}\""
       {{- end }}
         entry="\"${provider}\": { \"npm\": \"@ai-sdk/openai-compatible\", \"name\": \"Fuzzball (${url})\", \"options\": { \"baseURL\": \"${url}/v1\", \"apiKey\": \"${credential}\"${headers} }, \"models\": { ${models_json} } }"
         providers_json="${providers_json}${providers_json:+, }${entry}"

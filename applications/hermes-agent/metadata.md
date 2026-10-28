@@ -29,13 +29,11 @@ You supply nothing for the model. The agent reaches the gateway as you: the
 endpoint signs the caller's Fuzzball identity and the gateway accepts it, so
 access is the endpoint's scope.
 
-A gateway key applies in three cases only -- with `EndpointAuth=api-key`, where it
-is the bearer token and nothing is minted; on a `public` gateway, which forwards
-no identity, so the key is the bearer token there too; and on a cluster whose
-nodes do not sign caller identity, where the gateway falls back to its own key
-check. A `vllm` pool keeps no key store, so it takes the pool's own key
-(`ApiKeySecret` on both sides). For a `litellm` gateway, mint a virtual key from
-the gateway rather than handing this workflow the master key:
+A gateway key applies in two cases only -- with `EndpointAuth=api-key`, where it
+is the bearer token and nothing is minted, and on a cluster whose nodes do not
+sign caller identity, where the gateway falls back to its own key check. For
+those, mint a virtual key from the gateway rather than handing this workflow the
+master key:
 
 ```sh
 curl -X POST \
@@ -57,11 +55,6 @@ one credential is the whole request. Where a key applies, it travels in
 `x-litellm-api-key`, which the proxy leaves untouched, and the agent takes it
 from `ApiKeySecret`. A key sent that way decides the request; the signed identity
 is used only when no key is sent.
-
-A `public` gateway is attached to as well, but it takes no Fuzzball credential and
-the server refuses to mint one, so nothing is minted and the key travels in
-`Authorization` instead. It also forwards no identity, so the key is required:
-set `ApiKeySecret` to the key the gateway enforces.
 
 With `Endpoint` left empty -- the default -- the gateway is discovered rather
 than configured. The agent lists `/v4/endpoints` with its own injected identity
@@ -338,12 +331,10 @@ Switch between the cluster and anything else you have configured with
 
 ## Things to know before you start it
 
-- **A discovered `vllm` pool needs no key, unless it is public.** With
-  `Proxy=true`, which is its default, `vllm` annotates its in-workflow LiteLLM
-  proxy endpoint `ciq.com/api: openai-gateway`, so this entry discovers it with
-  no `Endpoint` set, and that proxy admits the agent on the identity the
-  endpoint signs. A `public` pool signs no identity, so set `ApiKeySecret` to the
-  pool's own key.
+- **A discovered `vllm` pool needs no key.** With `Proxy=true`, which is its
+  default, `vllm` annotates its in-workflow LiteLLM proxy endpoint
+  `ciq.com/api: openai-gateway`, so this entry discovers it with no `Endpoint`
+  set, and that proxy admits the agent on the identity the endpoint signs.
   Starting `vllm` with `Proxy=false` instead publishes annotated per-replica
   endpoints for a `litellm` gateway to front.
 - **Two visible gateways stop the agent.** A `vllm` pool at `Proxy=true` is a
