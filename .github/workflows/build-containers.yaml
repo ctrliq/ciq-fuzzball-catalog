@@ -23,6 +23,16 @@
 #   Image tag: <version>-pr<N>-<arch>
 #   Example:   ghcr.io/org/repo/<app>-<recipe>:1.0-pr42-amd64
 #
+#   This trigger has no paths filter: every PR runs the workflow so the
+#   "Containers ready" gate always reports. A PR with no changed .def files
+#   produces an empty matrix, skips the builds, and passes the gate.
+#
+# merge_group:
+#   Runs only the "Containers ready" gate, which passes without rebuilding.
+#   The gate is a required check, so a PR cannot enter the merge queue until
+#   its builds have pushed the PR-scoped images from its head commit; the
+#   queue requires the same check on the merge group, hence this trigger.
+#
 # push (to main, via merged PR only — direct pushes are branch-protected):
 #   Retags the PR image built during the PR to the canonical release tag.
 #   No rebuild occurs; the exact image that was tested is promoted.
@@ -50,8 +60,9 @@ name: Build Apptainer Containers
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'applications/*/definition_files/*.def'
+  merge_group:
+    types: [checks_requested]
+    branches: [main]
   push:
     # main is protected from direct pushes
     branches: [main]
@@ -74,6 +85,7 @@ env:
 jobs:
   discover:
     name: Discover definition files
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -106,7 +118,8 @@ jobs:
               action="build"
               pr_number="${PR_NUMBER_INPUT}"
               MERGE_BASE=$(git merge-base HEAD "${BASE_SHA}")
-              mapfile -t files < <(git diff --name-only "${MERGE_BASE}" HEAD \
+              # --diff-filter=d: a deleted .def has nothing to build or promote
+              mapfile -t files < <(git diff --name-only --diff-filter=d "${MERGE_BASE}" HEAD \
                 -- ":(glob)applications/*/definition_files/*.def" 2>/dev/null || true)
               ;;
 
@@ -117,7 +130,7 @@ jobs:
               # query recently closed PRs and match by merge_commit_sha.
               pr_number=$(gh api "repos/${GH_REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=20" \
                 | jq -r --arg sha "${GH_SHA}" 'map(select(.merge_commit_sha == $sha)) | .[0].number // empty')
-              mapfile -t files < <(git diff --name-only "${BEFORE_SHA}" HEAD \
+              mapfile -t files < <(git diff --name-only --diff-filter=d "${BEFORE_SHA}" HEAD \
                 -- ":(glob)applications/*/definition_files/*.def" 2>/dev/null || true)
               ;;
 
@@ -374,3 +387,29 @@ jobs:
 
           echo "Retagging ${IMAGE_PATH}:${SOURCE_TAG} → ${DEST_TAG}"
           oras tag "${IMAGE_PATH}:${SOURCE_TAG}" "${DEST_TAG}"
+
+  # Stable required check for the merge queue ruleset. The build job names
+  # vary with the matrix, so they cannot be required directly.
+  containers-ready:
+    name: Containers ready
+    needs: [discover, build]
+    # always(), not !cancelled(): a skipped job counts as passing for a required
+    # check, so a cancelled run must still run the gate and fail it.
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Check discover and build results
+        env:
+          DISCOVER_RESULT: ${{ needs.discover.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          echo "discover: ${DISCOVER_RESULT}"
+          echo "build:    ${BUILD_RESULT}"
+          # skipped is expected: no changed .def files, or a merge_group run
+          for result in "${DISCOVER_RESULT}" "${BUILD_RESULT}"; do
+            if [[ "${result}" != "success" && "${result}" != "skipped" ]]; then
+              echo "::error::Container builds did not complete successfully (discover=${DISCOVER_RESULT}, build=${BUILD_RESULT})"
+              exit 1
+            fi
+          done
