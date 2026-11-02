@@ -118,7 +118,8 @@ jobs:
               action="build"
               pr_number="${PR_NUMBER_INPUT}"
               MERGE_BASE=$(git merge-base HEAD "${BASE_SHA}")
-              mapfile -t files < <(git diff --name-only "${MERGE_BASE}" HEAD \
+              # --diff-filter=d: a deleted .def has nothing to build or promote
+              mapfile -t files < <(git diff --name-only --diff-filter=d "${MERGE_BASE}" HEAD \
                 -- ":(glob)applications/*/definition_files/*.def" 2>/dev/null || true)
               ;;
 
@@ -129,7 +130,7 @@ jobs:
               # query recently closed PRs and match by merge_commit_sha.
               pr_number=$(gh api "repos/${GH_REPO}/pulls?state=closed&sort=updated&direction=desc&per_page=20" \
                 | jq -r --arg sha "${GH_SHA}" 'map(select(.merge_commit_sha == $sha)) | .[0].number // empty')
-              mapfile -t files < <(git diff --name-only "${BEFORE_SHA}" HEAD \
+              mapfile -t files < <(git diff --name-only --diff-filter=d "${BEFORE_SHA}" HEAD \
                 -- ":(glob)applications/*/definition_files/*.def" 2>/dev/null || true)
               ;;
 
