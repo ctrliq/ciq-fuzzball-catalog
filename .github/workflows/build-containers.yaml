@@ -247,10 +247,12 @@ jobs:
   build:
     # arm64 builds run on the GitHub-hosted `ubuntu-24.04-arm` runner, which is
     # available to public repositories. A self-hosted runner needs that label.
+    # amd64 is pinned to ubuntu-24.04 rather than ubuntu-latest: the Apptainer
+    # 1.4.5 .deb depends on libfuse3-3, which ubuntu-26.04 does not provide.
     name: Build ${{ matrix.recipe_name }} (${{ matrix.arch }})
     needs: discover
     if: needs.discover.outputs.action == 'build' && needs.discover.outputs.matrix != '{"include":[]}'
-    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
