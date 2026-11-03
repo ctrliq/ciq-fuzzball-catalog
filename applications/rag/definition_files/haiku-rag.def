@@ -1,4 +1,4 @@
-# tag: 0.78.0-1
+# tag: 0.78.0-2
 # arch: amd64 arm64
 #
 # haiku.rag runtime for the rag catalog entry: full haiku.rag (in-process
@@ -61,9 +61,11 @@ s = mcp.read_text()
 if "analysis.enabled" not in s:
     if s.count("    return mcp") != 1:
         sys.exit("mcp.py return anchor not found -- upstream layout changed")
+    # fastmcp 4 dropped FastMCP.remove_tool; tools live on the local provider,
+    # present since fastmcp 3.3.0, the floor haiku.rag requires.
     s = s.replace(
         "    return mcp",
-        '    if not config.analysis.enabled:\n        mcp.remove_tool("analyze")\n\n    return mcp',
+        '    if not config.analysis.enabled:\n        mcp.local_provider.remove_tool("analyze")\n\n    return mcp',
         1,
     )
     mcp.write_text(s)
@@ -72,6 +74,32 @@ print("analyze gate applied")
 __EOF__
 python /tmp/analyze-gate.py
 rm /tmp/analyze-gate.py
+
+# Build the MCP server both ways before the slow model bake: the gate patch
+# only runs when the server is created, so checking the config field alone let
+# a broken patch ship. The server does not open its database until it starts.
+python - <<'__EOF__'
+import asyncio
+import tempfile
+from pathlib import Path
+
+from haiku.rag.config import AppConfig
+from haiku.rag.mcp import create_mcp_server
+
+
+async def tool_names(enabled):
+    config = AppConfig.model_validate({"analysis": {"enabled": enabled}})
+    with tempfile.TemporaryDirectory() as tmp:
+        mcp = create_mcp_server(Path(tmp) / "verify.lancedb", config=config)
+        return {t.name for t in await mcp.list_tools(run_middleware=False)}
+
+
+disabled = asyncio.run(tool_names(False))
+assert "analyze" not in disabled, "analyze gate did not remove analyze"
+enabled = asyncio.run(tool_names(True))
+assert "analyze" in enabled, "analyze missing with analysis enabled"
+print("analyze gate verified")
+__EOF__
 
 # Bake parsing models for air-gapped operation. All three env knobs matter:
 # docling ignores XDG/HF paths and caches its model weights (the bulk,
