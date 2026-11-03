@@ -1,7 +1,7 @@
 # Copyright 2026 CIQ, Inc. All rights reserved.
 ---
 id: "ciq/ml_and_ai/rag"
-name: "rag"
+name: "RAG"
 category: "ML_AND_AI"
 tags:
 - RAG
@@ -25,10 +25,10 @@ the model's true vector dimension -- the startup check fails fast, naming the
 correct value, if it does not:
 
 ```
-fuzzball workflow catalog start rag --values Endpoint=https://<vllm-endpoint-url>,EmbeddingModel=Qwen/Qwen3-Embedding-8B,EmbeddingDim=4096
-fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=https://<vllm-endpoint-url>,EmbeddingModel=Qwen/Qwen3-Embedding-8B,EmbeddingDim=4096
-fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=...,EmbeddingModel=...,EmbeddingDim=...,GenerationModel=<chat-model>
-fuzzball workflow catalog start rag --values Volume=corpus,Endpoint=...,EmbeddingModel=...,EmbeddingDim=...,ReadOnly=false
+fuzzball workflow catalog start RAG --values Endpoint=https://<vllm-endpoint-url>,EmbeddingModel=Qwen/Qwen3-Embedding-8B,EmbeddingDim=4096
+fuzzball workflow catalog start RAG --values Volume=corpus,Endpoint=https://<vllm-endpoint-url>,EmbeddingModel=Qwen/Qwen3-Embedding-8B,EmbeddingDim=4096
+fuzzball workflow catalog start RAG --values Volume=corpus,Endpoint=...,EmbeddingModel=...,EmbeddingDim=...,GenerationModel=<chat-model>
+fuzzball workflow catalog start RAG --values Volume=corpus,Endpoint=...,EmbeddingModel=...,EmbeddingDim=...,ReadOnly=false
 ```
 
 A trailing `/v1` or `/` on `Endpoint` is accepted and normalized.
