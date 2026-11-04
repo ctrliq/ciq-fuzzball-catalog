@@ -9,7 +9,7 @@ tags:
 - interactive
 keyart: keyart.jpg
 ---
-Virtual Desktop Interface (VDI) based on the Xfce desktop environment.
+Virtual Desktop Interface (VDI) based on the Xfce desktop environment with GPU-accelerated 3D rendering through VirtualGL.
 
 You can specify a data volume (`DataVolume`) to be mounted for data management. It will be mounted
 at /data. In addition an optional home volume can be specified (`HomeVolume`) to serve as a

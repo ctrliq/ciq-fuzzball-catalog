@@ -1,7 +1,7 @@
 values:
   - name: "Container"
     display_name: Desktop container to use. Has to be compatible with this application
-    string_value: oras://ghcr.io/ctrliq/ciq-fuzzball-catalog/vdi_example-vnc:1.4-1-amd64
+    string_value: oras://docker.io/adere2/vdi-vgl:1.0-test
     display_category: "Container"
   - name: "Cores"
     display_name: "How many CPU cores to allocate."
@@ -13,7 +13,7 @@ values:
     display_category: "Resources"
   - name: "Exclusive"
     display_name: "Disallow other jobs from using the same node/instance."
-    bool_value: false
+    bool_value: true
     display_category: "Scheduling"
   - name: "DataVolume"
     display_name: "Volume with your data directories. Defaults to an ephemeral volume."
