@@ -9,6 +9,11 @@ tags:
 ---
 This application will start an [Rclone](https://rclone.org/) WebDAV or SFTP server that serves data from the mounted Fuzzball volumes and allows you to access, browse, upload, and download files from our Fuzzball persistent storage volumes using any compatible client.
 
+Specify the persistent volumes to serve by name in the `Volumes` field (run
+`fuzzball volume list` to see the volumes available to you), e.g. `home,data`.
+Each volume is served as `/<volume-name>` unless you give a custom path with
+`<volume-name>:<path>`, e.g. `home:/myhome`.
+
 The server runs on the specified port (default 8080).
 
 To access the server, you'll need to use port-forwarding:

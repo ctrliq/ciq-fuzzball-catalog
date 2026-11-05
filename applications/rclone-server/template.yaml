@@ -1,25 +1,42 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $root := "/fuzzball" }}
-{{- $volumes := splitList "," .Volumes }}
+{{- if contains "volume://" .Volumes }}
+  {{- fail "Volumes no longer takes volume:// URIs -- use persistent volume names, e.g. `home` or `home:/custom/path`" }}
+{{- end }}
+{{- $volumes := list }}
+{{- range $raw := splitList "," .Volumes }}
+  {{- $entry := trim $raw }}
+  {{- if ne $entry "" }}
+    {{- $parts := splitList ":" $entry }}
+    {{- if gt (len $parts) 2 }}
+      {{- fail (printf "Invalid volume entry %q -- expected <volume-name>[:<mount-path>]" $entry) }}
+    {{- end }}
+    {{- $name := index $parts 0 | trim }}
+    {{- if not (regexMatch "^[A-Za-z0-9._-]+$" $name) }}
+      {{- fail (printf "Invalid volume name %q in Volumes" $name) }}
+    {{- end }}
+    {{- $path := $name }}
+    {{- if eq (len $parts) 2 }}
+      {{- $path = index $parts 1 | trim | trimAll "/" }}
+    {{- end }}
+    {{- if eq $path "" }}
+      {{- fail (printf "Empty mount path in volume entry %q" $entry) }}
+    {{- end }}
+    {{- $volumes = append $volumes (dict "name" $name "path" (printf "%s/%s" $root $path)) }}
+  {{- end }}
+{{- end }}
 {{- if eq (len $volumes) 0 }}
-  {{-  fail "At least one volume has to be specified in the Volumes field." }}
+  {{- fail "At least one volume has to be specified in the Volumes field." }}
 {{- end }}
 {{- $username := trim .Username }}
 {{- $password := trim .Password }}
 {{- $protocol := trim .Protocol }}
 
-version: v1
+version: v4
 volumes:
 {{- range $i, $v := $volumes }}
   vol-{{ $i }}:
-  {{- $parts := (splitList ":" $v) }}
-  {{- if eq (len $parts) 2 }}
-    reference: {{ $v }}
-  {{- else if eq (len $parts) 3 }}
-    reference: {{ index $parts 0 }}:{{ index $parts 1 }}
-  {{- else }}
-    {{- fail (printf "Invalid volume reference: %s" $v) }}
-  {{- end }}
+    name: "{{ $v.name }}"
 {{- end }}
 jobs:
   {{ $protocol }}:
@@ -27,14 +44,7 @@ jobs:
       uri: {{ .Container }}
     mounts:
 {{- range $i, $v := $volumes }}
-  {{- $parts := splitList ":" $v }}
-  {{- if eq (len $parts) 2 }}
-      vol-{{ $i }}:
-        location: {{ $root }}/{{ trimPrefix "volume://" $v }}
-  {{- else }}
-      vol-{{ $i }}:
-        location: {{ $root }}/{{ index $parts 2 | trimPrefix "/" }}
-  {{- end}}
+      {{ $v.path }}: vol-{{ $i }}
 {{- end }}
 
     cwd: {{ $root }}
