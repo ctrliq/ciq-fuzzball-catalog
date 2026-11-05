@@ -82,7 +82,7 @@ services:
       mkdir -p "${HOME}"
       cd "${HOME}"
 
-      echo "Starting GPU-accelerated desktop and VNC"
+      echo "Starting {{ if gt (.GPUs | int) 0 }}GPU-accelerated {{ end }}desktop and VNC"
 
       exec /usr/local/bin/start-vncserver.sh {{ $port }}
     resource:
@@ -90,6 +90,8 @@ services:
         cores: {{ .Cores }}
       memory:
         size: {{ .Memory }}
+      {{- if gt (.GPUs | int) 0 }}
       devices:
-        nvidia.com/gpu: 1
+        nvidia.com/gpu: {{ .GPUs }}
+      {{- end }}
       exclusive: {{ .Exclusive }}

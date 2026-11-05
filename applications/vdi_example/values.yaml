@@ -11,6 +11,10 @@ values:
     display_name: "How much memory to allocate."
     string_value: "4GiB"
     display_category: "Resources"
+  - name: "GPUs"
+    display_name: "How many GPUs to allocate. Set to 0 for a desktop without GPU-accelerated rendering."
+    uint_value: 1
+    display_category: "Resources"
   - name: "Exclusive"
     display_name: "Disallow other jobs from using the same node/instance."
     bool_value: true
