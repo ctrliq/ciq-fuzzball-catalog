@@ -56,6 +56,11 @@
 {{- if contains ".." $served_name }}
   {{- fail "ServedModelName must not contain '..'" }}
 {{- end }}
+{{- /* vLLM reads it as the argument after --served-model-name, where a
+       leading '-' would be parsed as an option instead. */}}
+{{- if hasPrefix "-" $served_name }}
+  {{- fail "ServedModelName must not start with '-'" }}
+{{- end }}
 
 {{- $gpu := lower (trim .Gpu) }}
 {{- if and (ne $gpu "nvidia") (ne $gpu "amd") }}

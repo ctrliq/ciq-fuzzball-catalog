@@ -226,7 +226,7 @@ Before choosing `Nodes` above 1:
   than with `?exclude=original/**&exclude=metal/**`.
 - `ServedModelName`: the name clients use for the model, and the name it is
   discovered under. Empty (default) uses the repository from `Model`, without
-  its query parameters. Letters, digits, and `. _ / -` only.
+  its query parameters. Letters, digits, and `. _ / -` only, not starting with `-`.
 - `Gpu`: GPU platform, `nvidia` or `amd`.
 - `AmdGpuFamily`: AMD GPU architecture family, used only with `Gpu=amd`:
   `cdna` (default) for MI-series datacenter GPUs, `rdna` for Radeon GPUs. It

@@ -35,7 +35,7 @@ values:
       Name clients use for the model, and the name Fuzzball's agent discovers
       it as. Empty uses the repository from Model (e.g. openai/gpt-oss-20b).
       Set it to default to offer this pool as the model a chat session uses
-      when it names none. Letters, digits, and . _ / - only.
+      when it names none. Letters, digits, and . _ / - only, not starting with -.
     string_value: ""
     display_category: Model
 
