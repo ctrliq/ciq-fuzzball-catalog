@@ -41,6 +41,26 @@
   {{- end }}
   {{- $model_dir = printf "%s@%s" $model_dir (trunc 40 (regexReplaceAll "[^a-z0-9._-]" (lower $revision) "-")) }}
 {{- end }}
+{{- /* The name clients ask for. It defaults to the repository, and can be set
+       to a short name such as "default" so that Fuzzball discovers the
+       endpoint as that model. It is interpolated where the repository name
+       would be, so it gets the same character rules. Entries whose values do
+       not declare it render as before. */}}
+{{- $served_name := trim (default "" .ServedModelName) }}
+{{- if not $served_name }}
+  {{- $served_name = $model_name }}
+{{- end }}
+{{- if not (regexMatch "^[A-Za-z0-9._/-]+$" $served_name) }}
+  {{- fail "ServedModelName may contain only letters, digits, and . _ / -" }}
+{{- end }}
+{{- if contains ".." $served_name }}
+  {{- fail "ServedModelName must not contain '..'" }}
+{{- end }}
+{{- /* vLLM reads it as the argument after --served-model-name, where a
+       leading '-' would be parsed as an option instead. */}}
+{{- if hasPrefix "-" $served_name }}
+  {{- fail "ServedModelName must not start with '-'" }}
+{{- end }}
 
 {{- $gpu := lower (trim .Gpu) }}
 {{- if and (ne $gpu "nvidia") (ne $gpu "amd") }}
@@ -297,7 +317,7 @@ services:
           --max-model-len "$7" \
           --gpu-memory-utilization "$8" \
           $9' \
-          "{{ $model_path }}" "{{ $model_name }}" "{{ $group_gpus }}" "{{ $gpus_per_node }}" \
+          "{{ $model_path }}" "{{ $served_name }}" "{{ $group_gpus }}" "{{ $gpus_per_node }}" \
           "$head_ip" "{{ $dp_rpc_port }}" "{{ .MaxContextSize }}" "{{ .GpuMemoryUtilization }}" \
           "$ep_extra"
 
@@ -316,7 +336,7 @@ services:
           --host 0.0.0.0 \
           --port "$9" \
           ${10}' \
-          "{{ $model_path }}" "{{ $model_name }}" "{{ $group_gpus }}" "{{ $gpus_per_node }}" \
+          "{{ $model_path }}" "{{ $served_name }}" "{{ $group_gpus }}" "{{ $gpus_per_node }}" \
           "$head_ip" "{{ $dp_rpc_port }}" "{{ .MaxContextSize }}" "{{ .GpuMemoryUtilization }}" \
           "{{ $vllm_port }}" "$ep_extra"
       else
@@ -333,7 +353,7 @@ services:
           --max-model-len "$7" \
           --gpu-memory-utilization "$8" \
           $9' \
-          "{{ $model_path }}" "{{ $model_name }}" "{{ $group_gpus }}" "{{ $nodes }}" \
+          "{{ $model_path }}" "{{ $served_name }}" "{{ $group_gpus }}" "{{ $nodes }}" \
           "$head_ip" "{{ $tp_master_port }}" "{{ .MaxContextSize }}" "{{ .GpuMemoryUtilization }}" \
           "$parallel_extra"
 
@@ -349,7 +369,7 @@ services:
           --host 0.0.0.0 \
           --port "$9" \
           ${10}' \
-          "{{ $model_path }}" "{{ $model_name }}" "{{ $group_gpus }}" "{{ $nodes }}" \
+          "{{ $model_path }}" "{{ $served_name }}" "{{ $group_gpus }}" "{{ $nodes }}" \
           "$head_ip" "{{ $tp_master_port }}" "{{ .MaxContextSize }}" "{{ .GpuMemoryUtilization }}" \
           "{{ $vllm_port }}" "$parallel_extra"
       fi
@@ -358,7 +378,7 @@ services:
 {{- else }}
 
       exec vllm serve "{{ $model_path }}" \
-        --served-model-name "{{ $model_name }}" \
+        --served-model-name "{{ $served_name }}" \
         $parallel_args \
         --max-model-len {{ .MaxContextSize }} \
         --gpu-memory-utilization {{ .GpuMemoryUtilization }} \
@@ -421,7 +441,7 @@ services:
           # registers endpoints carrying these two annotations.
           annotations:
             ciq.com/api: openai
-            ciq.com/model: "{{ $model_name }}"
+            ciq.com/model: "{{ $served_name }}"
       {{- end }}
     readiness-probe:
       http-get:
@@ -509,9 +529,9 @@ services:
         EOF
           for addr in "${SERVICES_VLLM_OPENAI_API[@]}"; do
             cat <<EOF
-          - model_name: "{{ $model_name }}"
+          - model_name: "{{ $served_name }}"
             litellm_params:
-              model: "hosted_vllm/{{ $model_name }}"
+              model: "hosted_vllm/{{ $served_name }}"
               api_base: "http://${addr}/v1"
         EOF
           done
