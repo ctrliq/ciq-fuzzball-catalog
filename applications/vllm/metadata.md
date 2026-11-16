@@ -152,6 +152,17 @@ workflow definition -- so re-rendering produces a different key, and anyone who
 can read the workflow can read it. It is not a secret from them, only from
 something that discovered the endpoint alone.
 
+Fuzzball's own agent discovers the pool in either mode, under the model name
+the pool serves: `ciq.com/model` at `Proxy=false`, the proxy's model list at
+`Proxy=true`. That name is the repository from `Model` unless
+`ServedModelName` sets another, so `ServedModelName=default` offers the pool as
+`default`, the model a chat session uses when it names none (a model registered
+under that name takes precedence):
+
+```
+fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-20b,ServedModelName=default,Scope=group
+```
+
 ## Expert parallelism and multi-node serving
 
 Mixture-of-experts models can serve with expert parallelism instead of tensor
@@ -213,6 +224,9 @@ Before choosing `Nodes` above 1:
   setting for repositories that ship extra checkpoints alongside the weights —
   `hf://openai/gpt-oss-120b` is roughly three times larger downloaded whole
   than with `?exclude=original/**&exclude=metal/**`.
+- `ServedModelName`: the name clients use for the model, and the name it is
+  discovered under. Empty (default) uses the repository from `Model`, without
+  its query parameters. Letters, digits, and `. _ / -` only, not starting with `-`.
 - `Gpu`: GPU platform, `nvidia` or `amd`.
 - `AmdGpuFamily`: AMD GPU architecture family, used only with `Gpu=amd`:
   `cdna` (default) for MI-series datacenter GPUs, `rdna` for Radeon GPUs. It
