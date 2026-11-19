@@ -86,13 +86,35 @@ services:
 
 
       export PATH={{$ansys_root}}/CFX/bin:{{$ansys_root}}/Framework/bin/Linux64:$PATH
-      echo "Starting CFX virtual desktop (noVNC on :{{ $novnc_port }})..."
 
-      /bin/bash -x /usr/local/bin/start-vncserver.sh || echo "start-vncserver.sh exited $?"
+      # Xvnc only accepts local socket connections, so point the session at
+      # :N rather than <hostname>:N and wait for the server before starting it.
+      cat > "${HOME}/.vnc/xstartup.local" <<'__EOF__'
+      #!/bin/sh
+      n="${DISPLAY##*:}"
+      export DISPLAY=":${n%%.*}"
+      export XDG_RUNTIME_DIR="${TMPDIR:-/tmp}/xdg-$(id -u)"
+      mkdir -p "$XDG_RUNTIME_DIR"
+      chmod 700 "$XDG_RUNTIME_DIR"
+      i=0
+      until xset q >/dev/null 2>&1 || [ "$i" -ge 30 ]; do
+        i=$((i+1))
+        sleep 1
+      done
+      exec /opt/TurboVNC/bin/xstartup.turbovnc "$@"
+      __EOF__
+      chmod 755 "${HOME}/.vnc/xstartup.local"
+      printf '$xstartup = "%s";\n' "${HOME}/.vnc/xstartup.local" > "${HOME}/.vnc/turbovncserver.conf"
+
+      echo "Starting CFX virtual desktop (noVNC on :{{ $novnc_port }})..."
+      rc=0
+      /bin/bash -x /usr/local/bin/start-vncserver.sh || rc=$?
+      echo "start-vncserver.sh exited ${rc}"
       echo "=== X session log ==="
       cat "${HOME}/.vnc/"*.log 2>/dev/null || echo "(no session log written)"
 
       rm -rf "$d" "$t"
+      exit "$rc"
     resource:
       cpu:
         cores: {{.CfxDesktopCores}}
