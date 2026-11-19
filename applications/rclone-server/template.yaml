@@ -38,10 +38,28 @@ volumes:
   vol-{{ $i }}:
     name: "{{ $v.name }}"
 {{- end }}
-jobs:
+services:
   {{ $protocol }}:
+    persist: true
     image:
       uri: {{ .Container }}
+{{- if eq $protocol "webdav" }}
+    network:
+      ports:
+        - name: webdav
+          protocol: tcp
+          port: {{ .Port }}
+      endpoints:
+        - name: webdav
+          port-name: webdav
+          protocol: http
+          type: subdomain
+          scope: user
+    readiness-probe:
+      tcp-socket:
+        port: {{ .Port }}
+      initial-delay-seconds: 5
+{{- end }}
     mounts:
 {{- range $i, $v := $volumes }}
       {{ $v.path }}: vol-{{ $i }}
@@ -57,21 +75,26 @@ jobs:
 {{- end }}
     script: |
       #!/bin/sh
+{{- if eq $protocol "sftp" }}
       cat <<__EOF__
       Access to the {{ .Protocol }} server requires port-forwarding via the CLI:
         # fuzzball workflow port-forward ${FB_WORKFLOW_ID} {{ .Protocol }} {{ .Port }}:{{ .Port }}
       In your client program of choice use 'localhost' as the host and {{ .Port }} as the port
       --------------------------------------------------------------------------------------------
       __EOF__
-{{- if eq $protocol "sftp" }}
-      rclone serve sftp \
+      exec timeout {{ .Timeout }} rclone serve sftp \
         --addr localhost:{{ .Port }} \
         --cache-dir "$(mktemp -d)" \
         --log-level INFO \
         {{ $root }}
 {{- else if eq $protocol "webdav" }}
-      rclone serve webdav \
-        --addr localhost:{{ .Port }} \
+      cat <<__EOF__
+      The WebDAV server is available through the workflow's "webdav" endpoint:
+        # fuzzball workflow connect ${FB_WORKFLOW_ID}
+      --------------------------------------------------------------------------------------------
+      __EOF__
+      exec timeout {{ .Timeout }} rclone serve webdav \
+        --addr 0.0.0.0:{{ .Port }} \
         --cache-dir "$(mktemp -d)" \
         --log-level INFO \
         {{ $root }}
@@ -83,6 +106,3 @@ jobs:
         cores: 2
       memory:
         size: 6GiB
-    policy:
-      timeout:
-        execute: {{ .Timeout }}
