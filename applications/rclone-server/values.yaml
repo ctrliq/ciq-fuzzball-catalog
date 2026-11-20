@@ -6,12 +6,11 @@ values:
 
   - name: Volumes
     display_name: |
-      Comma separated list of volumes to mount. These are Fuzzball volume references
-      such as `volume://user/persistent`. By default the example volume would be available
-      as `fuzzball/persistent` in WebDAV. If you would like to use a custom path for
-      a particular volume, you can specify it like this:
-      `volume://user/persistent:/custom/path`. The leading slash is optional.
-    string_value: volume://user/persistent:data
+      Comma separated list of persistent volume names to serve (see `fuzzball volume list`),
+      for example `home,data`. Each volume is available as `/<volume-name>` in the server.
+      To use a custom path for a volume, specify it like this: `home:/custom/path`.
+      The leading slash is optional.
+    string_value: ""
     display_category: Storage
 
   - name: Protocol

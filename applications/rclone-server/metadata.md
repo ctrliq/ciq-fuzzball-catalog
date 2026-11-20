@@ -9,15 +9,24 @@ tags:
 ---
 This application will start an [Rclone](https://rclone.org/) WebDAV or SFTP server that serves data from the mounted Fuzzball volumes and allows you to access, browse, upload, and download files from our Fuzzball persistent storage volumes using any compatible client.
 
+Specify the persistent volumes to serve by name in the `Volumes` field (run
+`fuzzball volume list` to see the volumes available to you), e.g. `home,data`.
+Each volume is served as `/<volume-name>` unless you give a custom path with
+`<volume-name>:<path>`, e.g. `home:/myhome`.
+
 The server runs on the specified port (default 8080).
 
-To access the server, you'll need to use port-forwarding:
+The WebDAV server is published through a Fuzzball endpoint. Open it from the
+web UI with **Connect**, or run `fuzzball workflow connect <workflow-id>`.
+Non-browser clients must send a Fuzzball token in an `FB-Authorization: Bearer`
+header, which you can create with `fuzzball endpoint generate-token`.
+
+The SFTP server is accessed with port-forwarding:
 ```
-fuzzball workflow port-forward <workflow-id> <protocol> <port>:<port>
+fuzzball workflow port-forward <workflow-id> sftp <port>:<port>
 ```
 
 The full command will be included in the log for convenient copy-and-paste.
-
 Then you can connect to the port on localhost with your client of choice.
 
 ## Client Tools for File Transfers
@@ -44,5 +53,5 @@ SFTP/WebDAV server in Fuzzball.
 
 Notes:
 - Transfer speeds may not be optimal for very large transfers.
-- The server job will run until it hits the timeout or you terminate it
+- The server will run until it hits the timeout or you terminate it
   manually.
