@@ -438,10 +438,13 @@ services:
           per-replica: true
           {{- end }}
           # Discovery contract shared with the litellm gateway entry: it
-          # registers endpoints carrying these two annotations.
+          # registers endpoints carrying ciq.com/api and ciq.com/model.
+          # ciq.com/context-window is the context size vLLM serves, which
+          # Fuzzball's agent and the gateway size their requests to.
           annotations:
             ciq.com/api: openai
             ciq.com/model: "{{ $served_name }}"
+            ciq.com/context-window: "{{ .MaxContextSize }}"
       {{- end }}
     readiness-probe:
       http-get:
@@ -513,8 +516,10 @@ services:
           scope: organization
           {{- end }}
           # One base URL over every replica, which is what an agent attaches to.
+          # ciq.com/context-window: the context size every replica serves.
           annotations:
             ciq.com/api: openai-gateway
+            ciq.com/context-window: "{{ .MaxContextSize }}"
     dynamic-config:
       path: /etc/litellm/config.yaml
       services: [vllm]

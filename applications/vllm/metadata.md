@@ -163,6 +163,10 @@ under that name takes precedence):
 fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-20b,ServedModelName=default,Scope=group
 ```
 
+Both modes also annotate the endpoint `ciq.com/context-window` with
+`MaxContextSize`, the longest request vLLM accepts. The agent sizes its
+requests to it, and a `litellm` gateway passes it on with the model.
+
 ## Expert parallelism and multi-node serving
 
 Mixture-of-experts models can serve with expert parallelism instead of tensor

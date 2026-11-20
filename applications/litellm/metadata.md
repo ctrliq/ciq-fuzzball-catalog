@@ -103,7 +103,10 @@ annotations:
 ```
 
 `ciq.com/model` is the name callers ask for, and it must match the name the server serves
-under (for vLLM, `--served-model-name`). The endpoint must not be `public`: the gateway
+under (for vLLM, `--served-model-name`). An optional `ciq.com/context-window: "131072"`,
+a positive whole number of tokens, is published with the model (LiteLLM's
+`max_input_tokens`, shown in `/v1/models`), so agents can size their requests to it;
+any other value is ignored. The endpoint must not be `public`: the gateway
 authenticates to models with minted endpoint tokens, and tokens cannot be minted for
 public endpoints. Set `per-replica: true` (which requires `type: subdomain` and an
 autoscaler on the service) to let the gateway balance across replicas itself, and an
