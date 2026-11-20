@@ -163,9 +163,13 @@ under that name takes precedence):
 fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-20b,ServedModelName=default,Scope=group
 ```
 
-Both modes also annotate the endpoint `ciq.com/context-window` with
-`MaxContextSize`, the longest request vLLM accepts. The agent sizes its
-requests to it, and a `litellm` gateway passes it on with the model.
+Both modes also annotate the endpoint `ciq.com/context-window` with the
+longest request vLLM accepts: `MaxContextSize`, or the `--max-model-len` in
+`ExtraArgs`, which overrides it. The agent sizes its requests to it, and a
+`litellm` gateway passes it on with the model. A `--max-model-len` the entry
+cannot read as a whole number of tokens (`auto`, `-1`, a fraction such as
+`25.6k`, or one set through `--config` or an abbreviated flag) publishes no
+window rather than a wrong one.
 
 ## Expert parallelism and multi-node serving
 

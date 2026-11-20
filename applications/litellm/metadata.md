@@ -106,7 +106,10 @@ annotations:
 under (for vLLM, `--served-model-name`). An optional `ciq.com/context-window: "131072"`,
 a positive whole number of tokens, is published with the model (LiteLLM's
 `max_input_tokens`, shown in `/v1/models`), so agents can size their requests to it;
-any other value is ignored. The endpoint must not be `public`: the gateway
+any other value is ignored. Endpoints serving one name publish the smallest of their
+windows, and none when only some of them declare one. Without a published window,
+LiteLLM reports its own figure for a model name it knows (for example `gpt-4o`), which
+need not be the backend's, so annotate the endpoint. The endpoint must not be `public`: the gateway
 authenticates to models with minted endpoint tokens, and tokens cannot be minted for
 public endpoints. Set `per-replica: true` (which requires `type: subdomain` and an
 autoscaler on the service) to let the gateway balance across replicas itself, and an
