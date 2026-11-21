@@ -163,6 +163,29 @@ under that name takes precedence):
 fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-20b,ServedModelName=default,Scope=group
 ```
 
+Both modes also annotate the endpoint `ciq.com/context-window` with the
+longest request vLLM accepts: `MaxContextSize`, or the `--max-model-len` in
+`ExtraArgs`, which overrides it. Fuzzball's agent sizes its requests to it. A
+standalone `litellm` gateway does not pass it on, so a model the agent reaches
+through one gets no window from the catalog, whether it is reachable only that way
+or the gateway's copy of the name wins over this endpoint (`Proxy=false`, started by
+someone else) because the gateway's scope is narrower or, at equal scope, its
+workflow is older. Register it under a different name with
+`fuzzball model add --context-window N`.
+
+A `--max-model-len` publishes a window when it is a whole number (`32768`), or
+a whole number with a `k`, `m`, `g` or `t` suffix (×1000: `32k`) or a `K`, `M`,
+`G` or `T` suffix (×1024: `32K`), between 1 and 2147483647 tokens. Anything else
+publishes none rather than a wrong one: `auto` or `-1`, a fraction such as
+`25.6k`, a size out of range, a flag with no value, and a size that cannot be
+read from `ExtraArgs` -- an abbreviated flag, `--config`, or any dotted flag
+such as `--hf-overrides.foo`. Without a window the agent cannot size its
+requests: use a size it can read, or register the model with
+`fuzzball model add --context-window N` under a different name. With `Proxy=true`,
+the proxy's own model list is read instead, and for a served name LiteLLM already
+knows (for example `gpt-4o`) it can give LiteLLM's built-in figure, which need not be
+what vLLM serves: serve the model under a name LiteLLM does not know.
+
 ## Expert parallelism and multi-node serving
 
 Mixture-of-experts models can serve with expert parallelism instead of tensor
