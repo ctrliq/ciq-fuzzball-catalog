@@ -103,22 +103,7 @@ annotations:
 ```
 
 `ciq.com/model` is the name callers ask for, and it must match the name the server serves
-under (for vLLM, `--served-model-name`). An optional `ciq.com/context-window: "131072"`,
-a positive whole number of tokens, is published with the model (LiteLLM's
-`max_input_tokens`, shown in `/v1/models`), so agents can size their requests to it;
-any other value is ignored. Endpoints serving one name publish the smallest of their
-windows, and none when only some of them declare one.
-
-A name LiteLLM already knows (for example `gpt-4o`) publishes no window, whatever its
-endpoints declare: LiteLLM would keep it for that name for the life of the gateway, past
-the endpoint that set it. For such a name `/v1/models` lists LiteLLM's own figure, which
-need not be what the backend serves; serve self-hosted models under names LiteLLM does
-not know.
-
-The gateway serves a name across every endpoint it can reach, whoever started them. So
-an endpoint of the same name from anyone in its scope receives some of that name's
-traffic and takes part in its window: the smallest declared wins. Share a model name
-only with endpoints you trust. The endpoint must not be `public`: the gateway
+under (for vLLM, `--served-model-name`). The endpoint must not be `public`: the gateway
 authenticates to models with minted endpoint tokens, and tokens cannot be minted for
 public endpoints. Set `per-replica: true` (which requires `type: subdomain` and an
 autoscaler on the service) to let the gateway balance across replicas itself, and an
