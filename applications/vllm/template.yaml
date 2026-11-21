@@ -165,9 +165,10 @@
         {{- $ctx_unknown = true }}
       {{- end }}
     {{- end }}
-    {{- /* A dotted flag (--hf-overrides.foo) can take the next token as its
-           value, whatever it looks like, so what follows it cannot be read.
-           Only the flag's name counts: a value after "=" may hold a dot
+    {{- /* A dotted flag (--hf-overrides.foo) is not read here: without "="
+           vLLM gives it the next token as its value, whatever that looks like,
+           and with "=" it may still change the size vLLM serves. Only the
+           flag's name counts: a value after "=" may hold a dot
            (--gpu-memory-utilization=0.9). */}}
     {{- if and (hasPrefix "-" $tok) (contains "." (index (splitList "=" $tok) 0)) }}
       {{- $ctx_unknown = true }}
