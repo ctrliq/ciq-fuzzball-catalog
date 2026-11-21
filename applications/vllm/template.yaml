@@ -139,8 +139,9 @@
        number, or one with a k/m/g/t (x1000) or K/M/G/T (x1024) suffix. A
        value vLLM sizes itself (-1, auto), a fraction (vLLM's own result
        depends on float rounding), and a value set where it cannot be read
-       here -- an abbreviated flag, a --config file -- publish no window
-       rather than a wrong one, as does a size outside 1..2147483647. */}}
+       here -- an abbreviated flag, a --config file, any dotted flag -- publish
+       no window rather than a wrong one, as does a size outside
+       1..2147483647. */}}
 {{- $ctx_window := "" }}
 {{- $ctx_raw := printf "%v" .MaxContextSize }}
 {{- $ctx_next := false }}
@@ -163,6 +164,11 @@
       {{- else if or (eq $key "--config") (and (gt (len $key) 2) (hasPrefix $key "--max-model-len")) }}
         {{- $ctx_unknown = true }}
       {{- end }}
+    {{- end }}
+    {{- /* A dotted flag (--hf-overrides.foo) can take the next token as its
+           value, whatever it looks like, so what follows it cannot be read. */}}
+    {{- if and (hasPrefix "-" $tok) (contains "." $tok) }}
+      {{- $ctx_unknown = true }}
     {{- end }}
   {{- end }}
 {{- end }}

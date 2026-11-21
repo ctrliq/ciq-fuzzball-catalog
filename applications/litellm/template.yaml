@@ -443,6 +443,44 @@ services:
           window = int(raw)
           return window if 0 < window <= 2147483647 else None
 
+      KNOWN = dict()
+
+      def litellm_knows(name):
+          # Whether LiteLLM's own cost map answers for this model name. A
+          # window published for such a name is also written into that shared
+          # entry, where it outlives the deployment and is what every other
+          # deployment of the name is then listed with -- so one endpoint
+          # could set the name's window for good. Such a name publishes no
+          # window: LiteLLM lists its own value. Both the map LiteLLM fetches
+          # and the one it ships are asked, since the proxy may run on either;
+          # if LiteLLM cannot be asked, every name counts as known.
+          if name not in KNOWN:
+              KNOWN[name] = cost_map_knows(name)
+          return KNOWN[name]
+
+      def cost_map_knows(name):
+          try:
+              import contextlib, importlib.resources, io
+              import litellm
+              shipped = json.loads(importlib.resources.files("litellm").joinpath(
+                  "model_prices_and_context_window_backup.json").read_text())
+              fetched = litellm.model_cost
+              for cost_map in (fetched, shipped):
+                  litellm.model_cost = cost_map
+                  try:
+                      # get_model_info prints a provider hint on a miss.
+                      with contextlib.redirect_stdout(io.StringIO()):
+                          litellm.get_model_info(name)
+                      return True
+                  except Exception:
+                      pass
+                  finally:
+                      litellm.model_cost = fetched
+              return False
+          except Exception as err:
+              print("COST-MAP-UNREADABLE publishing no windows", repr(err), flush=True)
+              return True
+
       def desired(rows):
           # api_base -> model name and the endpoint id to mint a token against.
           serving = []
@@ -484,12 +522,11 @@ services:
               by_model.setdefault(spec["model"], []).append(spec["window"])
           for spec in wanted.values():
               windows = by_model[spec["model"]]
-              spec["window"] = None if None in windows else min(windows)
+              spec["window"] = None if None in windows or litellm_knows(spec["model"]) else min(windows)
           return wanted
 
       def registered():
-          # api_base -> the LiteLLM model ids pointing at it, and the window
-          # (max_input_tokens) each was registered with.
+          # api_base -> the LiteLLM model ids pointing at it.
           try:
               info = call(LLM + "/model/info", MASTER)
           except urllib.error.HTTPError as err:
@@ -497,19 +534,16 @@ services:
               # the state the first registration has to run in. Every other error
               # propagates: reading a broken gateway as empty re-registers models.
               if err.code == 500 and "LLM Model List not loaded" in err.read().decode("utf-8", "replace"):
-                  return dict(), dict()
+                  return dict()
               raise
           current = dict()
-          windows = dict()
           for entry in info.get("data") or []:
               params = entry.get("litellm_params") or {}
               base = params.get("api_base")
-              model_info = entry.get("model_info") or {}
-              model_id = model_info.get("id")
+              model_id = (entry.get("model_info") or {}).get("id")
               if base and model_id:
                   current.setdefault(base, []).append(model_id)
-                  windows.setdefault(base, set()).add(model_info.get("max_input_tokens"))
-          return current, windows
+          return current
 
       def register(base, model, endpoint_id, window=None):
           # Returns the epoch time the minted token really expires: the server
@@ -532,14 +566,18 @@ services:
               print("MINT-EXPIRY-UNREADABLE assuming an hour", flush=True)
               return time.time() + min(TTL, 3600)
 
-      def window_changed(spec, registered_windows):
-          # A window that changed -- an endpoint re-bound to a workflow of
-          # another size, or one more endpoint sharing the name -- is
-          # registered again, the same way a rotation is. Only a window to
-          # publish is compared: without one, what LiteLLM reports is its own
-          # (or its built-in value for a model name it knows), and registering
-          # again would not change it.
-          return spec["window"] is not None and registered_windows != {spec["window"]}
+      UNPUBLISHED = object()
+
+      def window_changed(spec, published_window):
+          # A window that changed since this loop registered the endpoint --
+          # re-bound to a workflow of another size, or another endpoint now
+          # sharing its name, including one that leaves the name with no
+          # window -- is registered again, the same way a rotation is. Judged
+          # by what this loop published, not by what LiteLLM reports, which
+          # for a name it knows is its own value and would never match.
+          # After a restart nothing is recorded, and every endpoint is
+          # registered again on the first pass anyway (rotate_at starts empty).
+          return published_window is UNPUBLISHED or published_window != spec["window"]
 
       def deregister(model_id):
           call(LLM + "/model/delete", MASTER, method="POST", body=dict(id=model_id))
@@ -547,6 +585,7 @@ services:
       threading.Thread(target=refresh_token, daemon=True).start()
 
       rotate_at = dict()
+      published = dict()
       while True:
           try:
               wanted = desired(list_endpoints())
@@ -555,7 +594,7 @@ services:
               time.sleep(INTERVAL)
               continue
           try:
-              current, current_windows = registered()
+              current = registered()
           except Exception as err:
               print("MODEL-INFO-FAILED", repr(err), flush=True)
               time.sleep(INTERVAL)
@@ -564,7 +603,7 @@ services:
           for base, spec in wanted.items():
               known = base in current
               expiring = known and time.time() >= rotate_at.get(base, 0)
-              resized = known and window_changed(spec, current_windows.get(base))
+              resized = known and window_changed(spec, published.get(base, UNPUBLISHED))
               if known and not expiring and not resized:
                   continue
               try:
@@ -575,6 +614,7 @@ services:
               except Exception as err:
                   print("REGISTER-FAILED", base, repr(err), flush=True)
                   continue
+              published[base] = spec["window"]
               removed_all = True
               for model_id in (current.get(base) or []):
                   try:
@@ -603,6 +643,7 @@ services:
                   except Exception as err:
                       print("REMOVE-FAILED", base, repr(err), flush=True)
               rotate_at.pop(base, None)
+              published.pop(base, None)
 
           time.sleep(INTERVAL)
       PYEOF

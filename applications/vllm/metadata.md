@@ -166,10 +166,17 @@ fuzzball workflow catalog start vLLM --values Model=hf://openai/gpt-oss-20b,Serv
 Both modes also annotate the endpoint `ciq.com/context-window` with the
 longest request vLLM accepts: `MaxContextSize`, or the `--max-model-len` in
 `ExtraArgs`, which overrides it. The agent sizes its requests to it, and a
-`litellm` gateway passes it on with the model. A `--max-model-len` the entry
-cannot read as a whole number of tokens (`auto`, `-1`, a fraction such as
-`25.6k`, or one set through `--config` or an abbreviated flag) publishes no
-window rather than a wrong one.
+`litellm` gateway passes it on with the model.
+
+A `--max-model-len` publishes a window when it is a whole number (`32768`), or
+a whole number with a `k`, `m`, `g` or `t` suffix (×1000: `32k`) or a `K`, `M`,
+`G` or `T` suffix (×1024: `32K`), between 1 and 2147483647 tokens. Anything else
+publishes none rather than a wrong one: `auto` or `-1`, a fraction such as
+`25.6k`, a size out of range, a flag with no value, and a size that cannot be
+read from `ExtraArgs` -- an abbreviated flag, `--config`, or any dotted flag
+such as `--hf-overrides.foo`. Without a window the agent cannot size its
+requests: use a size it can read, or register the model with
+`fuzzball model add --context-window N` under a different name.
 
 ## Expert parallelism and multi-node serving
 
