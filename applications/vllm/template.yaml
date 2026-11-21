@@ -176,7 +176,7 @@
   {{- end }}
 {{- end }}
 {{- if not (or $ctx_unknown $ctx_next) }}
-  {{- $ctx_num := regexFind "^[0-9]{1,10}" $ctx_raw }}
+  {{- $ctx_num := regexFind "^0*[0-9]{1,10}" $ctx_raw }}
   {{- $ctx_unit := trimPrefix $ctx_num $ctx_raw }}
   {{- $ctx_mult := dict "" 1 "k" 1000 "m" 1000000 "g" 1000000000 "t" 1000000000000 "K" 1024 "M" 1048576 "G" 1073741824 "T" 1099511627776 }}
   {{- if and $ctx_num (hasKey $ctx_mult $ctx_unit) }}
