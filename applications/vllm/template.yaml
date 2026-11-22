@@ -132,6 +132,61 @@
 {{- if and $extra_args (not (regexMatch "^[A-Za-z0-9 ._=/-]+$" $extra_args)) }}
   {{- fail "ExtraArgs may contain only letters, digits, spaces, and . _ = / -" }}
 {{- end }}
+{{- /* The context size vLLM serves, published on the endpoint as
+       ciq.com/context-window: MaxContextSize, unless ExtraArgs sets
+       --max-model-len (or --max_model_len), which comes after it on the
+       command line and so wins. That value is read as vLLM reads it: a whole
+       number, or one with a k/m/g/t (x1000) or K/M/G/T (x1024) suffix. A
+       value vLLM sizes itself (-1, auto), a fraction (vLLM's own result
+       depends on float rounding), and a value set where it cannot be read
+       here -- an abbreviated flag, a --config file, any dotted flag -- publish
+       no window rather than a wrong one, as does a size outside
+       1..2147483647. */}}
+{{- $ctx_window := "" }}
+{{- $ctx_raw := printf "%v" .MaxContextSize }}
+{{- $ctx_next := false }}
+{{- $ctx_unknown := false }}
+{{- range (splitList " " $extra_args) }}
+  {{- $tok := . }}
+  {{- if $tok }}
+    {{- if $ctx_next }}
+      {{- $ctx_raw = $tok }}
+      {{- $ctx_next = false }}
+    {{- else if hasPrefix "--" $tok }}
+      {{- $flag := index (splitList "=" $tok) 0 }}
+      {{- $key := replace "_" "-" $flag }}
+      {{- if eq $key "--max-model-len" }}
+        {{- if contains "=" $tok }}
+          {{- $ctx_raw = trimPrefix (printf "%s=" $flag) $tok }}
+        {{- else }}
+          {{- $ctx_next = true }}
+        {{- end }}
+      {{- else if or (eq $key "--config") (and (gt (len $key) 2) (hasPrefix $key "--max-model-len")) }}
+        {{- $ctx_unknown = true }}
+      {{- end }}
+    {{- end }}
+    {{- /* A dotted flag (--hf-overrides.foo) is not read here: without "="
+           vLLM gives it the next token as its value, whatever that looks like,
+           and with "=" it may still change the size vLLM serves. Only the
+           flag's name counts: a value after "=" may hold a dot
+           (--gpu-memory-utilization=0.9). */}}
+    {{- if and (hasPrefix "-" $tok) (contains "." (index (splitList "=" $tok) 0)) }}
+      {{- $ctx_unknown = true }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- if not (or $ctx_unknown $ctx_next) }}
+  {{- $ctx_num := regexFind "^0*[0-9]{1,10}" $ctx_raw }}
+  {{- $ctx_unit := trimPrefix $ctx_num $ctx_raw }}
+  {{- $ctx_mult := dict "" 1 "k" 1000 "m" 1000000 "g" 1000000000 "t" 1000000000000 "K" 1024 "M" 1048576 "G" 1073741824 "T" 1099511627776 }}
+  {{- if and $ctx_num (hasKey $ctx_mult $ctx_unit) }}
+    {{- $n := int64 (atoi $ctx_num) }}
+    {{- $m := int64 (get $ctx_mult $ctx_unit) }}
+    {{- if and (gt $n 0) (le $n (div 2147483647 $m)) }}
+      {{- $ctx_window = printf "%d" (mul $n $m) }}
+    {{- end }}
+  {{- end }}
+{{- end }}
 {{- /* Each ExtraEnv entry is checked as NAME=VALUE so it cannot break the
        rendered YAML. */}}
 {{- $extra_env := trim .ExtraEnv }}
@@ -438,10 +493,15 @@ services:
           per-replica: true
           {{- end }}
           # Discovery contract shared with the litellm gateway entry: it
-          # registers endpoints carrying these two annotations.
+          # registers endpoints carrying ciq.com/api and ciq.com/model.
+          # ciq.com/context-window is the context size vLLM serves, which
+          # Fuzzball's agent sizes its requests to.
           annotations:
             ciq.com/api: openai
             ciq.com/model: "{{ $served_name }}"
+            {{- if $ctx_window }}
+            ciq.com/context-window: "{{ $ctx_window }}"
+            {{- end }}
       {{- end }}
     readiness-probe:
       http-get:
@@ -513,8 +573,12 @@ services:
           scope: organization
           {{- end }}
           # One base URL over every replica, which is what an agent attaches to.
+          # ciq.com/context-window: the context size every replica serves.
           annotations:
             ciq.com/api: openai-gateway
+            {{- if $ctx_window }}
+            ciq.com/context-window: "{{ $ctx_window }}"
+            {{- end }}
     dynamic-config:
       path: /etc/litellm/config.yaml
       services: [vllm]
