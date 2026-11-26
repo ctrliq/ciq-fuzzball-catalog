@@ -20,4 +20,11 @@ The workflow runs three persistent services:
 
 Requires an NGC API key secret for pulling the NIM container and authenticating inference requests. Model weights are cached in a persistent volume to avoid re-downloading on subsequent runs.
 
+**Container images.** `NimImageUri` takes a full image reference, and so do `OpenWebUIImage`
+and `StubImage`, each with an explicit tag or digest, so a site without access to public
+registries can point all three at its own copies. The NIM image is pulled with `NgcOciSecret`. For a mirror of the
+other two that requires credentials, set `ImageSecret` to a Fuzzball image secret; it goes with
+both pulls, so they must then come from one registry. `OpenWebUIImage` replaces the earlier
+`OpenWebUIVersion` value: saved overrides of that value no longer apply.
+
 > **Prerequisites:** Before running this workflow you must accept the model EULA on Hugging Face (visit the model page and click "Agree and access repository"). A Hugging Face token with read access is also required and must be stored as a Fuzzball secret referenced by `HuggingFaceTokenSecret`.

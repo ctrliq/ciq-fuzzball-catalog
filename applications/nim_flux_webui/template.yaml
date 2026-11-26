@@ -8,6 +8,41 @@
 {{- if not $oci_secret }}
   {{- fail "NgcOciSecret is required" }}
 {{- end }}
+{{- /* A tag or digest is required, and a tag cannot be empty: a reference
+       ending in ':' renders a uri YAML reads as a mapping. */}}
+{{- $openWebUIImage := trim .OpenWebUIImage }}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $openWebUIImage) }}
+  {{- fail "OpenWebUIImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/open-webui/open-webui:v0.7.2" }}
+{{- end }}
+{{- $stubImage := trim .StubImage }}
+{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $stubImage) }}
+  {{- fail "StubImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/library/python:3.12-slim" }}
+{{- end }}
+{{- $imageSecret := trim .ImageSecret }}
+{{- if and $imageSecret (not (regexMatch "^secret://(user|group|account|organization|cluster)/[A-Za-z0-9._-]+$" $imageSecret)) }}
+  {{- fail "ImageSecret must be a secret reference, e.g. secret://organization/registry-mirror" }}
+{{- end }}
+{{- /* Fuzzball checks an image secret's trusted domains only on the first
+       image that uses it, yet sends its credentials with every pull. One
+       registry for both images that take it makes that one check cover them.
+       The NIM image has its own secret, NgcOciSecret. A first path segment
+       names a registry only when it holds a dot or a port or is localhost;
+       otherwise the image is on Docker Hub. */}}
+{{- if $imageSecret }}
+  {{- $registries := list }}
+  {{- range $ref := list $openWebUIImage $stubImage }}
+    {{- $path := regexReplaceAll "^[a-z]+://" $ref "" }}
+    {{- $first := regexReplaceAll "/.*$" $path "" }}
+    {{- $registry := "docker.io" }}
+    {{- if and (contains "/" $path) (or (contains "." $first) (contains ":" $first) (eq $first "localhost")) }}
+      {{- $registry = $first }}
+    {{- end }}
+    {{- $registries = append $registries $registry }}
+  {{- end }}
+  {{- if gt (len (uniq $registries)) 1 }}
+    {{- fail (printf "ImageSecret is sent with both OpenWebUIImage and StubImage, so they must come from one registry (got %s)" (join ", " (uniq $registries))) }}
+  {{- end }}
+{{- end }}
 {{- $hf_token := trim .HuggingFaceTokenSecret }}
 {{- if not $hf_token }}
   {{- fail "HuggingFaceTokenSecret is required — accept the model EULA on Hugging Face before running this workflow" }}
@@ -86,7 +121,10 @@ services:
 
   nim-stub:
     image:
-      uri: docker://python:3.12-slim
+      uri: {{ $stubImage }}
+      {{- if $imageSecret }}
+      secret: {{ $imageSecret }}
+      {{- end }}
     script: |
       #!/usr/bin/env python3
       import http.server, json, time, urllib.request, urllib.error, sys
@@ -208,7 +246,10 @@ services:
 
   open-webui:
     image:
-      uri: docker://ghcr.io/open-webui/open-webui:{{ .OpenWebUIVersion }}
+      uri: {{ $openWebUIImage }}
+      {{- if $imageSecret }}
+      secret: {{ $imageSecret }}
+      {{- end }}
     env:
       - IMAGE_GENERATION_ENGINE=openai
       - IMAGES_OPENAI_API_BASE_URL=http://nim-stub.svc:{{ $stub_port }}/v1
