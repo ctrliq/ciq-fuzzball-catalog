@@ -1,11 +1,14 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $root := "/fuzzball" }}
 {{- /* Each Volumes entry is <name>[:/path]: the name of a persistent volume, or
-       the word ephemeral for a scratch volume that ends with the workflow. */}}
+       the word ephemeral (in any case) for a scratch volume that ends with the
+       workflow. It is served at /fuzzball/<path>, or /fuzzball/<name> without
+       one. */}}
 {{- $volumes := list }}
+{{- $paths := dict }}
 {{- range $raw := splitList "," .Volumes }}
   {{- $volume := trim $raw }}
-  {{- if hasPrefix "volume://" $volume }}
+  {{- if hasPrefix "volume://" (lower $volume) }}
     {{- fail (printf "Volumes entry %q uses the old volume:// form; give the volume's name instead, e.g. my-data or my-data:/custom/path (or ephemeral for a scratch volume)" $volume) }}
   {{- end }}
   {{- if ne $volume "" }}
@@ -13,10 +16,32 @@
     {{- if gt (len $parts) 2 }}
       {{- fail (printf "Volumes entry %q must be <name> or <name>:/path" $volume) }}
     {{- end }}
-    {{- if not (regexMatch "^[A-Za-z0-9._-]+$" (index $parts 0)) }}
-      {{- fail (printf "Volumes entry %q must start with a volume name (letters, digits, '.', '_' or '-') or ephemeral" $volume) }}
+    {{- $name := trim (index $parts 0) }}
+    {{- if or (not (regexMatch "^[A-Za-z0-9._-]+$" $name)) (contains ".." $name) (eq $name ".") (gt (len $name) 255) }}
+      {{- fail (printf "Volumes entry %q must start with a volume name (up to 255 letters, digits, '.', '_' or '-', and not '.' or containing '..') or ephemeral" $volume) }}
     {{- end }}
-    {{- $volumes = append $volumes $volume }}
+    {{- $path := $name }}
+    {{- if eq (len $parts) 2 }}
+      {{- $path = trim (index $parts 1) | trimPrefix "/" | trimSuffix "/" }}
+      {{- if not (regexMatch "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$" $path) }}
+        {{- fail (printf "Volumes entry %q needs a path of letters, digits, '.', '_' or '-' segments after the colon, e.g. my-data:/projects" $volume) }}
+      {{- end }}
+      {{- range $segment := splitList "/" $path }}
+        {{- if or (eq $segment ".") (eq $segment "..") }}
+          {{- fail (printf "Volumes entry %q must not use '.' or '..' in its path" $volume) }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    {{- if hasKey $paths $path }}
+      {{- fail (printf "Volumes entries %q and %q are both served at /%s" (get $paths $path) $volume $path) }}
+    {{- end }}
+    {{- range $other, $otherEntry := $paths }}
+      {{- if or (hasPrefix (printf "%s/" $other) $path) (hasPrefix (printf "%s/" $path) $other) }}
+        {{- fail (printf "Volumes entries %q and %q are served at nested paths /%s and /%s" $otherEntry $volume $other $path) }}
+      {{- end }}
+    {{- end }}
+    {{- $_ := set $paths $path $volume }}
+    {{- $volumes = append $volumes (dict "name" $name "path" $path) }}
   {{- end }}
 {{- end }}
 {{- if eq (len $volumes) 0 }}
@@ -29,12 +54,11 @@
 version: v4
 volumes:
 {{- range $i, $v := $volumes }}
-  {{- $name := index (splitList ":" $v) 0 }}
-  {{- if eq (lower $name) "ephemeral" }}
+  {{- if eq (lower $v.name) "ephemeral" }}
   vol-{{ $i }}: {}
   {{- else }}
   vol-{{ $i }}:
-    name: "{{ $name }}"
+    name: "{{ $v.name }}"
   {{- end }}
 {{- end }}
 jobs:
@@ -43,14 +67,8 @@ jobs:
       uri: {{ .Container }}
     mounts:
 {{- range $i, $v := $volumes }}
-  {{- $parts := splitList ":" $v }}
-  {{- if eq (len $parts) 2 }}
-      {{ $root }}/{{ index $parts 1 | trimPrefix "/" }}:
+      {{ $root }}/{{ $v.path }}:
         volume: vol-{{ $i }}
-  {{- else }}
-      {{ $root }}/{{ index $parts 0 }}:
-        volume: vol-{{ $i }}
-  {{- end }}
 {{- end }}
 
     cwd: {{ $root }}
