@@ -11,6 +11,32 @@ This application will start an [Rclone](https://rclone.org/) WebDAV or SFTP serv
 
 The server runs on the specified port (default 8080).
 
+## Choosing the volumes to serve
+
+`Volumes` is a comma-separated list. Give each persistent volume by its name,
+or use `ephemeral` for a scratch volume that is discarded when the workflow ends.
+Each volume is served as `/<name>`, or at the path you give after a colon:
+
+```
+fuzzball workflow catalog start "Rclone server for data management" --values Volumes=my-data:/projects
+```
+
+In-line `--values` splits on commas, so to serve several volumes set `Volumes`
+(for example `my-data,results:/runs/latest`) in a values file instead.
+
+The default, `ephemeral:data`, serves an empty scratch volume as `/data`: files
+you upload there are lost when the workflow stops. Set `Volumes` to the name of a
+persistent volume to serve data you keep.
+
+- **A volume name is resolved across the organization.** Fuzzball searches every
+  provisioner you can reach for a volume of that name and binds the single
+  match, so a name cannot pin a provisioner. Give the volume a name that is
+  unique across provisioners: two matches fail the submit.
+- **`ephemeral` always means a scratch volume**, so a persistent volume named
+  `ephemeral` cannot be served by this entry.
+- **The older `volume://<scope>/<class>[:path]` references are no longer
+  accepted.** Give the volume's name instead.
+
 To access the server, you'll need to use port-forwarding:
 ```
 fuzzball workflow port-forward <workflow-id> <protocol> <port>:<port>
