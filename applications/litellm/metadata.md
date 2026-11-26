@@ -129,11 +129,15 @@ renews its own workflow token in the background, so it keeps serving without a r
   another release's schema accepts writes and then never routes the model. Moving
   `GatewayImage` to another release means starting with a fresh database.
 - **All three images can come from a mirror.** `GatewayImage`, `DatabaseImage` and
-  `CurlImage` each take a full image reference with an explicit tag or digest, so a
-  site without access to public registries can point them at its own copies. For a mirror
-  that requires credentials, set `ImageSecret` to a Fuzzball image secret. Its credentials
-  go with every image pull, so the entry then requires all three images on one registry,
-  which must be among the secret's trusted domains.
+  `CurlImage` each take a full image reference with an explicit tag, a digest, or both,
+  and a lowercase repository path, so a site without access to public registries can
+  point them at its own copies. For a mirror that requires credentials, set `ImageSecret`
+  to a Fuzzball image secret. Its credentials go with every image pull, so the entry then
+  requires each of the three images to name its registry host, all the same one, and that
+  host must be among the secret's trusted domains. Spell Docker Hub images out in full, as
+  `docker://docker.io/<namespace>/<name>:<tag>` (official images use the namespace
+  `library`), and use one spelling of a host throughout: `docker.io` and
+  `index.docker.io` count as different hosts.
 - **The default volume is ephemeral**, so virtual keys, budgets and spend history are lost
   when the workflow stops. Set `Volume` to the name of a persistent volume for anything you
   rely on. A persistent volume brings its own constraints -- see below.

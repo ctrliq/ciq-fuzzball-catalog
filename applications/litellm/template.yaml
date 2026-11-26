@@ -19,42 +19,70 @@
 {{- if not (regexMatch "^[A-Za-z0-9._-]+$" $volume) }}
   {{- fail "Volume must be 'ephemeral' or the name of a persistent volume" }}
 {{- end }}
-{{- /* A tag or digest is required, and a tag cannot be empty: a reference
-       ending in ':' renders a uri YAML reads as a mapping. */}}
+{{- /* Each image reference needs an explicit tag, a digest, or a tag
+       followed by a digest, and a tag cannot be empty: a reference ending in
+       ':' renders a uri YAML reads as a mapping. Fuzzball parses
+       references with go-containerregistry, which wants a lowercase
+       repository path of 2 to 255 characters after any registry host, and a
+       tag of at most 128. A first path segment names a registry host only
+       when it holds a dot or a port or is localhost; otherwise the image is
+       on Docker Hub, so docker://registry:5000 is the library image registry
+       at tag 5000, while a dotted name or localhost with no path names a
+       registry but no repository. */}}
 {{- $gatewayImage := trim .GatewayImage }}
-{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $gatewayImage) }}
-  {{- fail "GatewayImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/berriai/litellm-database:v1.97.0" }}
-{{- end }}
 {{- $databaseImage := trim .DatabaseImage }}
-{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $databaseImage) }}
-  {{- fail "DatabaseImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/library/postgres:16.15" }}
-{{- end }}
 {{- $curlImage := trim .CurlImage }}
-{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $curlImage) }}
-  {{- fail "CurlImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/curlimages/curl:8.17.0" }}
+{{- range $img := list (list "GatewayImage" $gatewayImage "docker://registry:5000/berriai/litellm-database:v1.97.0") (list "DatabaseImage" $databaseImage "docker://registry:5000/library/postgres:16.15") (list "CurlImage" $curlImage "docker://registry:5000/curlimages/curl:8.17.0") }}
+  {{- $name := index $img 0 }}
+  {{- $ref := index $img 1 }}
+  {{- $example := index $img 2 }}
+  {{- if not (and (regexMatch "^(docker|oras)://((\\[[0-9A-Fa-f:.]+\\]|[A-Za-z0-9._-]+)(:[0-9]+)?/)?[a-z0-9._-]*(/[a-z0-9._-]*)*(:[A-Za-z0-9._-]{1,128})?(@sha256:[a-f0-9]{64})?$" $ref) (regexMatch "(:[A-Za-z0-9._-]{1,128}|@sha256:[a-f0-9]{64})$" $ref)) }}
+    {{- fail (printf "%s needs an explicit tag or digest and a lowercase repository path, and may name a ported registry, e.g. %s" $name $example) }}
+  {{- end }}
+  {{- $path := regexReplaceAll "^[a-z]+://" $ref "" }}
+  {{- $first := regexReplaceAll "/.*$" $path "" }}
+  {{- $repository := regexReplaceAll "(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$" $path "" }}
+  {{- if contains "/" $path }}
+    {{- if or (contains "." $first) (contains ":" $first) (eq $first "localhost") }}
+      {{- $repository = regexReplaceAll "^[^/]*/" $repository "" }}
+    {{- else if not (regexMatch "^[a-z0-9._-]*$" $first) }}
+      {{- fail (printf "%s needs a lowercase repository path, e.g. %s" $name $example) }}
+    {{- end }}
+  {{- else if or (contains "." $repository) (eq $repository "localhost") }}
+    {{- fail (printf "%s names the registry %s but no repository; add the repository path after it, e.g. %s" $name (regexReplaceAll "(:[0-9]*[A-Za-z._-][A-Za-z0-9._-]*)?(@sha256:[a-f0-9]{64})?$" $path "") $example) }}
+  {{- end }}
+  {{- $max := 255 }}
+  {{- /* With a digest, go-containerregistry counts the library/ it adds to
+         a one-name Docker Hub repository against the limit. */}}
+  {{- if and (contains "@sha256:" $ref) (not (contains "/" $repository)) (or (not (contains "/" $path)) (eq $first "docker.io") (eq $first "index.docker.io")) }}
+    {{- $max = 247 }}
+  {{- end }}
+  {{- if or (lt (len $repository) 2) (gt (len $repository) $max) }}
+    {{- fail (printf "%s needs a repository name of 2 to %d characters, e.g. %s" $name $max $example) }}
+  {{- end }}
 {{- end }}
 {{- $imageSecret := trim .ImageSecret }}
 {{- if and $imageSecret (not (regexMatch "^secret://(user|group|account|organization|cluster)/[A-Za-z0-9._-]+$" $imageSecret)) }}
   {{- fail "ImageSecret must be a secret reference, e.g. secret://organization/registry-mirror" }}
 {{- end }}
-{{- /* Fuzzball checks an image secret's trusted domains only on the first
-       image that uses it, yet sends its credentials with every pull. One
-       registry for all three images makes that one check cover them all. A
-       first path segment names a registry only when it holds a dot or a port
-       or is localhost; otherwise the image is on Docker Hub. */}}
+{{- /* Fuzzball checks an image secret's trusted domains against the host of
+       one image's URI, exactly as written with any port removed, yet sends
+       its credentials with every pull that uses the secret. So with a secret
+       set, every image it goes with must name its registry host, and all of
+       them the same one. */}}
 {{- if $imageSecret }}
-  {{- $registries := list }}
-  {{- range $ref := list $gatewayImage $databaseImage $curlImage }}
-    {{- $path := regexReplaceAll "^[a-z]+://" $ref "" }}
+  {{- $pulled := list (list "GatewayImage" $gatewayImage) (list "DatabaseImage" $databaseImage) (list "CurlImage" $curlImage) }}
+  {{- $hosts := list }}
+  {{- range $img := $pulled }}
+    {{- $path := regexReplaceAll "^[a-z]+://" (index $img 1) "" }}
     {{- $first := regexReplaceAll "/.*$" $path "" }}
-    {{- $registry := "docker.io" }}
-    {{- if and (contains "/" $path) (or (contains "." $first) (contains ":" $first) (eq $first "localhost")) }}
-      {{- $registry = $first }}
+    {{- if not (and (contains "/" $path) (or (contains "." $first) (contains ":" $first) (eq $first "localhost"))) }}
+      {{- fail (printf "ImageSecret is set, so %s must name its registry host, e.g. docker://docker.io/<namespace>/<name>:<tag> for Docker Hub, where official images use the namespace library (got %s)" (index $img 0) (index $img 1)) }}
     {{- end }}
-    {{- $registries = append $registries $registry }}
+    {{- $hosts = append $hosts (regexReplaceAll ":[0-9]+$" $first "") }}
   {{- end }}
-  {{- if gt (len (uniq $registries)) 1 }}
-    {{- fail (printf "ImageSecret is sent with all three images, so GatewayImage, DatabaseImage and CurlImage must come from one registry (got %s)" (join ", " (uniq $registries))) }}
+  {{- if gt (len (uniq $hosts)) 1 }}
+    {{- fail (printf "ImageSecret is sent with all three images, so GatewayImage, DatabaseImage and CurlImage must name one registry host (got %s); the host is compared exactly as written, so docker.io and index.docker.io differ" (join ", " (uniq $hosts))) }}
   {{- end }}
 {{- end }}
 {{- $tokenLifetime := int .TokenLifetime }}
