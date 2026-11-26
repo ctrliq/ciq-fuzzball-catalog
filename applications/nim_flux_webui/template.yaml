@@ -8,25 +8,26 @@
 {{- if not $oci_secret }}
   {{- fail "NgcOciSecret is required" }}
 {{- end }}
-{{- /* Each image reference needs an explicit tag or digest, and a tag
-       cannot be empty: a reference ending in ':' renders a uri YAML reads as a
-       mapping. Fuzzball parses references with go-containerregistry, which
-       wants a lowercase repository path of 2 to 255 characters after any
-       registry host, and a tag of at most 128. A first path segment names a registry host only when
-       it holds a dot or a port or is localhost; otherwise the image is on
-       Docker Hub. */}}
+{{- /* Each image reference needs an explicit tag, a digest, or a tag
+       followed by a digest, and a tag cannot be empty: a reference ending in
+       ':' renders a uri YAML reads as a mapping. Fuzzball parses
+       references with go-containerregistry, which wants a lowercase
+       repository path of 2 to 255 characters after any registry host, and a
+       tag of at most 128. A first path segment names a registry host only
+       when it holds a dot or a port or is localhost; otherwise the image is
+       on Docker Hub. */}}
 {{- $openWebUIImage := trim .OpenWebUIImage }}
 {{- $stubImage := trim .StubImage }}
 {{- range $img := list (list "OpenWebUIImage" $openWebUIImage "docker://registry:5000/open-webui/open-webui:v0.7.2") (list "StubImage" $stubImage "docker://registry:5000/library/python:3.12-slim") }}
   {{- $name := index $img 0 }}
   {{- $ref := index $img 1 }}
   {{- $example := index $img 2 }}
-  {{- if not (regexMatch "^(docker|oras)://((\\[[0-9A-Fa-f:]+\\]|[A-Za-z0-9._-]+)(:[0-9]+)?/)?[a-z0-9._-]*(/[a-z0-9._-]*)*(:[A-Za-z0-9._-]{1,128}|@sha256:[a-f0-9]{64})$" $ref) }}
+  {{- if not (and (regexMatch "^(docker|oras)://((\\[[0-9A-Fa-f:]+\\]|[A-Za-z0-9._-]+)(:[0-9]+)?/)?[a-z0-9._-]*(/[a-z0-9._-]*)*(:[A-Za-z0-9._-]{1,128})?(@sha256:[a-f0-9]{64})?$" $ref) (regexMatch "(:[A-Za-z0-9._-]{1,128}|@sha256:[a-f0-9]{64})$" $ref)) }}
     {{- fail (printf "%s needs an explicit tag or digest and a lowercase repository path, and may name a ported registry, e.g. %s" $name $example) }}
   {{- end }}
   {{- $path := regexReplaceAll "^[a-z]+://" $ref "" }}
   {{- $first := regexReplaceAll "/.*$" $path "" }}
-  {{- $repository := regexReplaceAll "(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $path "" }}
+  {{- $repository := regexReplaceAll "(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$" $path "" }}
   {{- if contains "/" $path }}
     {{- if or (contains "." $first) (contains ":" $first) (eq $first "localhost") }}
       {{- $repository = regexReplaceAll "^[^/]*/" $repository "" }}
@@ -34,8 +35,14 @@
       {{- fail (printf "%s needs a lowercase repository path, e.g. %s" $name $example) }}
     {{- end }}
   {{- end }}
-  {{- if or (lt (len $repository) 2) (gt (len $repository) 255) }}
-    {{- fail (printf "%s needs a repository name of 2 to 255 characters, e.g. %s" $name $example) }}
+  {{- $max := 255 }}
+  {{- /* With a digest, go-containerregistry counts the library/ it adds to
+         a one-name Docker Hub repository against the limit. */}}
+  {{- if and (contains "@sha256:" $ref) (not (contains "/" $repository)) (or (not (contains "/" $path)) (eq $first "docker.io") (eq $first "index.docker.io")) }}
+    {{- $max = 247 }}
+  {{- end }}
+  {{- if or (lt (len $repository) 2) (gt (len $repository) $max) }}
+    {{- fail (printf "%s needs a repository name of 2 to %d characters, e.g. %s" $name $max $example) }}
   {{- end }}
 {{- end }}
 {{- $imageSecret := trim .ImageSecret }}
