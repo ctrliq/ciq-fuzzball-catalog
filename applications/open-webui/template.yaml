@@ -23,7 +23,9 @@
        repository path of 2 to 255 characters after any registry host, and a
        tag of at most 128. A first path segment names a registry host only
        when it holds a dot or a port or is localhost; otherwise the image is
-       on Docker Hub. */}}
+       on Docker Hub, so docker://registry:5000 is the library image registry
+       at tag 5000, while a dotted name or localhost with no path names a
+       registry but no repository. */}}
 {{- $ollamaImage := trim .OllamaImage }}
 {{- $openWebUIImage := trim .OpenWebUIImage }}
 {{- $ingestImage := trim .IngestImage }}
@@ -32,7 +34,7 @@
   {{- $name := index $img 0 }}
   {{- $ref := index $img 1 }}
   {{- $example := index $img 2 }}
-  {{- if not (and (regexMatch "^(docker|oras)://((\\[[0-9A-Fa-f:]+\\]|[A-Za-z0-9._-]+)(:[0-9]+)?/)?[a-z0-9._-]*(/[a-z0-9._-]*)*(:[A-Za-z0-9._-]{1,128})?(@sha256:[a-f0-9]{64})?$" $ref) (regexMatch "(:[A-Za-z0-9._-]{1,128}|@sha256:[a-f0-9]{64})$" $ref)) }}
+  {{- if not (and (regexMatch "^(docker|oras)://((\\[[0-9A-Fa-f:.]+\\]|[A-Za-z0-9._-]+)(:[0-9]+)?/)?[a-z0-9._-]*(/[a-z0-9._-]*)*(:[A-Za-z0-9._-]{1,128})?(@sha256:[a-f0-9]{64})?$" $ref) (regexMatch "(:[A-Za-z0-9._-]{1,128}|@sha256:[a-f0-9]{64})$" $ref)) }}
     {{- fail (printf "%s needs an explicit tag or digest and a lowercase repository path, and may name a ported registry, e.g. %s" $name $example) }}
   {{- end }}
   {{- $path := regexReplaceAll "^[a-z]+://" $ref "" }}
@@ -44,6 +46,8 @@
     {{- else if not (regexMatch "^[a-z0-9._-]*$" $first) }}
       {{- fail (printf "%s needs a lowercase repository path, e.g. %s" $name $example) }}
     {{- end }}
+  {{- else if or (contains "." $repository) (eq $repository "localhost") }}
+    {{- fail (printf "%s names the registry %s but no repository; add the repository path after it, e.g. %s" $name (regexReplaceAll "(:[0-9]*[A-Za-z._-][A-Za-z0-9._-]*)?(@sha256:[a-f0-9]{64})?$" $path "") $example) }}
   {{- end }}
   {{- $max := 255 }}
   {{- /* With a digest, go-containerregistry counts the library/ it adds to
