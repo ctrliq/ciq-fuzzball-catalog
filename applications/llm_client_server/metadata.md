@@ -14,7 +14,9 @@ See [Supported Models](https://docs.vllm.ai/en/stable/models/supported_models.ht
 The server will run until the workflow is cancelled.
 
 **Container images.** `VllmImage` and `UIImage` each take a full image reference with an
-explicit tag or digest, so a site without access to public registries can point them at its
-own copies. For a mirror that requires credentials, set `ImageSecret` to a Fuzzball image
-secret; it goes with both pulls, so they must then come from one registry. `VllmImage`
+explicit tag or digest and a lowercase repository path, so a site without access to public
+registries can point them at its own copies. For a mirror that requires credentials, set
+`ImageSecret` to a Fuzzball image secret; it goes with both pulls, so each must then name its
+registry host (`docker://docker.io/<namespace>/<name>:<tag>` for Docker Hub), both the same
+one, and that host must be one of the secret's trusted domains. `VllmImage`
 replaces the earlier `VllmVersion` value: saved overrides of that value no longer apply.
