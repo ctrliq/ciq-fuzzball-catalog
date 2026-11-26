@@ -67,7 +67,10 @@ values:
     display_category: "Container Versions"
 
   - name: "CurlImage"
-    display_name: "Image used by the short-lived job that prints how to reach Open WebUI."
+    display_name: >-
+      Image used by the verify-stack job, which checks that Ollama and Open WebUI respond,
+      sends TestPrompt to the model and prints how to reach Open WebUI, with an explicit tag
+      or digest. Pulled only when TestPrompt is set.
     string_value: "docker://curlimages/curl:8.17.0"
     display_category: "Container Versions"
 
@@ -75,9 +78,10 @@ values:
     display_name: >-
       Fuzzball image secret (secret://<scope>/<name>, type image with username/password and
       trusted-domains) for pulling from a private registry. It is sent with every image the
-      workflow pulls, so when it is set they must all come from one registry, and that
-      registry must be one of the secret's trusted domains. Leave empty for registries that
-      allow anonymous pulls.
+      workflow pulls, so when it is set each of them must name its registry host (for Docker
+      Hub, docker://docker.io/<namespace>/<name>:<tag>), all the same host, and that host must
+      be one of the secret's trusted domains. Leave empty for registries that allow anonymous
+      pulls.
     secret_value:
       reference: ""
     display_category: "Container Versions"

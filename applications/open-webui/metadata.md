@@ -37,19 +37,22 @@ organization.
 ## Container Images
 
 Each image the workflow uses is a value taking a full image reference with an
-explicit tag or digest:
+explicit tag or digest and a lowercase repository path:
 - **OllamaImage** (default: `docker://ollama/ollama:0.40.4`) - Ollama, for LLM inference
 - **OpenWebUIImage** (default: `docker://ghcr.io/open-webui/open-webui:v0.12.2`) - the Open WebUI interface
 - **IngestImage** (default: `docker://python:3.11-slim`) - the job that imports `DocumentSource`; pulled only when `DocumentSource` is set
-- **CurlImage** (default: `docker://curlimages/curl:8.17.0`) - the job that prints how to reach Open WebUI
+- **CurlImage** (default: `docker://curlimages/curl:8.17.0`) - the verify-stack job, which checks the stack, sends `TestPrompt` and prints how to reach Open WebUI; pulled only when `TestPrompt` is set
 
 Override them to use newer releases, pin a digest for reproducibility, or point
 the workflow at a mirror: a site without access to public registries can use its
 own copies. For a mirror that requires credentials, set **ImageSecret** to a
 Fuzzball image secret. Its credentials go with every image pull, so the entry
-then requires every image it pulls on one registry, and that registry must be one
-of the secret's trusted domains. `IngestImage` counts only when `DocumentSource`
-is set.
+then requires every image it pulls to name its registry host, all the same one,
+and that host must be one of the secret's trusted domains. Spell Docker Hub
+images out in full, as `docker://docker.io/<namespace>/<name>:<tag>` (official
+images use the namespace `library`), and use one spelling of a host throughout:
+`docker.io` and `index.docker.io` count as different hosts. `IngestImage` counts
+only when `DocumentSource` is set, and `CurlImage` only when `TestPrompt` is.
 
 `OllamaImage` and `OpenWebUIImage` replace the earlier `OllamaVersion` and
 `OpenWebUIVersion` values. Saved overrides of those values no longer apply: set

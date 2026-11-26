@@ -16,51 +16,68 @@
   {{- fail "OpenWebuiVolume must be blank or the name of a persistent volume" }}
 {{- end }}
 {{- $llmModel := trim .LLMModel }}
-{{- /* A tag or digest is required, and a tag cannot be empty: a reference
-       ending in ':' renders a uri YAML reads as a mapping. */}}
+{{- /* Each image reference needs an explicit tag or digest, and a tag
+       cannot be empty: a reference ending in ':' renders a uri YAML reads as a
+       mapping. Fuzzball parses references with go-containerregistry, which
+       wants a lowercase repository path of 2 to 255 characters after any
+       registry host, and a tag of at most 128. A first path segment names a registry host only when
+       it holds a dot or a port or is localhost; otherwise the image is on
+       Docker Hub. */}}
 {{- $ollamaImage := trim .OllamaImage }}
-{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $ollamaImage) }}
-  {{- fail "OllamaImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/ollama/ollama:0.40.4" }}
-{{- end }}
 {{- $openWebUIImage := trim .OpenWebUIImage }}
-{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $openWebUIImage) }}
-  {{- fail "OpenWebUIImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/open-webui/open-webui:v0.12.2" }}
-{{- end }}
 {{- $ingestImage := trim .IngestImage }}
-{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $ingestImage) }}
-  {{- fail "IngestImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/library/python:3.11-slim" }}
-{{- end }}
 {{- $curlImage := trim .CurlImage }}
-{{- if not (regexMatch "^(docker|oras)://[A-Za-z0-9._-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $curlImage) }}
-  {{- fail "CurlImage needs an explicit tag or digest, and may name a ported registry, e.g. docker://registry:5000/curlimages/curl:8.17.0" }}
+{{- range $img := list (list "OllamaImage" $ollamaImage "docker://registry:5000/ollama/ollama:0.40.4") (list "OpenWebUIImage" $openWebUIImage "docker://registry:5000/open-webui/open-webui:v0.12.2") (list "IngestImage" $ingestImage "docker://registry:5000/library/python:3.11-slim") (list "CurlImage" $curlImage "docker://registry:5000/curlimages/curl:8.17.0") }}
+  {{- $name := index $img 0 }}
+  {{- $ref := index $img 1 }}
+  {{- $example := index $img 2 }}
+  {{- if not (regexMatch "^(docker|oras)://((\\[[0-9A-Fa-f:]+\\]|[A-Za-z0-9._-]+)(:[0-9]+)?/)?[a-z0-9._-]*(/[a-z0-9._-]*)*(:[A-Za-z0-9._-]{1,128}|@sha256:[a-f0-9]{64})$" $ref) }}
+    {{- fail (printf "%s needs an explicit tag or digest and a lowercase repository path, and may name a ported registry, e.g. %s" $name $example) }}
+  {{- end }}
+  {{- $path := regexReplaceAll "^[a-z]+://" $ref "" }}
+  {{- $first := regexReplaceAll "/.*$" $path "" }}
+  {{- $repository := regexReplaceAll "(:[A-Za-z0-9._-]+|@sha256:[a-f0-9]{64})$" $path "" }}
+  {{- if contains "/" $path }}
+    {{- if or (contains "." $first) (contains ":" $first) (eq $first "localhost") }}
+      {{- $repository = regexReplaceAll "^[^/]*/" $repository "" }}
+    {{- else if not (regexMatch "^[a-z0-9._-]*$" $first) }}
+      {{- fail (printf "%s needs a lowercase repository path, e.g. %s" $name $example) }}
+    {{- end }}
+  {{- end }}
+  {{- if or (lt (len $repository) 2) (gt (len $repository) 255) }}
+    {{- fail (printf "%s needs a repository name of 2 to 255 characters, e.g. %s" $name $example) }}
+  {{- end }}
 {{- end }}
 {{- $imageSecret := trim .ImageSecret }}
 {{- if and $imageSecret (not (regexMatch "^secret://(user|group|account|organization|cluster)/[A-Za-z0-9._-]+$" $imageSecret)) }}
   {{- fail "ImageSecret must be a secret reference, e.g. secret://organization/registry-mirror" }}
 {{- end }}
-{{- /* Fuzzball checks an image secret's trusted domains only on the first
-       image that uses it, yet sends its credentials with every pull. One
-       registry for every image this workflow pulls makes that one check cover
-       them all; IngestImage is pulled only when DocumentSource is set. A first
-       path segment names a registry only when it holds a dot or a port or is
-       localhost; otherwise the image is on Docker Hub. */}}
+{{- /* Fuzzball checks an image secret's trusted domains against the host of
+       one image's URI, exactly as written with any port removed, yet sends
+       its credentials with every pull that uses the secret. So with a secret
+       set, every image it goes with must name its registry host, and all of
+       them the same one. */}}
 {{- if $imageSecret }}
-  {{- $pulled := list $ollamaImage $openWebUIImage $curlImage }}
+  {{- /* IngestImage is pulled only when DocumentSource is set, and CurlImage
+         only when TestPrompt is. */}}
+  {{- $pulled := list (list "OllamaImage" $ollamaImage) (list "OpenWebUIImage" $openWebUIImage) }}
   {{- if .DocumentSource }}
-    {{- $pulled = append $pulled $ingestImage }}
+    {{- $pulled = append $pulled (list "IngestImage" $ingestImage) }}
   {{- end }}
-  {{- $registries := list }}
-  {{- range $ref := $pulled }}
-    {{- $path := regexReplaceAll "^[a-z]+://" $ref "" }}
+  {{- if .TestPrompt }}
+    {{- $pulled = append $pulled (list "CurlImage" $curlImage) }}
+  {{- end }}
+  {{- $hosts := list }}
+  {{- range $img := $pulled }}
+    {{- $path := regexReplaceAll "^[a-z]+://" (index $img 1) "" }}
     {{- $first := regexReplaceAll "/.*$" $path "" }}
-    {{- $registry := "docker.io" }}
-    {{- if and (contains "/" $path) (or (contains "." $first) (contains ":" $first) (eq $first "localhost")) }}
-      {{- $registry = $first }}
+    {{- if not (and (contains "/" $path) (or (contains "." $first) (contains ":" $first) (eq $first "localhost"))) }}
+      {{- fail (printf "ImageSecret is set, so %s must name its registry host, e.g. docker://docker.io/<namespace>/<name>:<tag> for Docker Hub, where official images use the namespace library (got %s)" (index $img 0) (index $img 1)) }}
     {{- end }}
-    {{- $registries = append $registries $registry }}
+    {{- $hosts = append $hosts (regexReplaceAll ":[0-9]+$" $first "") }}
   {{- end }}
-  {{- if gt (len (uniq $registries)) 1 }}
-    {{- fail (printf "ImageSecret is sent with every image this workflow pulls, so OllamaImage, OpenWebUIImage, CurlImage and, when DocumentSource is set, IngestImage must come from one registry (got %s)" (join ", " (uniq $registries))) }}
+  {{- if gt (len (uniq $hosts)) 1 }}
+    {{- fail (printf "ImageSecret is sent with every image this workflow pulls, so they must name one registry host (got %s); the host is compared exactly as written, so docker.io and index.docker.io differ" (join ", " (uniq $hosts))) }}
   {{- end }}
 {{- end }}
 version: v4
