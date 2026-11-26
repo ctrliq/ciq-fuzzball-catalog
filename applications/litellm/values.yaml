@@ -82,7 +82,7 @@ values:
 
   - name: "GatewayImage"
     display_name: >-
-      LiteLLM container image, with an explicit tag or digest. It must be a litellm-database
+      LiteLLM container image, with an explicit tag, digest or both. It must be a litellm-database
       build of v1.97.0 or later: earlier releases ignore the x-litellm-api-key header the
       gateway endpoint depends on. Moving to a different LiteLLM release requires a fresh
       database.
@@ -91,7 +91,7 @@ values:
 
   - name: "DatabaseImage"
     display_name: >-
-      PostgreSQL container image, with an explicit tag or digest. It must be the official
+      PostgreSQL container image, with an explicit tag, digest or both. It must be the official
       postgres image or a mirror of it: the database service relies on its
       docker-entrypoint.sh and POSTGRES_* initialization.
     string_value: "docker://postgres:16.15"
@@ -106,8 +106,10 @@ values:
     display_name: >-
       Fuzzball image secret (secret://<scope>/<name>, type image with username/password and
       trusted-domains) for pulling from a private registry. It is sent with all three images,
-      so when it is set they must all come from one registry, and that registry must be one of
-      the secret's trusted domains. Leave empty for registries that allow anonymous pulls.
+      so when it is set each must name its registry host (for Docker Hub,
+      docker://docker.io/<namespace>/<name>:<tag>), all the same host, and that host must be
+      one of the secret's trusted domains. Leave empty for registries that allow anonymous
+      pulls.
     secret_value:
       reference: ""
     display_category: "Container Versions"
