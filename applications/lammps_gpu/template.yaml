@@ -15,10 +15,22 @@ version: v4
   {{- fail "LammpsScript is required" }}
 {{- end }}
 
-{{- $scratch_vol := default "volume://user/ephemeral" .ScratchVolume | trim }}
+{{- $scratch_vol := default "ephemeral" .ScratchVolume | trim }}
+{{- if hasPrefix "volume://" (lower $scratch_vol) }}
+  {{- fail "ScratchVolume no longer takes a volume:// URI -- use 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+{{- if or (not (regexMatch "^[A-Za-z0-9._-]+$" $scratch_vol)) (contains ".." $scratch_vol) (eq $scratch_vol ".") (gt (len $scratch_vol) 255) }}
+  {{- fail "ScratchVolume must be 'ephemeral' or the name of a persistent volume (up to 255 letters, digits, '.', '_' or '-')" }}
+{{- end }}
 {{- $scratch_mount := "/scratch" }}
 
 {{- $data_vol := trim .DataVolume }}
+{{- if hasPrefix "volume://" (lower $data_vol) }}
+  {{- fail "DataVolume no longer takes a volume:// URI -- use 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+{{- if and $data_vol (or (not (regexMatch "^[A-Za-z0-9._-]+$" $data_vol)) (contains ".." $data_vol) (eq $data_vol ".") (gt (len $data_vol) 255)) }}
+  {{- fail "DataVolume must be 'ephemeral' or the name of a persistent volume (up to 255 letters, digits, '.', '_' or '-')" }}
+{{- end }}
 {{- $data_mount := "/data" }}
 
 {{- $run := trim .RunName }}
@@ -55,7 +67,11 @@ defaults:
 
 volumes:
   scratch:
-    reference: {{ $scratch_vol }}
+    {{- if eq (lower $scratch_vol) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    name: "{{ $scratch_vol }}"
+    {{- end }}
     ingress:
       - destination:
           uri: file://stagein
@@ -81,7 +97,11 @@ volumes:
 {{- end }}
 {{- if $data_vol }}
   data:
-    reference: {{ $data_vol }}
+    {{- if eq (lower $data_vol) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    name: "{{ $data_vol }}"
+    {{- end }}
 {{- end }}
 
 jobs:

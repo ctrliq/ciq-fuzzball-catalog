@@ -7,7 +7,7 @@ volumes:
           uri: https://zenodo.org/record/3893789/files/GROMACS_heterogeneous_parallelization_benchmark_info_and_systems_JCP.tar.gz
         destination:
           uri: file://gromacs-benchmarks.tar.gz
-    reference: volume://user/ephemeral
+    use: ephemeral
 
 defaults:
   job:

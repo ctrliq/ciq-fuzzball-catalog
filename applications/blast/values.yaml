@@ -1,13 +1,13 @@
 values:
   - name: "DataVolume"
     display_name: >-
-      Data directory for public BLAST databases and (optionally) output. Usually a persistent directory like
-      volume://group/persistent/data. Defaults to an ephemeral volume for quick testing. Mounted at /data.
-    string_value: "volume://user/ephemeral"
+      Data directory for public BLAST databases and (optionally) output. Usually the name of a persistent volume,
+      such as data. Defaults to ephemeral, a scratch volume for quick testing. Mounted at /data.
+    string_value: "ephemeral"
     display_category: "Storage"
   - name: "ScratchVolume"
-    display_name: "Ephemeral volume for temporary files."
-    string_value: "volume://user/ephemeral"
+    display_name: "Volume for temporary files. Use ephemeral for a scratch volume discarded when the workflow ends, or the name of a persistent volume."
+    string_value: "ephemeral"
     display_category: "Storage"
 
   - name: "WorkflowContainer"

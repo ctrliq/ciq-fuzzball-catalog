@@ -1,16 +1,26 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $filename := base .InputFileSource | trim }}
+{{- $datavol := trim .DataVolume }}
+{{- if hasPrefix "volume://" (lower $datavol) }}
+  {{- fail "DataVolume no longer takes a volume:// URI -- use 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+{{- if or (not (regexMatch "^[A-Za-z0-9._-]+$" $datavol)) (contains ".." $datavol) (eq $datavol ".") (gt (len $datavol) 255) }}
+  {{- fail "DataVolume must be 'ephemeral' or the name of a persistent volume (up to 255 letters, digits, '.', '_' or '-')" }}
+{{- end }}
 
 version: v4
 volumes:
   vol_1:
-    name: vol_1
     ingress:
       - source:
           uri: {{.InputFileSource}}
         destination:
           uri: file://{{ .WorkingDirectory | trim | trimPrefix "/data" | trimPrefix "/" }}/{{ $filename }}
-    reference: {{ .DataVolume }}
+    {{- if eq (lower $datavol) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    name: "{{ $datavol }}"
+    {{- end }}
 
 defaults:
   job:

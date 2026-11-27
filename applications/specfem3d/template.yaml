@@ -12,7 +12,7 @@ volumes:
           secret: {{.S3Secret}}
           {{- end }}
     {{- end }}
-    reference: volume://user/ephemeral
+    use: ephemeral
 
 defaults:
   job:

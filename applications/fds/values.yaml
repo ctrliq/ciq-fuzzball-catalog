@@ -16,8 +16,8 @@ values:
     string_value: "https://raw.githubusercontent.com/firemodels/fds/refs/heads/master/Verification/Fires/couch.fds"
     display_category: "Input Data"
   - name: DataVolume
-    display_name: Data volume to mount at /data
-    string_value: "volume://user/ephemeral"
+    display_name: "Data volume to mount at /data. Use ephemeral for a scratch volume discarded when the workflow ends, or the name of a persistent volume."
+    string_value: "ephemeral"
     display_category: Storage
   - name: "WorkingDirectory"
     display_name: "Analysis directory on the data volume"

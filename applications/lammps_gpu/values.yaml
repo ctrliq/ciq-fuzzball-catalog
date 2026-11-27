@@ -1,10 +1,10 @@
 values:
   - name: ScratchVolume
-    display_name: Ephemeral scratch volume used during the LAMMPS run.
-    string_value: "volume://user/ephemeral"
+    display_name: "Scratch volume used during the LAMMPS run. Use ephemeral for a scratch volume discarded when the workflow ends, or the name of a persistent volume."
+    string_value: "ephemeral"
     display_category: Storage
   - name: DataVolume
-    display_name: Persistent volume to store results. If set, a tar archive of the run directory is copied here.
+    display_name: "Name of a persistent volume to store results (or ephemeral). If set, a tar archive of the run directory is copied here."
     string_value: ""
     display_category: Storage
   - name: S3Bucket
