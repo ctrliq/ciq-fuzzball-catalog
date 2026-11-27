@@ -1,4 +1,11 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
+{{- $volume := trim .Volume }}
+{{- if hasPrefix "volume://" (lower $volume) }}
+  {{- fail "Volume no longer takes a volume:// URI -- use 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+{{- if or (not (regexMatch "^[A-Za-z0-9._-]+$" $volume)) (contains ".." $volume) (eq $volume ".") (gt (len $volume) 255) }}
+  {{- fail "Volume must be 'ephemeral' or the name of a persistent volume (up to 255 letters, digits, '.', '_' or '-')" }}
+{{- end }}
 
 {{- $buildNumber := .StarccmBuildNumber }}
 {{- if eq .StarccmPrecision "double" }}
@@ -10,7 +17,11 @@ version: v4
 
 volumes:
   data:
-    reference: {{.Volume}}
+    {{- if eq (lower $volume) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    name: "{{ $volume }}"
+    {{- end }}
 
 defaults:
   job:
