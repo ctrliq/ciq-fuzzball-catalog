@@ -34,13 +34,29 @@ The Open WebUI service endpoint is accessible by the submitting user by default;
 but it can be changed to be accessible by anyone in the same group or
 organization.
 
-## Container Versions
+## Container Images
 
-The workflow allows you to specify container versions for both Ollama and Open WebUI:
-- **OllamaVersion** (default: 0.40.4) - Ollama container version for LLM inference
-- **OpenWebUIVersion** (default: v0.12.2) - Open WebUI interface version
+Each image the workflow uses is a value taking a full image reference with an
+explicit tag or digest and a lowercase repository path:
+- **OllamaImage** (default: `docker://ollama/ollama:0.40.4`) - Ollama, for LLM inference
+- **OpenWebUIImage** (default: `docker://ghcr.io/open-webui/open-webui:v0.12.2`) - the Open WebUI interface
+- **IngestImage** (default: `docker://python:3.11-slim`) - the job that imports `DocumentSource`; pulled only when `DocumentSource` is set
+- **CurlImage** (default: `docker://curlimages/curl:8.17.0`) - the verify-stack job, which checks the stack, sends `TestPrompt` and prints how to reach Open WebUI; pulled only when `TestPrompt` is set
 
-You can override these to use newer versions or pin to specific releases for reproducibility.
+Override them to use newer releases, pin a digest for reproducibility, or point
+the workflow at a mirror: a site without access to public registries can use its
+own copies. For a mirror that requires credentials, set **ImageSecret** to a
+Fuzzball image secret. Its credentials go with every image pull, so the entry
+then requires every image it pulls to name its registry host, all the same one,
+and that host must be one of the secret's trusted domains. Spell Docker Hub
+images out in full, as `docker://docker.io/<namespace>/<name>:<tag>` (official
+images use the namespace `library`), and use one spelling of a host throughout:
+`docker.io` and `index.docker.io` count as different hosts. `IngestImage` counts
+only when `DocumentSource` is set, and `CurlImage` only when `TestPrompt` is.
+
+`OllamaImage` and `OpenWebUIImage` replace the earlier `OllamaVersion` and
+`OpenWebUIVersion` values. Saved overrides of those values no longer apply: set
+the image values instead.
 
 Upgrades are one-way for data on persistent volumes. Open WebUI migrates its
 database at startup, so an older version may not read it afterwards. Models

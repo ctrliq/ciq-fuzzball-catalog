@@ -5,6 +5,71 @@
 {{- $ui_port := randInt 24001 32000 }}
 
 {{- $data_mount := "/data" }}
+{{- /* Each image reference needs an explicit tag, a digest, or a tag
+       followed by a digest, and a tag cannot be empty: a reference ending in
+       ':' renders a uri YAML reads as a mapping. Fuzzball parses
+       references with go-containerregistry, which wants a lowercase
+       repository path of 2 to 255 characters after any registry host, and a
+       tag of at most 128. A first path segment names a registry host only
+       when it holds a dot or a port or is localhost; otherwise the image is
+       on Docker Hub, so docker://registry:5000 is the library image registry
+       at tag 5000, while a dotted name or localhost with no path names a
+       registry but no repository. */}}
+{{- $vllmImage := trim .VllmImage }}
+{{- $uiImage := trim .UIImage }}
+{{- range $img := list (list "VllmImage" $vllmImage "docker://registry:5000/vllm/vllm-openai:v0.13.0") (list "UIImage" $uiImage "docker://registry:5000/yoziru/nextjs-vllm-ui:latest") }}
+  {{- $name := index $img 0 }}
+  {{- $ref := index $img 1 }}
+  {{- $example := index $img 2 }}
+  {{- if not (and (regexMatch "^(docker|oras)://((\\[[0-9A-Fa-f:.]+\\]|[A-Za-z0-9._-]+)(:[0-9]+)?/)?[a-z0-9._-]*(/[a-z0-9._-]*)*(:[A-Za-z0-9._-]{1,128})?(@sha256:[a-f0-9]{64})?$" $ref) (regexMatch "(:[A-Za-z0-9._-]{1,128}|@sha256:[a-f0-9]{64})$" $ref)) }}
+    {{- fail (printf "%s needs an explicit tag or digest and a lowercase repository path, and may name a ported registry, e.g. %s" $name $example) }}
+  {{- end }}
+  {{- $path := regexReplaceAll "^[a-z]+://" $ref "" }}
+  {{- $first := regexReplaceAll "/.*$" $path "" }}
+  {{- $repository := regexReplaceAll "(:[A-Za-z0-9._-]+)?(@sha256:[a-f0-9]{64})?$" $path "" }}
+  {{- if contains "/" $path }}
+    {{- if or (contains "." $first) (contains ":" $first) (eq $first "localhost") }}
+      {{- $repository = regexReplaceAll "^[^/]*/" $repository "" }}
+    {{- else if not (regexMatch "^[a-z0-9._-]*$" $first) }}
+      {{- fail (printf "%s needs a lowercase repository path, e.g. %s" $name $example) }}
+    {{- end }}
+  {{- else if or (contains "." $repository) (eq $repository "localhost") }}
+    {{- fail (printf "%s names the registry %s but no repository; add the repository path after it, e.g. %s" $name (regexReplaceAll "(:[0-9]*[A-Za-z._-][A-Za-z0-9._-]*)?(@sha256:[a-f0-9]{64})?$" $path "") $example) }}
+  {{- end }}
+  {{- $max := 255 }}
+  {{- /* With a digest, go-containerregistry counts the library/ it adds to
+         a one-name Docker Hub repository against the limit. */}}
+  {{- if and (contains "@sha256:" $ref) (not (contains "/" $repository)) (or (not (contains "/" $path)) (eq $first "docker.io") (eq $first "index.docker.io")) }}
+    {{- $max = 247 }}
+  {{- end }}
+  {{- if or (lt (len $repository) 2) (gt (len $repository) $max) }}
+    {{- fail (printf "%s needs a repository name of 2 to %d characters, e.g. %s" $name $max $example) }}
+  {{- end }}
+{{- end }}
+{{- $imageSecret := trim .ImageSecret }}
+{{- if and $imageSecret (not (regexMatch "^secret://(user|group|account|organization|cluster)/[A-Za-z0-9._-]+$" $imageSecret)) }}
+  {{- fail "ImageSecret must be a secret reference, e.g. secret://organization/registry-mirror" }}
+{{- end }}
+{{- /* Fuzzball checks an image secret's trusted domains against the host of
+       one image's URI, exactly as written with any port removed, yet sends
+       its credentials with every pull that uses the secret. So with a secret
+       set, every image it goes with must name its registry host, and all of
+       them the same one. */}}
+{{- if $imageSecret }}
+  {{- $pulled := list (list "VllmImage" $vllmImage) (list "UIImage" $uiImage) }}
+  {{- $hosts := list }}
+  {{- range $img := $pulled }}
+    {{- $path := regexReplaceAll "^[a-z]+://" (index $img 1) "" }}
+    {{- $first := regexReplaceAll "/.*$" $path "" }}
+    {{- if not (and (contains "/" $path) (or (contains "." $first) (contains ":" $first) (eq $first "localhost"))) }}
+      {{- fail (printf "ImageSecret is set, so %s must name its registry host, e.g. docker://docker.io/<namespace>/<name>:<tag> for Docker Hub, where official images use the namespace library (got %s)" (index $img 0) (index $img 1)) }}
+    {{- end }}
+    {{- $hosts = append $hosts (regexReplaceAll ":[0-9]+$" $first "") }}
+  {{- end }}
+  {{- if gt (len (uniq $hosts)) 1 }}
+    {{- fail (printf "ImageSecret is sent with both VllmImage and UIImage, so they must name one registry host (got %s); the host is compared exactly as written, so docker.io and index.docker.io differ" (join ", " (uniq $hosts))) }}
+  {{- end }}
+{{- end }}
 
 {{- if and (trim .HuggingfaceCache) (not (or (eq (trim .HuggingfaceCache) $data_mount) (hasPrefix (printf "%s/" $data_mount) (trim .HuggingfaceCache)))) }}
   {{- fail (printf "HuggingfaceCache must be an absolute path under the mounted volume %s so the cache persists" $data_mount) }}
@@ -24,7 +89,10 @@ services:
           port: {{ $vllm_api_port }}
           protocol: tcp
     image:
-      uri: docker://vllm/vllm-openai:{{ .VllmVersion }}
+      uri: {{ $vllmImage }}
+      {{- if $imageSecret }}
+      secret: {{ $imageSecret }}
+      {{- end }}
     mounts:
       {{ $data_mount }}:
         volume: data
@@ -73,7 +141,10 @@ services:
           protocol: http
           scope: {{ .ServiceScope }}
     image:
-      uri: docker://ghcr.io/yoziru/nextjs-vllm-ui:latest
+      uri: {{ $uiImage }}
+      {{- if $imageSecret }}
+      secret: {{ $imageSecret }}
+      {{- end }}
     resource:
       cpu:
         cores: 2

@@ -49,12 +49,39 @@ values:
       options: [user, group, organization]
     display_category: "Access"
 
-  - name: "OllamaVersion"
-    display_name: "Ollama Container Version"
-    string_value: "0.40.4"
+  - name: "OllamaImage"
+    display_name: "Ollama container image, with an explicit tag or digest."
+    string_value: "docker://ollama/ollama:0.40.4"
     display_category: "Container Versions"
 
-  - name: "OpenWebUIVersion"
-    display_name: "Open WebUI Container Version"
-    string_value: "v0.12.2"
+  - name: "OpenWebUIImage"
+    display_name: "Open WebUI container image, with an explicit tag or digest."
+    string_value: "docker://ghcr.io/open-webui/open-webui:v0.12.2"
+    display_category: "Container Versions"
+
+  - name: "IngestImage"
+    display_name: >-
+      Image used by the job that imports DocumentSource into a knowledge base, with an
+      explicit tag or digest. Pulled only when DocumentSource is set.
+    string_value: "docker://python:3.11-slim"
+    display_category: "Container Versions"
+
+  - name: "CurlImage"
+    display_name: >-
+      Image used by the verify-stack job, which checks that Ollama and Open WebUI respond,
+      sends TestPrompt to the model and prints how to reach Open WebUI, with an explicit tag
+      or digest. Pulled only when TestPrompt is set.
+    string_value: "docker://curlimages/curl:8.17.0"
+    display_category: "Container Versions"
+
+  - name: "ImageSecret"
+    display_name: >-
+      Fuzzball image secret (secret://<scope>/<name>, type image with username/password and
+      trusted-domains) for pulling from a private registry. It is sent with every image the
+      workflow pulls, so when it is set each of them must name its registry host (for Docker
+      Hub, docker://docker.io/<namespace>/<name>:<tag>), all the same host, and that host must
+      be one of the secret's trusted domains. Leave empty for registries that allow anonymous
+      pulls.
+    secret_value:
+      reference: ""
     display_category: "Container Versions"
