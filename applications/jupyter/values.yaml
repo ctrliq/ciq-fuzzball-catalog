@@ -25,8 +25,8 @@ values:
     display_category: "Scheduling"
   - name: "DataVolume"
     display_name: |
-      [required] Data volume for notebook data. Will be mounted at /data.
-    string_value: "volume://user/ephemeral"
+      [required] Data volume for notebook data. Will be mounted at /data. Use ephemeral (the default) for a scratch volume discarded when the workflow ends, or the name of a persistent volume.
+    string_value: "ephemeral"
     display_category: "Storage"
 
   - name: "ServiceScope"

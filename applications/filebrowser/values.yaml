@@ -1,13 +1,13 @@
 values:
   - name: Volumes
     display_name: |
-      Comma separated list of volumes to mount. These are Fuzzball volume references
-      such as `volume://user/persistent`. By default the volume would be available
-      under its name in the file browser. If you would like to use a custom path for
-      a particular volume in the file browser, you can specify it like this:
-      `volume://user/persistent:/custom/path`. The leading slash is optional.
+      Comma separated list of volumes to serve. Give each persistent volume by its
+      name, such as `my-data`, or use `ephemeral` for a scratch volume that is
+      discarded when the workflow ends. A volume is shown as `<name>` in the file browser
+      unless you give it a path, like this: `my-data:/custom/path`. The leading
+      slash is optional. The default serves an empty scratch volume as `data`.
     display_category: Storage
-    string_value: "volume://user/ephemeral:data"
+    string_value: "ephemeral:data"
 
   - name: Container
     display_name: FileBrowser container

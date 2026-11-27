@@ -25,8 +25,8 @@ values:
     string_value: ""
     display_category: "Storage"
   - name: "ScratchVolume"
-    display_name: "[required] Volume used for temporary data."
-    string_value: "volume://user/ephemeral"
+    display_name: "[required] Volume used for temporary data. Use ephemeral (the default) for a scratch volume discarded when the workflow ends, or the name of a persistent volume."
+    string_value: "ephemeral"
     display_category: "Storage"
 
   - name: "ContainerImage"

@@ -16,4 +16,5 @@ desktop without hardware-accelerated rendering (e.g. `--values GPUs=0`).
 
 You can specify a data volume (`DataVolume`) to be mounted for data management. It will be mounted
 at /data. In addition an optional home volume can be specified (`HomeVolume`) to serve as a
-persistent home directory (e.g. `volume://user/persistent-4/username`).
+persistent home directory. Give each volume by the name of a persistent volume (e.g. `my-home`),
+or `ephemeral` for a scratch volume discarded when the workflow ends.

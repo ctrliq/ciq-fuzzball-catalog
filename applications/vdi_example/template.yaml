@@ -1,11 +1,17 @@
 # Copyright 2025 CIQ, Inc. All rights reserved.
 {{- $datavol := trim .DataVolume }}
 {{- $homevol := trim .HomeVolume }}
-{{- if and $datavol (not (hasPrefix "volume://" $datavol)) }}
-  {{- fail (printf "DataVolume must start with 'volume://', got %q" $datavol) }}
+{{- if hasPrefix "volume://" (lower $datavol) }}
+  {{- fail "DataVolume no longer takes a volume:// URI -- use 'ephemeral' or the name of a persistent volume" }}
 {{- end }}
-{{- if and $homevol (not (hasPrefix "volume://" $homevol)) }}
-  {{- fail (printf "HomeVolume must start with 'volume://', got %q" $homevol) }}
+{{- if and $datavol (or (not (regexMatch "^[A-Za-z0-9._-]+$" $datavol)) (contains ".." $datavol) (eq $datavol ".") (gt (len $datavol) 255)) }}
+  {{- fail "DataVolume must be 'ephemeral' or the name of a persistent volume (up to 255 letters, digits, '.', '_' or '-')" }}
+{{- end }}
+{{- if hasPrefix "volume://" (lower $homevol) }}
+  {{- fail "HomeVolume no longer takes a volume:// URI -- use 'ephemeral' or the name of a persistent volume" }}
+{{- end }}
+{{- if and $homevol (or (not (regexMatch "^[A-Za-z0-9._-]+$" $homevol)) (contains ".." $homevol) (eq $homevol ".") (gt (len $homevol) 255)) }}
+  {{- fail "HomeVolume must be 'ephemeral' or the name of a persistent volume (up to 255 letters, digits, '.', '_' or '-')" }}
 {{- end }}
 
 {{- $datamount := "/data" }}
@@ -28,11 +34,19 @@ version: v4
 volumes:
   {{- if $datavol }}
   data:
-    reference: {{ $datavol }}
+    {{- if eq (lower $datavol) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    name: "{{ $datavol }}"
+    {{- end }}
   {{- end }}
   {{- if $homevol }}
   home:
-    reference: {{ $homevol }}
+    {{- if eq (lower $homevol) "ephemeral" }}
+    use: ephemeral
+    {{- else }}
+    name: "{{ $homevol }}"
+    {{- end }}
   {{- end }}
 {{- end }}
 

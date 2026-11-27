@@ -20,8 +20,8 @@ values:
     bool_value: false
     display_category: "Scheduling"
   - name: "DataVolume"
-    display_name: "Volume to mount at /data for datasets."
-    string_value: "volume://user/ephemeral"
+    display_name: "Volume to mount at /data for datasets. Use ephemeral (the default) for a scratch volume discarded when the workflow ends, or the name of a persistent volume."
+    string_value: "ephemeral"
     display_category: "Storage"
   - name: "HomeVolume"
     display_name: "[optional] Volume housing your home directory. Mounted at /home"
