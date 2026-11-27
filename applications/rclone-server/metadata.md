@@ -7,9 +7,38 @@ tags:
 - file-management
 - interactive
 ---
-This application will start an [Rclone](https://rclone.org/) WebDAV or SFTP server that serves data from the mounted Fuzzball volumes and allows you to access, browse, upload, and download files from our Fuzzball persistent storage volumes using any compatible client.
+This application will start an [Rclone](https://rclone.org/) WebDAV or SFTP server that serves data from the mounted Fuzzball volumes and allows you to access, browse, upload, and download files on Fuzzball storage volumes using any compatible client.
 
 The server runs on the specified port (default 8080).
+
+## Choosing the volumes to serve
+
+`Volumes` is a comma-separated list. Give each persistent volume by its name,
+or use `ephemeral` for a scratch volume that is discarded when the workflow ends.
+Each volume is served as `/<name>`, or at the path you give after a colon:
+
+```
+fuzzball workflow catalog start "Rclone server for data management" --values Volumes=my-data:/projects
+```
+
+In-line `--values` splits on commas, so to serve several volumes set `Volumes`
+(for example `my-data,results:/runs/latest`) in a values file instead.
+
+The default, `ephemeral:data`, serves an empty scratch volume as `/data`: files
+you upload there are lost when the workflow stops. Set `Volumes` to the name of a
+persistent volume to serve data you keep.
+
+- **A volume name is resolved across the organization.** Fuzzball searches every
+  provisioner you can reach for a volume of that name and binds the single
+  match, so a name cannot pin a provisioner. Give the volume a name that is
+  unique across provisioners: two matches fail the submit.
+- **`ephemeral`, in any case, always means a scratch volume**, so a persistent
+  volume named `ephemeral` (or `Ephemeral`) cannot be served by this entry.
+- **Only volume names made of letters, digits, `.`, `_` and `-` can be
+  served**, and each persistent volume can be listed once. Paths after the
+  colon use the same characters.
+- **The older `volume://<scope>/<class>[:path]` references are no longer
+  accepted.** Give the volume's name instead.
 
 To access the server, you'll need to use port-forwarding:
 ```
