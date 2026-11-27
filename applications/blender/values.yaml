@@ -37,8 +37,8 @@ values:
       reference: ""
     display_category: "Storage"
   - name: Volume
-    display_name: Local ephemeral storage volume used for temporary data
-    string_value: volume://user/ephemeral
+    display_name: "Storage volume used for temporary data. Use ephemeral (the default) for a scratch volume discarded when the workflow ends, or the name of a persistent volume."
+    string_value: ephemeral
     display_category: "Storage"
   - name: BlenderImage
     display_name: Blender Container Image

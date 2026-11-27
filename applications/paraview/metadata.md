@@ -12,6 +12,6 @@ keyart: keyart.jpg
 ---
 ParaView is an open-source application for interactive scientific visualization of large datasets. It runs as a persistent service in a web-accessible Xfce desktop environment — no port-forwarding required. ParaView opens automatically when the desktop session starts.
 
-Set `DataVolume` to a Fuzzball volume (e.g. `volume://user/persistent-4/username`) to mount your datasets at `/data`. An optional `HomeVolume` can be specified to persist ParaView settings, state files, and Python scripts across sessions (e.g. `volume://user/persistent-4/username`). Without a home volume an ephemeral home directory is used.
+Set `DataVolume` to the name of a persistent volume (e.g. `my-data`), or `ephemeral` for a scratch volume, to mount your datasets at `/data`. An optional `HomeVolume` can be specified to persist ParaView settings, state files, and Python scripts across sessions (e.g. `my-home`). Without a home volume an ephemeral home directory is used.
 
 Set `GPUs` to `1` to allocate an NVIDIA GPU and enable hardware-accelerated rendering via VirtualGL. Without a GPU, ParaView uses Mesa software rendering, which is sufficient for smaller datasets but will be slower for large or complex scenes. If you need to restart ParaView use `launch-paraview.sh [PARAVIEW OPTIONS]`.
