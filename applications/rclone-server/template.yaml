@@ -6,6 +6,7 @@
        one. */}}
 {{- $volumes := list }}
 {{- $paths := dict }}
+{{- $names := dict }}
 {{- range $raw := splitList "," .Volumes }}
   {{- $volume := trim $raw }}
   {{- if hasPrefix "volume://" (lower $volume) }}
@@ -39,6 +40,12 @@
       {{- if or (hasPrefix (printf "%s/" $other) $path) (hasPrefix (printf "%s/" $path) $other) }}
         {{- fail (printf "Volumes entries %q and %q are served at nested paths /%s and /%s" $otherEntry $volume $other $path) }}
       {{- end }}
+    {{- end }}
+    {{- if ne (lower $name) "ephemeral" }}
+      {{- if hasKey $names $name }}
+        {{- fail (printf "Volumes entries %q and %q both serve the volume %q; list it once" (get $names $name) $volume $name) }}
+      {{- end }}
+      {{- $_ := set $names $name $volume }}
     {{- end }}
     {{- $_ := set $paths $path $volume }}
     {{- $volumes = append $volumes (dict "name" $name "path" $path) }}

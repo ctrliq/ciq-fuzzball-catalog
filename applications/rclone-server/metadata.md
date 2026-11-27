@@ -34,6 +34,9 @@ persistent volume to serve data you keep.
   unique across provisioners: two matches fail the submit.
 - **`ephemeral`, in any case, always means a scratch volume**, so a persistent
   volume named `ephemeral` (or `Ephemeral`) cannot be served by this entry.
+- **Only volume names made of letters, digits, `.`, `_` and `-` can be
+  served**, and each persistent volume can be listed once. Paths after the
+  colon use the same characters.
 - **The older `volume://<scope>/<class>[:path]` references are no longer
   accepted.** Give the volume's name instead.
 
