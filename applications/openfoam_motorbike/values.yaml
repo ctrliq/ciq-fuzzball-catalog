@@ -14,11 +14,11 @@ values:
     display_category: Container
 
   - name: ScratchVolume
-    display_name: Scratch volume for temporary storage. Required.
-    string_value: volume://user/ephemeral
+    display_name: "Scratch volume for temporary storage. Required. Use ephemeral for a scratch volume discarded when the workflow ends, or the name of a persistent volume."
+    string_value: "ephemeral"
     display_category: Storage
   - name: DataVolume
-    display_name: Data volume for saving results directory should be saved to. Leave empty to skip.
+    display_name: "Name of a persistent volume the results directory is saved to. Leave empty to skip."
     string_value: ""
     display_category: Storage
   - name: ResultPath

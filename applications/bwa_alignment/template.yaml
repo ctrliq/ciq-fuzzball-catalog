@@ -16,7 +16,7 @@ volumes:
           uri: {{.Read2URL}}
         destination:
           uri: file:///sample_2.fastq.gz
-    reference: volume://user/ephemeral
+    use: ephemeral
     {{- if .S3Bucket }}
     egress:
       {{- range $file := list "aligned.bam" "aligned.stats.txt" }}

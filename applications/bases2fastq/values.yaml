@@ -1,15 +1,15 @@
 values:
   - name: ScratchVolume
-    display_name: Ephemeral storage provisioner for temporary data.
-    string_value: volume://user/ephemeral
+    display_name: "Volume for temporary data. Use ephemeral for a scratch volume discarded when the workflow ends, or the name of a persistent volume."
+    string_value: "ephemeral"
     display_category: Storage
   - name: DataVolume
     display_name: >-
-      [optional] Persistent storage provisioner to use. It is only required when
+      [optional] Name of a persistent volume (or ephemeral) to use. It is only required when
       InputPath and/or OutputPath are local paths (i.e. not s3:// or http(s)://
       URIs). If both InputPath and OutputPath are remote (s3:// or http(s)://)
       this can be omitted. Will be mounted at /data
-    string_value: "volume://user/ephemeral"
+    string_value: "ephemeral"
     display_category: Storage
 
   - name: Bases2FastqContainer

@@ -44,7 +44,7 @@ volumes:
           uri: {{.AnimationScript}}
         destination:
           uri: file://{{.AnimationScriptFilename}}
-    reference: volume://user/ephemeral
+    use: ephemeral
 
 defaults:
   job:
