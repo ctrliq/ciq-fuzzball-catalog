@@ -18,7 +18,7 @@ values:
     string_value: "ephemeral"
     display_category: Storage
   - name: DataVolume
-    display_name: "Name of a persistent volume (or ephemeral) the results directory is saved to. Leave empty to skip."
+    display_name: "Name of a persistent volume the results directory is saved to. Leave empty to skip."
     string_value: ""
     display_category: Storage
   - name: ResultPath

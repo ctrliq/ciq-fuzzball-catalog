@@ -4,7 +4,7 @@ values:
     string_value: "ephemeral"
     display_category: Storage
   - name: DataVolume
-    display_name: "Name of a persistent volume to store results (or ephemeral). If set, a tar archive of the run directory is copied here."
+    display_name: "Name of a persistent volume to store results. If set, a tar archive of the run directory is copied here."
     string_value: ""
     display_category: Storage
   - name: S3Bucket

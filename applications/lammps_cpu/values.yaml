@@ -4,7 +4,7 @@ values:
     string_value: "ephemeral"
     display_category: "Storage"
   - name: "DataVolume"
-    display_name: "Volume to store data (if PersistResults is true). Mounted at /data. Use ephemeral for a scratch volume discarded when the workflow ends, or the name of a persistent volume."
+    display_name: "Volume to store data (used if StageoutScript is set). Mounted at /data. Use ephemeral for a scratch volume discarded when the workflow ends, or the name of a persistent volume."
     string_value: "ephemeral"
     display_category: "Storage"
 

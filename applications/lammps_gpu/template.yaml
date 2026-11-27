@@ -15,7 +15,7 @@ version: v4
   {{- fail "LammpsScript is required" }}
 {{- end }}
 
-{{- $scratch_vol := default "ephemeral" .ScratchVolume | trim }}
+{{- $scratch_vol := trim .ScratchVolume | default "ephemeral" }}
 {{- if hasPrefix "volume://" (lower $scratch_vol) }}
   {{- fail "ScratchVolume no longer takes a volume:// URI -- use 'ephemeral' or the name of a persistent volume" }}
 {{- end }}
