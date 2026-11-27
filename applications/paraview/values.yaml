@@ -24,7 +24,7 @@ values:
     string_value: "ephemeral"
     display_category: "Storage"
   - name: "HomeVolume"
-    display_name: "[optional] Volume housing your home directory. Mounted at /home"
+    display_name: "[optional] Volume housing your home directory. Mounted at /home. Give the name of a persistent volume, or ephemeral for a scratch volume."
     string_value: ""
     display_category: "Storage"
   - name: "HomeDir"

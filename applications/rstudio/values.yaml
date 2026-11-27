@@ -11,6 +11,7 @@ values:
   - name: "HomeVolume"
     display_name: >
       [optional] Storage volume used as your home directory. Will be mounted at /home.
+      Give the name of a persistent volume, or ephemeral for a scratch volume.
       Use to house a persistent R library, settings, etc. If not set (the default), an
       ephemeral home directory will be created and any changes made in the home directory
       will not persist.
@@ -21,7 +22,7 @@ values:
     string_value: ""
     display_category: "Storage"
   - name: "DataVolume"
-    display_name: "[optional] Storage volume for user data and R workspace files."
+    display_name: "[optional] Storage volume for user data and R workspace files. Give the name of a persistent volume, or ephemeral for a scratch volume."
     string_value: ""
     display_category: "Storage"
   - name: "ScratchVolume"
