@@ -61,10 +61,10 @@
 version: v4
 volumes:
 {{- range $i, $v := $volumes }}
-  {{- if eq (lower $v.name) "ephemeral" }}
-  vol-{{ $i }}: {}
-  {{- else }}
   vol-{{ $i }}:
+  {{- if eq (lower $v.name) "ephemeral" }}
+    use: ephemeral
+  {{- else }}
     name: "{{ $v.name }}"
   {{- end }}
 {{- end }}
